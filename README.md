@@ -22,8 +22,26 @@ It presents and coordinates capabilities without duplicating their engines.
 - Sergeant owns independent review.
 - Oracle owns browser and authorised operating-system vision/control sessions.
 - Lumi DM owns downloads, queues, resume, integrity verification, and download history.
+- TTG Device X-Ray owns read-first device identification, correlation, certification, profile resolution, recommendation, and sealed evidence.
 - Ptah Space is the future mechanical Workspace and execution substrate after its existing authorization gates close.
-- Specialist applications and Device Gateways retain their own authority.
+- Specialist applications and Device Gateways retain their own execution authority.
+
+## X-Ray inside Origins Factory
+
+TTG Device X-Ray is not presented as a generic application tile. It is the authoritative read-first device context layer used by Origins Factory.
+
+For device work, Origins Factory:
+
+1. discovers the Node and physical transport carrying the device;
+2. requests a read-only X-Ray scan on that Node;
+3. binds the sealed X-Ray bundle and digest to the AgentOps Operation;
+4. displays device identity, firmware, storage, partition, profile, freshness, contradictions, and certification state;
+5. allows Hunter to recommend a route without granting write authority;
+6. opens the correct specialist application or Device Gateway only after the evidence and required approval gates are satisfied;
+7. requests a new X-Ray scan after execution;
+8. presents the before/after evidence delta and prevents a clean completion claim when required verification is missing or contradictory.
+
+X-Ray remains read-only. Origins Factory, Hunter, and models cannot override its `CERTIFIED`, `INVESTIGATE`, or `UNSAFE` evidence state or convert a profile match into permission to write.
 
 ## Relationship to the main custom OS
 
@@ -91,7 +109,7 @@ This repository owns:
 - conversation-first workspace UI;
 - Project and Operation views;
 - model, provider, and Node controls;
-- Oracle and Lumi client surfaces;
+- Oracle, Lumi, and X-Ray client surfaces;
 - application registry and launcher;
 - native client bridge;
 - local cache and offline/reconnect behaviour;
@@ -106,11 +124,12 @@ This repository does not own:
 - CodeOps;
 - Oracle's execution engine;
 - Lumi's download engine;
+- X-Ray's device intelligence engine;
 - Ptah;
 - specialist application engines;
 - duplicated copies of artifacts or project truth.
 
-The complete Hunter architecture remains canonical in `jaydumisuni/hunter`. Specialist source remains in its owning repository and is integrated through versioned contracts and manifests.
+The complete Hunter architecture remains canonical in `jaydumisuni/hunter`. The Origins-specific product authority is in [`docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`](docs/ORIGINS_FACTORY_PRODUCT_PLAN.md). Specialist source remains in its owning repository and is integrated through versioned contracts and manifests.
 
 ## Current state
 
