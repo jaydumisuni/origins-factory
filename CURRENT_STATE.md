@@ -1,12 +1,12 @@
 # Origins Factory — Current State
 
 **Recorded:** 2026-08-07  
-**Architecture version:** 1.0.0 candidate on `docs/origins-architecture-v1-lock`  
+**Architecture version:** 1.0.0 — accepted product and architecture authority  
 **Implementation status:** NOT STARTED as an accepted runtime
 
 ## Contribution status
 
-This session contributes an **Update and architecture freeze candidate**.
+This session contributes an **Update and architecture freeze**.
 
 It does not claim that Origins Factory has been built, packaged, installed, or proven.
 
@@ -40,7 +40,7 @@ Current canonical files:
 - `README.md` — concise repository boundary;
 - `AI_HANDOFF.md` — mandatory recovery entry point;
 - `CURRENT_STATE.md` — implementation truth and next action;
-- `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md` — accepted product/architecture candidate;
+- `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md` — accepted product and architecture authority;
 - `docs/HOST_HP_290_G4.md` — evidence-backed initial host inventory.
 
 The exploratory `build/initial-workspace` branch is not accepted implementation authority. It was previously reset to match `main` and must not be used as the runtime base without new review.
@@ -83,12 +83,12 @@ Reference/donor candidates also require security, licensing, provenance, and com
 
 ## Next valid work
 
-1. Review and merge the architecture-lock PR.
-2. Build a repository/interface recovery matrix with exact commands, APIs, schemas, state ownership, maturity, and limitations.
-3. Create the Origins contract-spine ADR and schemas.
-4. Freeze the first repository-engineering vertical slice.
-5. Select the exact desktop host, editor, terminal, IPC, and schema-generation technologies.
-6. Implement the persistent Rust core before the UI can claim durable work.
+1. Build a repository/interface recovery matrix with exact commands, APIs, schemas, state ownership, maturity, and limitations.
+2. Create the Origins contract-spine ADR and schemas.
+3. Freeze the first repository-engineering vertical slice.
+4. Select the exact desktop host, editor, terminal, IPC, and schema-generation technologies.
+5. Implement the persistent Rust core before the UI can claim durable work.
+6. Mount Hunter, AgentOps, CodeOps, and Sergeant only through recovered versioned contracts.
 
 ## Blocking rule
 
