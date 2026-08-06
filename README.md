@@ -1,151 +1,94 @@
 # Origins Factory
 
-Origins Factory is the portable, cross-platform Hunter workspace for the THETECHGUY ecosystem.
+> **A model-optional, evidence-native mission operating environment for durable work, full-stack engineering, cyber-physical systems, independent verification, cross-machine continuity, and controlled capability synthesis.**
 
-It is **not the operating system itself**. It is the primary workspace and interaction surface that can run:
+Origins Factory is the portable workspace the owner opens to work with Hunter across missions, repositories, terminals, browsers, downloads, applications, models, Nodes, physical devices, evidence, recovery, packaging, and capability evolution.
 
-- inside the future custom THETECHGUY/Hunter operating system;
-- as a Windows application;
-- as a Linux application;
-- as a macOS application later;
-- through other supported clients where appropriate.
+It runs independently on Windows and Linux, later macOS, and is also the primary workspace inside the future custom THETECHGUY/Hunter operating system.
 
-## Role
+Origins is not the custom OS, a VS Code/Cursor/Codex clone, an editor with an AI sidebar, a dashboard, a thin Tauri wrapper, or a replacement for the specialist systems it coordinates.
 
-Origins Factory is the application the owner opens to work with Hunter across projects, operations, models, browsers, downloads, applications, Nodes, devices, evidence, storage, and recovery.
+## Mandatory recovery order
 
-It presents and coordinates capabilities without duplicating their engines or canonical state.
+Before proposing or performing Origins work, read:
 
-- Hunter owns intelligence, conversation, memory, context selection, planning, and orchestration.
-- Hunter AgentOps owns durable semantic Operation lifecycle, attempts, approvals, blockers, evidence, and sanitation state.
-- Hunter CodeOps owns repository engineering.
-- Sergeant owns independent review.
-- Oracle owns browser and authorised operating-system vision/control sessions.
-- Lumi DM owns downloads, queues, resume, integrity verification, and download history.
-- TTG Device X-Ray and specialist X-Rays own read-first device evidence, diagnosis, prediction, certification, and verification.
-- Specialist Device Gateways own persistent physical-device and domain operation sessions, journals, deterministic policy, leases, bounded execution, and recovery.
-- Ptah Space is the future general mechanical Workspace and execution substrate after its existing authorization gates close.
-- Specialist applications retain their own approved interfaces and domain authority.
+1. [`AI_HANDOFF.md`](AI_HANDOFF.md)
+2. [`CURRENT_STATE.md`](CURRENT_STATE.md)
+3. [`docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`](docs/ORIGINS_FACTORY_PRODUCT_PLAN.md)
+4. [`docs/HOST_HP_290_G4.md`](docs/HOST_HP_290_G4.md) when hardware/storage assumptions matter
+5. current source, branches, pull requests, issues, tests, and proof
+6. the canonical repository for every mounted capability being changed
 
-## Huawei proves the device architecture
+Do not create another master plan because a new chat begins.
 
-`TECHGUYTOOL-Huawei` is the first concrete implementation authority for how Origins handles real hardware.
+## Core architecture
+
+```text
+Owner intent
+→ Origins Factory
+→ Hunter semantic understanding
+→ AgentOps durable Mission/Operation graph
+→ Capability Compiler
+→ Origins native runtime / CodeOps / Oracle / Lumi / Builder /
+  specialist Gateways / Nodes / later Ptah
+→ Sergeant / X-Ray / deterministic proof / human acceptance
+→ Artifacts, handover, sanitation, recovery, and governed learning
+```
+
+Origins preserves three independent truths:
+
+- **Semantic truth** — Hunter and AgentOps;
+- **Mechanical truth** — Origins native services, specialist Gateways, Nodes, and later Ptah;
+- **Assurance truth** — Sergeant, X-Ray, deterministic proof, specialist governors, and human acceptance.
+
+Models amplify the system. They do not manufacture mechanical completion or independent assurance.
+
+## Runtime planes
+
+- **React + TypeScript** — workspace UI and projections;
+- **Rust** — persistent native control plane for PTYs, processes, filesystem/Git, Nodes, capability health, events, recovery, and specialist attachment;
+- **Python** — Hunter, AgentOps, CodeOps, provider/model integration, context compilation, reconciliation, and capability-upgrade proposals.
+
+The UI is a client of persistent runtime state. Closing the UI must not silently terminate approved durable work.
+
+## Capability ownership
+
+- **Hunter** — intelligence, conversation, context, planning, and routing;
+- **Hunter AgentOps** — durable semantic Operation lifecycle;
+- **Hunter CodeOps** — repository engineering and correction;
+- **Sergeant** — independent engineering review;
+- **Oracle** — retained browser and authorised OS perception/control;
+- **Lumi DM** — downloads, queues, resume, integrity, and history;
+- **TTG Device X-Ray** — read-first and post-operation evidence;
+- **Specialist Gateways** — persistent domain/device sessions, policy, leases, bounded execution, and recovery;
+- **THETECHGUY Software Builder** — packaging, installers, signing, releases, and packaging proof;
+- **Ptah Space** — future neutral mechanical Workspace after its authorization gates close;
+- **Origins Factory** — mission workspace, integration, Capability Compiler, and user control surfaces.
+
+Origins mounts and coordinates these capabilities without copying their engines or canonical state.
+
+## Huawei reference architecture
+
+The Huawei P30 Pro/VOG recovery and `TECHGUYTOOL-Huawei` are the first concrete proof of Origins’ mission continuity and cyber-physical architecture:
 
 ```text
 Hunter / AgentOps Operation
-└── Huawei Gateway Operation Session
-    ├── Physical Device Session
-    ├── Endpoint Observations
-    ├── X-Ray Device Evidence
-    ├── pre-operation Device Twin
-    ├── deterministic Decision Verdicts
-    ├── Mode and Execution Leases
-    ├── Executor Result
-    ├── post-operation Device Twin
-    ├── Verification Result
-    ├── Recovery Plan
-    ├── Artifact Manifests
-    └── Knowledge Gaps / Learning Proposals
+└── persistent Huawei Gateway Operation
+    ├── physical device and endpoint continuity
+    ├── X-Ray evidence and pre-operation Device Twin
+    ├── deterministic decision verdicts and leases
+    ├── bounded executor result
+    ├── post-operation Device Twin and verification
+    ├── Recovery Plan and Artifacts
+    └── Knowledge Gaps and governed capability learning
 ```
 
-Origins is a client of the persistent Gateway. Closing, restarting, or moving Origins to another computer must not discard the device identity, operation stage, provider state, journal, or recovery point.
+The Google Drive handover is a critical recovery Artifact, not the live runtime database. Current repository authority, Gateway journal, Recovery Plan, and fresh X-Ray evidence govern continuation.
 
-X-Ray is strictly read-only and does not own the persistent operation session. It publishes typed evidence and Device Twins into the specialist Gateway. Origins displays accepted contracts and live Gateway state; it cannot turn X-Ray evidence into write authority.
+## Current status
 
-The Huawei P30 Pro Drive handover is a recovery Artifact and historical case record. It can help Origins recover references and context, but current GitHub authority, the Gateway journal, Recovery Plan, and fresh X-Ray evidence govern continuation.
+Architecture v1.0 is documented. No accepted Origins runtime, desktop package, custom OS integration, or release is yet claimed.
 
-After any authorised device stage, Origins requires post-operation X-Ray and compares pre/post evidence. A command returning success is not a repair verdict.
+The exploratory `build/initial-workspace` scaffold is not implementation authority.
 
-## Relationship to the main custom OS
-
-The main custom OS is a separate product and deployment layer. Its final name and canonical repository have not yet been frozen.
-
-The custom OS will provide the complete integrated machine environment, including:
-
-- Linux kernel and hardware support;
-- boot, login, system services, updates, rollback, and recovery;
-- Origins Factory as the main workspace;
-- Hunter and AgentOps services;
-- Oracle Node Agent and optional remote-view/control capability;
-- Lumi DM;
-- local storage and artifact services;
-- application installation and registration;
-- local and remote compute routing;
-- Ptah after authorization;
-- selected TechGuy applications and specialist capabilities.
-
-Origins Factory remains usable outside that OS. The OS consumes a pinned Origins Factory release rather than absorbing or duplicating its source.
-
-## Compute model
-
-The system does not require all intelligence or build power to exist inside the machine running Origins Factory.
-
-A host may use:
-
-- its own CPU, RAM, storage, and optional GPU;
-- Athena for heavy local builds, testing, NVIDIA workloads, Windows device tooling, and local models;
-- VPS or rented compute workers;
-- Cloudflare, Fireworks, and other approved hosted providers;
-- additional Windows, Linux, macOS, mini-PC, and GPU Nodes.
-
-The Workspace and AgentOps Operation identity remain stable while compute is routed elsewhere. Physical-device truth remains with the specialist Gateway on the Node carrying the device.
-
-## Initial hardware path
-
-The HP 290 G4 Microtower can run the complete first custom-OS system with its current 8 GB RAM and 1 TB system drive because heavy compute can be routed to Athena or remote providers.
-
-The HP is both:
-
-- a valid first full-system host;
-- a hardware and portability test host.
-
-The 1 TB system drive may later move to the properly provisioned mini PC. The installation must therefore remain portable between compatible x86-64 UEFI machines:
-
-- bootloader installed on the movable system drive;
-- GPT/UEFI boot;
-- generic Linux kernel and initramfs;
-- filesystems mounted by UUID or stable logical identity;
-- no hard-coded network interface, MAC address, GPU, or motherboard assumptions;
-- no secrets irreversibly tied to the HP TPM;
-- storage identity separated from Node identity;
-- hardware capability discovery rerun after migration;
-- destination Node re-enrolled after migration;
-- backup and restore proven before moving the drive.
-
-The final Ptah physical-host proof must be collected against whichever physical machine is ultimately accepted as the Ptah host. Moving the drive does not transfer physical-host proof automatically.
-
-## Repository boundary
-
-This repository owns:
-
-- the Origins Factory workspace application;
-- conversation-first workspace UI;
-- Project and AgentOps Operation views;
-- specialist Gateway session projections;
-- model, provider, and Node controls;
-- Oracle, Lumi, and X-Ray client surfaces;
-- application registry and launcher;
-- native client bridge;
-- local cache and offline/reconnect behaviour;
-- Windows, Linux, and later macOS packaging;
-- integration contracts consumed by the custom OS.
-
-This repository does not own:
-
-- the Linux distribution or OS image;
-- Hunter intelligence;
-- AgentOps operation truth;
-- CodeOps;
-- Oracle's execution engine;
-- Lumi's download engine;
-- X-Ray's intelligence engine;
-- specialist Gateway operation truth;
-- Ptah;
-- specialist application engines;
-- duplicated copies of artifacts or project truth.
-
-The complete Hunter architecture remains canonical in `jaydumisuni/hunter`. The Origins-specific product authority is in [`docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`](docs/ORIGINS_FACTORY_PRODUCT_PLAN.md). Specialist source remains in its owning repository and is integrated through versioned contracts and manifests.
-
-## Current state
-
-Product boundary and Huawei/X-Ray/Gateway integration are recorded. Origins Factory is the portable workspace, while the main custom OS remains a separate integrated system whose name and repository are still to be frozen. The exploratory `build/initial-workspace` branch is not accepted implementation authority. No application or OS implementation is yet claimed as complete or proven.
+Continue from [`CURRENT_STATE.md`](CURRENT_STATE.md).
