@@ -1,129 +1,117 @@
-# Origins Factory OS
+# Origins Factory
 
-Origins Factory is the custom Linux-based operating system for the THETECHGUY ecosystem.
+Origins Factory is the portable, cross-platform Hunter workspace for the THETECHGUY ecosystem.
 
-It is not an application running on Ubuntu Desktop. It owns the bootable system image, the visible workspace shell, the service composition, the application model, updates, recovery, hardware discovery, and the clean integration of Hunter capabilities into one operating environment.
+It is **not the operating system itself**. It is the primary workspace and interaction surface that can run:
 
-Linux provides the kernel and low-level hardware/runtime foundation. Origins Factory provides the product identity and operating experience.
+- inside the future custom THETECHGUY/Hunter operating system;
+- as a Windows application;
+- as a Linux application;
+- as a macOS application later;
+- through other supported clients where appropriate.
 
-## Product role
+## Role
 
-Origins Factory is the system the owner boots into and works through.
+Origins Factory is the application the owner opens to work with Hunter across projects, operations, models, browsers, downloads, applications, Nodes, devices, evidence, storage, and recovery.
 
-It presents one coherent environment for:
+It presents and coordinates capabilities without duplicating their engines.
 
-- Hunter conversation, memory, context recovery, and orchestration;
-- AgentOps Operations, approvals, blockers, attempts, evidence, and sanitation;
-- CodeOps repository engineering;
-- Sergeant independent review;
-- Oracle browser and authorised operating-system vision/control;
-- Lumi DM downloads, queues, resume, integrity verification, and history;
-- models and provider selection;
-- repositories, terminals, editors, builds, files, artifacts, and recovery;
-- registered THETECHGUY applications;
-- local and remote Nodes, devices, and specialist gateways;
-- Ptah Workspaces and mechanical execution after Ptah authorization.
+- Hunter owns intelligence, conversation, memory, context selection, planning, and orchestration.
+- Hunter AgentOps owns durable Operation lifecycle, attempts, approvals, blockers, evidence, and sanitation state.
+- Hunter CodeOps owns repository engineering.
+- Sergeant owns independent review.
+- Oracle owns browser and authorised operating-system vision/control sessions.
+- Lumi DM owns downloads, queues, resume, integrity verification, and download history.
+- Ptah Space is the future mechanical Workspace and execution substrate after its existing authorization gates close.
+- Specialist applications and Device Gateways retain their own authority.
 
-Origins Factory does not duplicate the engines it presents. Each capability remains authoritative in its owning repository and is integrated through versioned packages, services, contracts, and manifests.
+## Relationship to the main custom OS
 
-## System architecture
+The main custom OS is a separate product and deployment layer. Its final name and canonical repository have not yet been frozen.
 
-```text
-Origins Factory OS
-├── boot, hardware discovery, networking, identity, update, and recovery
-├── Origins Factory workspace shell
-├── Hunter core services
-├── AgentOps
-├── capability and application registry
-├── Oracle Node Agent and live-control surfaces
-├── Lumi DM
-├── CodeOps and Sergeant adapters
-├── local storage and artifact services
-├── Ptah runtime later, after authorization
-└── registered local or remote THETECHGUY applications
-```
+The custom OS will provide the complete integrated machine environment, including:
 
-“All in one” means one bootable, coherent operating environment. It does not mean collapsing every subsystem into one process or copying every repository into this repository.
+- Linux kernel and hardware support;
+- boot, login, system services, updates, rollback, and recovery;
+- Origins Factory as the main workspace;
+- Hunter and AgentOps services;
+- Oracle Node Agent and optional remote-view/control capability;
+- Lumi DM;
+- local storage and artifact services;
+- application installation and registration;
+- local and remote compute routing;
+- Ptah after authorization;
+- selected TechGuy applications and specialist capabilities.
 
-## Repository ownership
+Origins Factory remains usable outside that OS. The OS consumes a pinned Origins Factory release rather than absorbing or duplicating its source.
+
+## Compute model
+
+The system does not require all intelligence or build power to exist inside the machine running Origins Factory.
+
+A host may use:
+
+- its own CPU, RAM, storage, and optional GPU;
+- Athena for heavy local builds, testing, NVIDIA workloads, and local models;
+- VPS or rented compute workers;
+- Cloudflare, Fireworks, and other approved hosted providers;
+- additional Windows, Linux, macOS, mini-PC, and GPU Nodes.
+
+The workspace, Operation identity, evidence, and recovery state remain stable while compute is routed elsewhere.
+
+## Initial hardware path
+
+The HP 290 G4 Microtower can run the complete first custom-OS system with its current 8 GB RAM and 1 TB system drive because heavy compute can be routed to Athena or remote providers.
+
+The HP is both:
+
+- a valid first full-system host;
+- a hardware and portability test host.
+
+The 1 TB system drive may later move to the properly provisioned mini PC. The installation must therefore remain portable between compatible x86-64 UEFI machines:
+
+- bootloader installed on the movable system drive;
+- GPT/UEFI boot;
+- generic Linux kernel and initramfs;
+- filesystems mounted by UUID or stable logical identity;
+- no hard-coded network interface, MAC address, GPU, or motherboard assumptions;
+- no secrets irreversibly tied to the HP TPM;
+- storage identity separated from Node identity;
+- hardware capability discovery rerun after migration;
+- destination Node re-enrolled after migration;
+- backup and restore proven before moving the drive.
+
+The final Ptah physical-host proof must be collected against whichever physical machine is ultimately accepted as the Ptah host. Moving the drive does not transfer physical-host proof automatically.
+
+## Repository boundary
 
 This repository owns:
 
-- reproducible bootable image construction;
-- the Origins Factory workspace shell;
-- system package and service manifests;
-- application and capability registry;
-- native bridge and local OS integration;
-- hardware profile and discovery policy;
-- installer and first-boot flow;
-- system updates, rollback, and recovery;
-- Windows/Linux client packaging where the workspace is used outside the full OS;
-- OS-level acceptance and portability tests.
+- the Origins Factory workspace application;
+- conversation-first workspace UI;
+- Project and Operation views;
+- model, provider, and Node controls;
+- Oracle and Lumi client surfaces;
+- application registry and launcher;
+- native client bridge;
+- local cache and offline/reconnect behaviour;
+- Windows, Linux, and later macOS packaging;
+- integration contracts consumed by the custom OS.
 
 This repository does not own:
 
-- Hunter intelligence or memory implementation;
-- AgentOps lifecycle implementation;
-- CodeOps engineering implementation;
-- Sergeant review implementation;
-- Oracle or Lumi engines;
-- specialist application source;
-- Device Gateway journals;
-- duplicated project documentation or artifact stores.
+- the Linux distribution or OS image;
+- Hunter intelligence;
+- AgentOps operation truth;
+- CodeOps;
+- Oracle's execution engine;
+- Lumi's download engine;
+- Ptah;
+- specialist application engines;
+- duplicated copies of artifacts or project truth.
 
-The complete ecosystem architecture remains canonical in `jaydumisuni/hunter`. This repository contains only Origins Factory OS implementation authority.
-
-## Build and host roles
-
-### Athena
-
-Athena is the heavy development, compilation, packaging, model, and test machine.
-
-### HP 290 G4
-
-The HP 290 G4 is the temporary bootstrap and compatibility host:
-
-- 10th-generation Intel platform, exact CPU pending inventory;
-- 8 GB installed RAM;
-- 1 TB movable system drive;
-- boot, driver, installer, service, shell, update, and recovery validation.
-
-The HP is not the final performance target and does not require a major RAM upgrade for this role.
-
-### Final mini PC
-
-The completed 1 TB Origins Factory system drive is intended to move to the properly provisioned mini PC. The mini PC becomes the permanent always-on host and receives a new final Node identity and hardware capability inventory.
-
-The final Ptah physical-host proof must be collected against the final accepted mini-PC host. Evidence collected on the HP must not be reused as proof for different hardware.
-
-## Portable-drive requirements
-
-The bootable installation must remain portable across compatible x86-64 UEFI systems:
-
-- bootloader installed on the movable drive;
-- GPT and UEFI boot;
-- generic Linux kernel and initramfs with required hardware support;
-- filesystems mounted by UUID or stable logical identity;
-- no hard-coded motherboard, GPU, MAC address, or network-interface assumptions;
-- storage/content identity separate from Node identity;
-- secrets not irreversibly bound to the HP TPM;
-- destination hardware discovery and Node enrolment after migration;
-- recovery and restore proof before physical drive migration.
-
-Ubuntu Desktop or Windows may be booted temporarily only to inspect hardware. They are not the Origins Factory product base or user experience.
-
-## Clean system rule
-
-Origins Factory must remain sanitary:
-
-- one canonical owner per fact;
-- one deliberate location per artifact;
-- references instead of unnecessary copies;
-- temporary work isolated and expired;
-- applications integrated as packages/services, not pasted source trees;
-- updates replace obsolete generations cleanly;
-- every accepted update includes rollback and sanitation evidence.
+The complete Hunter architecture remains canonical in `jaydumisuni/hunter`. Specialist source remains in its owning repository and is integrated through versioned contracts and manifests.
 
 ## Current state
 
-The custom-OS boundary is now established. No complete operating-system image, installer, workspace shell, or runtime release is yet claimed as implemented or proven.
+Product boundary corrected and recorded. Origins Factory is the portable workspace, while the main custom OS remains a separate integrated system whose name and repository are still to be frozen. No application or OS implementation is yet claimed as complete or proven.
