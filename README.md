@@ -133,4 +133,4 @@ The complete Hunter architecture remains canonical in `jaydumisuni/hunter`. The 
 
 ## Current state
 
-Product boundary corrected and recorded. Origins Factory is the portable workspace, while the main custom OS remains a separate integrated system whose name and repository are still to be frozen. No application or OS implementation is yet claimed as complete or proven.
+Product boundary and X-Ray integration recorded. Origins Factory is the portable workspace, while the main custom OS remains a separate integrated system whose name and repository are still to be frozen. The exploratory `build/initial-workspace` branch is not accepted implementation authority. No application or OS implementation is yet claimed as complete or proven.
