@@ -2,42 +2,18 @@
 
 **Recorded:** 2026-08-07
 **Architecture version:** 1.0.0 — accepted product and architecture authority
-**Implementation status:** Contract Spine v1 implemented and mechanically proven; persistent runtime not yet implemented
+**Implementation status:** Contract Spine v1 merged; `originsd` persistence foundation implemented and proven pre-promotion; final exact locked-head verification in progress
 
 ## Contribution status
 
-This phase contributes **New implementation foundation + Verification**.
+Current work contributes **New implementation + Correction + Verification**.
 
-Origins Factory is not yet a complete runnable workspace. The first accepted implementation layer is the shared contract spine used to keep Rust, Python and TypeScript aligned before `originsd` and the workspace UI are built.
+Origins Factory is not yet the complete workspace, but it now has both the frozen cross-language Contract Spine and a real persistent Rust daemon candidate rather than only architecture documents.
 
-## Accepted product state
+## Accepted foundation already on `main`
 
-The permanent product architecture remains `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`.
+Contract Spine v1 is merged and contains:
 
-Origins Factory remains a model-optional, evidence-native mission operating environment with:
-
-- durable mission/workspace continuity;
-- Hunter semantic intelligence;
-- AgentOps durable Operation lifecycle;
-- a Capability Compiler;
-- React/TypeScript UI plane;
-- persistent Rust native control plane;
-- Python intelligence/integration plane;
-- CodeOps engineering;
-- Sergeant assurance;
-- Oracle browser/OS control;
-- Lumi acquisition;
-- X-Ray evidence;
-- specialist Gateway execution;
-- Software Builder productization;
-- Ptah-compatible future mechanical integration;
-- controlled capability synthesis.
-
-## Implemented and proven now
-
-Contract Spine v1 contains:
-
-- `contracts/registry.json`;
 - `authority_ref`;
 - `workspace_projection`;
 - `capability_descriptor`;
@@ -49,115 +25,110 @@ Contract Spine v1 contains:
 - floating-point rejection;
 - cross-language safe-integer enforcement;
 - explicit self-promotion rejection;
-- shared valid/invalid fixture corpus;
-- Python validator/canonicalizer;
-- Rust validator/canonicalizer and proof CLI;
-- TypeScript validator/canonicalizer;
-- exact Rust/Python/TypeScript equivalence proof;
-- CI gates for Python, TypeScript, Clippy, Rust tests/build, cross-language equivalence, whitespace and rustfmt.
+- Python, Rust and TypeScript validators/canonicalizers;
+- exact three-runtime validity/error/canonical/SHA equivalence proof.
 
-The interface recovery matrix and first repository-engineering vertical slice are frozen in:
+Canonical implementation documents:
 
 - `docs/INTERFACE_RECOVERY_MATRIX.md`;
 - `docs/ADR-0001-CONTRACT-SPINE.md`;
 - `docs/FIRST_VERTICAL_SLICE.md`.
 
-## Proof state
+## `originsd` foundation implemented on the active PR
 
-The Contract Spine challenge pass has produced a fully green workflow with:
+The current daemon candidate includes:
 
-- Python contract tests passing;
-- TypeScript contract tests passing;
-- Rust Clippy passing with warnings denied;
-- Rust tests passing;
-- Rust proof CLI building;
-- exact three-runtime canonical JSON/SHA-256/error equivalence passing;
-- repository whitespace gate passing;
-- rustfmt gate passing.
+- Rust 1.75 runtime boundary;
+- loopback-only bind with explicit rejection of non-loopback addresses;
+- per-install local bearer token handling;
+- SQLite schema version 1;
+- WAL mode and foreign keys;
+- Origins-owned Workspace projection persistence;
+- built-in Origins-owned capability projections;
+- append-only hash-chained `event_envelope` journal;
+- canonical contract validation and SHA verification on durable reads;
+- health diagnostics and journal verification;
+- authenticated Workspace create/read and capability-read HTTP routes;
+- real process startup, shutdown and restart recovery proof;
+- deliberate Workspace-digest and journal-chain tamper tests;
+- exact dependency lock frozen after successful runtime proof.
 
-Earlier failures remain part of the engineering history rather than being hidden:
+Current routes:
 
-- an over-broad Python canonical-whitespace assertion was corrected;
-- rustfmt exposed mechanical formatting debt;
-- Clippy exposed one needless Rust borrow;
-- the TypeScript lane exposed the need to bound authoritative integers to the JavaScript safe range.
+```text
+GET  /v1/health
+GET  /v1/capabilities
+POST /v1/workspaces
+GET  /v1/workspaces/{workspace_id}
+```
 
-Those corrections strengthened the frozen contract rather than being treated as product failures.
+No placeholder terminal, command, model, device or external-system route is exposed.
 
-## Repository state
+## Challenge evidence
 
-Canonical recovery files remain:
+The daemon Challenge pass has already established:
 
-- `README.md` — concise repository boundary;
-- `AI_HANDOFF.md` — mandatory recovery entry point;
-- `CURRENT_STATE.md` — implementation truth and next action;
-- `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md` — accepted product and architecture authority;
-- `docs/HOST_HP_290_G4.md` — evidence-backed initial host inventory.
+- Rusqlite `0.32.1` is incompatible with the frozen Rust 1.75 boundary because it uses newer C-string literal syntax;
+- the dependency was corrected to Rusqlite `0.31.0` rather than weakening the Rust proof boundary;
+- Clippy passes with warnings denied;
+- all Rust contract and daemon tests pass;
+- `originsd` builds successfully;
+- the real daemon refuses `0.0.0.0` binding;
+- missing bearer authentication is rejected for protected reads and durable writes;
+- an authenticated Workspace survives daemon termination and restart through the same SQLite database;
+- the event journal recovers with a valid non-empty chain head;
+- deliberate Workspace projection digest tampering is detected;
+- deliberate journal chain tampering is detected;
+- the local token is not emitted in daemon stdout/stderr during the hosted proof;
+- repository whitespace gates pass;
+- rustfmt passes after the multi-crate workspace gate was corrected to use `--all`;
+- `rust/Cargo.lock` was frozen only after the successful runtime proof.
 
-Implementation foundation files now include:
+The exact frozen dependency head is being re-proved before PR promotion. The pre-lock green run is not treated as sufficient final proof.
 
-- `docs/INTERFACE_RECOVERY_MATRIX.md`;
-- `docs/ADR-0001-CONTRACT-SPINE.md`;
-- `docs/FIRST_VERTICAL_SLICE.md`;
-- `contracts/`;
-- `python/origins_contracts/`;
-- `rust/origins-contracts/`;
-- `typescript/`;
-- `tools/prove_contract_equivalence.py`;
-- `.github/workflows/contract-spine.yml`.
+## Current repository authority
 
-The exploratory `build/initial-workspace` branch remains non-authoritative and must not be revived as the runtime base.
+Recovery order remains:
 
-## What is not implemented or proven
+1. `AI_HANDOFF.md`;
+2. this `CURRENT_STATE.md`;
+3. `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`;
+4. current source/PRs/proof;
+5. the owning repository for any mounted capability.
 
-- no accepted Rust `originsd` daemon yet;
-- no SQLite Origins durable-state schema/migrations yet;
-- no persistent Origins Workspace database yet;
-- no process/PTTY/session supervisor yet;
-- no local HTTP/WebSocket runtime implementation yet;
-- no accepted Python Origins integration runtime yet;
-- no production AgentOps mounting;
-- no CodeOps production mission loop inside Origins;
-- no Sergeant completion/correction loop inside Origins;
-- no React workspace shell;
-- no Oracle OS-control/remote-session integration;
-- no Lumi workspace integration;
-- no application registry implementation;
-- no specialist Gateway client implementation inside Origins;
-- no Ptah runtime integration;
-- no Windows/Linux package;
-- no custom OS integration;
-- no release proof.
+The exploratory `build/initial-workspace` branch remains non-authoritative and must not be revived as the implementation base.
 
-## Known authoritative dependencies
+## What remains unimplemented
 
-Exact callable boundaries recovered so far are recorded in `docs/INTERFACE_RECOVERY_MATRIX.md`.
+- process/PTTY/session supervision;
+- Git/repository native session layer;
+- `POST /v1/commands` execution semantics;
+- WebSocket event streaming;
+- accepted Python Origins integration runtime;
+- production Hunter mount;
+- production AgentOps lifecycle mount;
+- CodeOps mission loop inside Origins;
+- Sergeant correction/completion loop inside Origins;
+- React workspace shell;
+- Oracle OS-control/remote-session integration;
+- Lumi Workspace integration;
+- application registry implementation beyond built-in daemon capabilities;
+- specialist Gateway client implementation inside Origins;
+- Ptah runtime integration;
+- Windows/Linux desktop package;
+- custom OS integration;
+- release proof.
 
-Do not guess the still-partial surfaces for:
+## Next valid work after the current PR is promoted
 
-- current production Hunter client/auth integration;
-- final AgentOps persistent lifecycle backend;
-- Oracle cross-platform Node Agent/remote session;
-- Software Builder's stable machine-callable packaging surface;
-- Ptah runtime, which remains unauthorized.
-
-## Next valid work
-
-1. Merge/freeze Contract Spine v1 after the final documentation-only rerun remains green.
-2. Create a fresh `originsd` implementation branch from that frozen `main`.
-3. Implement the persistent Rust daemon foundation:
-   - loopback health endpoint;
-   - SQLite schema/version table;
-   - WAL mode;
-   - workspace projection persistence;
-   - append-only event journal;
-   - capability registry read surface;
-   - clean startup/shutdown and recovery diagnostics.
-4. Prove daemon restart recovery separately from UI reconnect.
-5. Add supervised repository/process sessions only after durable state is correct.
-6. Mount AgentOps, CodeOps and Sergeant through the recovered contracts.
-7. Build the first React workspace surfaces only after those runtime truths exist.
+1. implement supervised repository/process sessions in Rust;
+2. define their durable session/recovery semantics before adding terminal UI;
+3. add `POST /v1/commands` only for typed registered capabilities;
+4. add event streaming over the frozen `event_envelope` contract;
+5. mount AgentOps + CodeOps + Sergeant through recovered boundaries;
+6. prove `NEEDS WORK → correction Attempt → fresh proof → PASS` through Origins;
+7. begin the React Workspace shell only after those mechanical truths exist.
 
 ## Blocking rule
 
-Do not start broad UI scaffolding before the persistent Rust state/recovery layer is proven. UI may project the frozen contracts, but it must not define or simulate durable runtime truth.
+Do not let UI, Python workers, models or external adapters bypass `originsd` or specialist authority just because direct subprocess/network access would be easier. The persistent mechanical and assurance boundaries are part of the product, not implementation decoration.
