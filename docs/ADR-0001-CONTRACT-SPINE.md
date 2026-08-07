@@ -1,7 +1,7 @@
 # ADR-0001 — Origins Factory Contract Spine v1
 
-**Status:** ACCEPTED for initial implementation  
-**Date:** 2026-08-07  
+**Status:** ACCEPTED for initial implementation
+**Date:** 2026-08-07
 **Authority:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 
 ## Context
