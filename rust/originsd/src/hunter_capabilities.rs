@@ -8,9 +8,9 @@ const HUNTER_CAPABILITIES: &str = include_str!("../../../capabilities/hunter.jso
 pub fn initialize(store: &Store) -> Result<(), StoreError> {
     let value: Value = serde_json::from_str(HUNTER_CAPABILITIES)
         .map_err(|error| StoreError::Contract(format!("Hunter capabilities JSON: {error}")))?;
-    let descriptors = value.as_array().ok_or_else(|| {
-        StoreError::Contract("Hunter capabilities must be an array".to_owned())
-    })?;
+    let descriptors = value
+        .as_array()
+        .ok_or_else(|| StoreError::Contract("Hunter capabilities must be an array".to_owned()))?;
     let connection = store.connection()?;
     let now = now_rfc3339();
     for descriptor in descriptors {

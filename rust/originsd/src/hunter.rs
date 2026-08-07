@@ -106,7 +106,9 @@ impl Display for HunterError {
             Self::Config(message) => write!(formatter, "Hunter configuration error: {message}"),
             Self::InvalidInput(message) => write!(formatter, "Hunter request error: {message}"),
             Self::NotConfigured => write!(formatter, "Hunter transport is not configured"),
-            Self::Unavailable(message) => write!(formatter, "Hunter transport unavailable: {message}"),
+            Self::Unavailable(message) => {
+                write!(formatter, "Hunter transport unavailable: {message}")
+            }
             Self::InvalidResponse(message) => write!(formatter, "Hunter response error: {message}"),
             Self::Store(error) => write!(formatter, "Hunter evidence store error: {error}"),
         }
@@ -195,7 +197,9 @@ impl HunterTransport {
             builder = builder.bearer_auth(self.token.as_ref());
         }
         if let Some(body) = body {
-            builder = builder.header("content-type", "application/json").json(&body);
+            builder = builder
+                .header("content-type", "application/json")
+                .json(&body);
         }
 
         let remote = match builder.send().await {
@@ -347,7 +351,8 @@ fn build_remote_request(
                 .unwrap_or(200)
                 .clamp(1, 300);
             let mut url = joined(base, "chat/list")?;
-            url.query_pairs_mut().append_pair("limit", &limit.to_string());
+            url.query_pairs_mut()
+                .append_pair("limit", &limit.to_string());
             Ok((Method::GET, url, None))
         }
         HunterOperation::ChatLoad => {
@@ -379,9 +384,12 @@ fn build_remote_request(
                     "core_chat payload must be an object".to_owned(),
                 ));
             }
-            let messages = payload.get("messages").and_then(Value::as_array).ok_or_else(|| {
-                HunterError::InvalidInput("core_chat payload.messages is required".to_owned())
-            })?;
+            let messages = payload
+                .get("messages")
+                .and_then(Value::as_array)
+                .ok_or_else(|| {
+                    HunterError::InvalidInput("core_chat payload.messages is required".to_owned())
+                })?;
             if messages.is_empty() || messages.len() > 12 {
                 return Err(HunterError::InvalidInput(
                     "core_chat messages must contain between 1 and 12 entries".to_owned(),
@@ -411,10 +419,9 @@ fn safe_chat_id(value: &str) -> Result<String, HunterError> {
             "Hunter chat id must contain 1..140 bytes".to_owned(),
         ));
     }
-    if !value
-        .chars()
-        .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ':'))
-    {
+    if !value.chars().all(|character| {
+        character.is_ascii_alphanumeric() || matches!(character, '_' | '-' | '.' | ':')
+    }) {
         return Err(HunterError::InvalidInput(
             "Hunter chat id contains unsupported characters".to_owned(),
         ));
