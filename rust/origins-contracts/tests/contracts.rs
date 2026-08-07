@@ -12,12 +12,18 @@ fn fixtures() -> Value {
 #[test]
 fn valid_contract_corpus() {
     let fixtures = fixtures();
-    for case in fixtures["valid"].as_array().expect("valid fixtures must be an array") {
+    for case in fixtures["valid"]
+        .as_array()
+        .expect("valid fixtures must be an array")
+    {
         let name = case["name"].as_str().expect("fixture name");
         let contract = &case["contract"];
         validate_contract(contract).unwrap_or_else(|error| panic!("{name}: {error}"));
         let canonical = canonical_json(contract).expect("canonical JSON");
-        assert!(!canonical.contains(": "), "{name}: canonical JSON contains whitespace");
+        assert!(
+            !canonical.contains(": "),
+            "{name}: canonical JSON contains whitespace"
+        );
         let reparsed: Value = serde_json::from_str(&canonical).expect("canonical JSON reparses");
         assert_eq!(
             contract_sha256(contract).expect("digest"),
@@ -30,7 +36,10 @@ fn valid_contract_corpus() {
 #[test]
 fn invalid_contract_corpus() {
     let fixtures = fixtures();
-    for case in fixtures["invalid"].as_array().expect("invalid fixtures must be an array") {
+    for case in fixtures["invalid"]
+        .as_array()
+        .expect("invalid fixtures must be an array")
+    {
         let name = case["name"].as_str().expect("fixture name");
         let expected = case["expected_error"].as_str().expect("expected error");
         let error = validate_contract(&case["contract"]).expect_err(name);
