@@ -1,3 +1,12 @@
+from .capability_proposals import CapabilityProposal, CapabilityProposalError
+from .context_refs import (
+    ContextReference,
+    ContextReferenceError,
+    ContextReferenceResolver,
+    ResolvedContextReference,
+    extract_context_references,
+    parse_context_reference,
+)
 from .doctor import (
     EngineeringMountDoctor,
     EngineeringMountDoctorResult,
@@ -28,6 +37,11 @@ from .live_mount import (
 
 __all__ = [
     "BridgeError",
+    "CapabilityProposal",
+    "CapabilityProposalError",
+    "ContextReference",
+    "ContextReferenceError",
+    "ContextReferenceResolver",
     "EngineeringAttemptRequest",
     "EngineeringAttemptResult",
     "EngineeringBridge",
@@ -45,5 +59,8 @@ __all__ = [
     "MountSmokeError",
     "MountSurfaceResult",
     "OriginsClient",
+    "ResolvedContextReference",
+    "extract_context_references",
     "hunter_session_id",
+    "parse_context_reference",
 ]
