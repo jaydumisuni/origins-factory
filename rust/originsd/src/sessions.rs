@@ -2,7 +2,7 @@ use crate::store::{append_event, now_rfc3339, verify_stored_contract, Store, Sto
 use origins_contracts::{canonical_json, contract_sha256, validate_contract};
 use rusqlite::{params, Connection, OptionalExtension, Transaction, TransactionBehavior};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
@@ -38,6 +38,7 @@ pub(crate) fn create_session_tables(connection: &Connection) -> Result<(), Store
             session_id TEXT PRIMARY KEY NOT NULL,
             workspace_id TEXT NOT NULL,
             command_id TEXT UNIQUE NOT NULL,
+            command_sha256 TEXT NOT NULL,
             projection_json TEXT NOT NULL,
             projection_sha256 TEXT NOT NULL,
             state TEXT NOT NULL,
@@ -51,6 +52,8 @@ pub(crate) fn create_session_tables(connection: &Connection) -> Result<(), Store
             session_id TEXT PRIMARY KEY NOT NULL,
             stdout BLOB NOT NULL,
             stderr BLOB NOT NULL,
+            stdout_retained_sha256 TEXT NOT NULL,
+            stderr_retained_sha256 TEXT NOT NULL,
             FOREIGN KEY (session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
          );",
     )?;
@@ -84,6 +87,7 @@ impl Store {
         &self,
         workspace_id: &str,
         command_id: &str,
+        command_sha256: &str,
         workspace_root: &str,
         executable: &str,
         cwd: &str,
@@ -125,28 +129,48 @@ impl Store {
 
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let existing: i64 = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sessions WHERE command_id = ?1)",
-            [command_id],
-            |row| row.get(0),
-        )?;
-        if existing == 1 {
-            return Err(StoreError::Conflict(format!(
-                "command {command_id} already has a process session"
-            )));
+        let existing: Option<String> = transaction
+            .query_row(
+                "SELECT command_sha256 FROM sessions WHERE command_id = ?1",
+                [command_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        if let Some(existing_sha256) = existing {
+            let detail = if existing_sha256 == command_sha256 {
+                "already has a process session"
+            } else {
+                "is already bound to a different command envelope"
+            };
+            return Err(StoreError::Conflict(format!("command {command_id} {detail}")));
         }
 
         attach_session_reference(&transaction, workspace_id, &session_id, &now)?;
         transaction.execute(
             "INSERT INTO sessions (
-                session_id, workspace_id, command_id, projection_json, projection_sha256,
-                state, created_at, updated_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, 'starting', ?6, ?6)",
-            params![session_id, workspace_id, command_id, canonical, digest, now],
+                session_id, workspace_id, command_id, command_sha256,
+                projection_json, projection_sha256, state, created_at, updated_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'starting', ?7, ?7)",
+            params![
+                session_id,
+                workspace_id,
+                command_id,
+                command_sha256,
+                canonical,
+                digest,
+                now
+            ],
         )?;
         transaction.execute(
-            "INSERT INTO session_outputs (session_id, stdout, stderr) VALUES (?1, ?2, ?3)",
-            params![session_id, Vec::<u8>::new(), Vec::<u8>::new()],
+            "INSERT INTO session_outputs (
+                session_id, stdout, stderr, stdout_retained_sha256, stderr_retained_sha256
+             ) VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![
+                session_id,
+                Vec::<u8>::new(),
+                Vec::<u8>::new(),
+                EMPTY_SHA256
+            ],
         )?;
         append_event(
             &transaction,
@@ -155,6 +179,7 @@ impl Store {
             json!({
                 "session_id": session_id,
                 "command_id": command_id,
+                "command_sha256": command_sha256,
                 "capability_id": "origins.process.run",
                 "executable": executable,
                 "cwd": cwd,
@@ -166,18 +191,27 @@ impl Store {
         Ok(projection)
     }
 
-    pub fn get_session_by_command(&self, command_id: &str) -> Result<Option<Value>, StoreError> {
+    pub fn get_session_for_command(
+        &self,
+        command_id: &str,
+        command_sha256: &str,
+    ) -> Result<Option<Value>, StoreError> {
         let connection = self.connection()?;
-        let stored: Option<(String, String, String)> = connection
+        let stored: Option<(String, String, String, String)> = connection
             .query_row(
-                "SELECT session_id, projection_json, projection_sha256
+                "SELECT session_id, command_sha256, projection_json, projection_sha256
                  FROM sessions WHERE command_id = ?1",
                 [command_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
         stored
-            .map(|(session_id, canonical, digest)| {
+            .map(|(session_id, stored_command_sha256, canonical, digest)| {
+                if stored_command_sha256 != command_sha256 {
+                    return Err(StoreError::Conflict(format!(
+                        "command {command_id} is already bound to a different command envelope"
+                    )));
+                }
                 verify_stored_contract("session", &session_id, &canonical, &digest)
             })
             .transpose()
@@ -223,26 +257,47 @@ impl Store {
         Ok(sessions)
     }
 
+    pub fn session_count(&self) -> Result<u64, StoreError> {
+        let connection = self.connection()?;
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
+        u64::try_from(count)
+            .map_err(|_| StoreError::Corrupt("negative session count".to_owned()))
+    }
+
     pub fn get_session_output(&self, session_id: &str) -> Result<SessionOutputRecord, StoreError> {
         let projection = self.get_session(session_id)?;
         let connection = self.connection()?;
-        let stored: Option<(Vec<u8>, Vec<u8>)> = connection
+        let stored: Option<(Vec<u8>, Vec<u8>, String, String)> = connection
             .query_row(
-                "SELECT stdout, stderr FROM session_outputs WHERE session_id = ?1",
+                "SELECT stdout, stderr, stdout_retained_sha256, stderr_retained_sha256
+                 FROM session_outputs WHERE session_id = ?1",
                 [session_id],
-                |row| Ok((row.get(0)?, row.get(1)?)),
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
-        let (stdout, stderr) =
-            stored.ok_or_else(|| StoreError::Corrupt(format!("session {session_id} has no output row")))?;
+        let (stdout, stderr, stdout_retained_sha256, stderr_retained_sha256) = stored
+            .ok_or_else(|| StoreError::Corrupt(format!("session {session_id} has no output row")))?;
+        if sha256_bytes(&stdout) != stdout_retained_sha256 {
+            return Err(StoreError::Corrupt(format!(
+                "session {session_id} retained stdout digest mismatch"
+            )));
+        }
+        if sha256_bytes(&stderr) != stderr_retained_sha256 {
+            return Err(StoreError::Corrupt(format!(
+                "session {session_id} retained stderr digest mismatch"
+            )));
+        }
         Ok(SessionOutputRecord {
             stdout,
             stderr,
-            stdout_bytes: projection["stdout_bytes"].as_u64().unwrap_or(0),
-            stderr_bytes: projection["stderr_bytes"].as_u64().unwrap_or(0),
-            stdout_sha256: projection["stdout_sha256"].as_str().unwrap_or(EMPTY_SHA256).to_owned(),
-            stderr_sha256: projection["stderr_sha256"].as_str().unwrap_or(EMPTY_SHA256).to_owned(),
-            output_truncated: projection["output_truncated"].as_bool().unwrap_or(false),
+            stdout_bytes: required_u64(&projection, "stdout_bytes")?,
+            stderr_bytes: required_u64(&projection, "stderr_bytes")?,
+            stdout_sha256: required_string(&projection, "stdout_sha256")?.to_owned(),
+            stderr_sha256: required_string(&projection, "stderr_sha256")?.to_owned(),
+            output_truncated: projection["output_truncated"].as_bool().ok_or_else(|| {
+                StoreError::Corrupt("session output_truncated is invalid".to_owned())
+            })?,
         })
     }
 
@@ -268,7 +323,7 @@ impl Store {
         output: SessionOutputRecord,
         reason: &str,
     ) -> Result<Value, StoreError> {
-        if !matches!(state, "completed" | "failed" | "timed_out") {
+        if !matches!(state, "completed" | "failed" | "timed_out" | "interrupted") {
             return Err(StoreError::InvalidInput(format!(
                 "unsupported terminal process state {state}"
             )));
@@ -277,6 +332,7 @@ impl Store {
             "completed" => "process.session.completed",
             "failed" => "process.session.failed",
             "timed_out" => "process.session.timed_out",
+            "interrupted" => "process.session.interrupted",
             _ => unreachable!(),
         };
         self.transition_process_session(
@@ -327,7 +383,9 @@ impl Store {
         let (canonical, digest) =
             stored.ok_or_else(|| StoreError::NotFound(format!("session {session_id}")))?;
         let mut projection = verify_stored_contract("session", session_id, &canonical, &digest)?;
-        let current_state = projection["state"].as_str().unwrap_or("");
+        let current_state = projection["state"]
+            .as_str()
+            .ok_or_else(|| StoreError::Corrupt("session state is invalid".to_owned()))?;
         validate_transition(current_state, next_state)?;
 
         let now = now_rfc3339();
@@ -336,7 +394,10 @@ impl Store {
         if let Some(pid) = pid {
             projection["pid"] = Value::String(pid);
         }
-        if matches!(next_state, "completed" | "failed" | "timed_out" | "interrupted") {
+        if matches!(
+            next_state,
+            "completed" | "failed" | "timed_out" | "interrupted"
+        ) {
             projection["ended_at"] = Value::String(now.clone());
             projection["exit_code"] = exit_code.map_or(Value::Null, |code| json!(code));
             projection["timed_out"] = Value::Bool(timed_out);
@@ -360,9 +421,19 @@ impl Store {
             params![next_canonical, next_digest, next_state, now, session_id],
         )?;
         if let Some(output) = output {
+            let stdout_retained_sha256 = sha256_bytes(&output.stdout);
+            let stderr_retained_sha256 = sha256_bytes(&output.stderr);
             transaction.execute(
-                "UPDATE session_outputs SET stdout = ?1, stderr = ?2 WHERE session_id = ?3",
-                params![output.stdout, output.stderr, session_id],
+                "UPDATE session_outputs SET stdout = ?1, stderr = ?2,
+                 stdout_retained_sha256 = ?3, stderr_retained_sha256 = ?4
+                 WHERE session_id = ?5",
+                params![
+                    output.stdout,
+                    output.stderr,
+                    stdout_retained_sha256,
+                    stderr_retained_sha256,
+                    session_id
+                ],
             )?;
         }
 
@@ -414,11 +485,10 @@ fn attach_session_reference(
     let session_refs = workspace["session_refs"]
         .as_array_mut()
         .ok_or_else(|| StoreError::Corrupt("workspace session_refs is not an array".to_owned()))?;
-    let identities: HashSet<String> = session_refs
+    if !session_refs
         .iter()
-        .filter_map(|reference| reference["id"].as_str().map(str::to_owned))
-        .collect();
-    if !identities.contains(session_id) {
+        .any(|reference| reference["id"].as_str() == Some(session_id))
+    {
         session_refs.push(json!({
             "contract_type": "authority_ref",
             "schema_version": "1.0.0",
@@ -434,7 +504,10 @@ fn attach_session_reference(
     let revision = workspace["revision"]
         .as_u64()
         .ok_or_else(|| StoreError::Corrupt("workspace revision is invalid".to_owned()))?;
-    workspace["revision"] = json!(revision + 1);
+    let next_revision = revision
+        .checked_add(1)
+        .ok_or_else(|| StoreError::Corrupt("workspace revision overflow".to_owned()))?;
+    workspace["revision"] = json!(next_revision);
     workspace["updated_at"] = Value::String(observed_at.to_owned());
     validate_contract(&workspace).map_err(|error| StoreError::Contract(error.to_string()))?;
     let next_canonical =
@@ -447,7 +520,7 @@ fn attach_session_reference(
         params![
             next_canonical,
             next_digest,
-            revision + 1,
+            next_revision,
             observed_at,
             workspace_id
         ],
@@ -475,6 +548,23 @@ fn validate_transition(current: &str, next: &str) -> Result<(), StoreError> {
     }
 }
 
+fn sha256_bytes(bytes: &[u8]) -> String {
+    hex::encode(Sha256::digest(bytes))
+}
+
+fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, StoreError> {
+    value[field]
+        .as_str()
+        .filter(|item| !item.is_empty())
+        .ok_or_else(|| StoreError::Corrupt(format!("session {field} is invalid")))
+}
+
+fn required_u64(value: &Value, field: &str) -> Result<u64, StoreError> {
+    value[field]
+        .as_u64()
+        .ok_or_else(|| StoreError::Corrupt(format!("session {field} is invalid")))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -496,6 +586,7 @@ mod tests {
             .create_process_session(
                 workspace_id,
                 &command_id,
+                EMPTY_SHA256,
                 "/tmp",
                 "python3",
                 ".",
@@ -511,6 +602,34 @@ mod tests {
         assert_eq!(recovered["state"], "interrupted");
         assert_eq!(recovered["exit_code"], Value::Null);
         assert!(!recovered["ended_at"].as_str().unwrap().is_empty());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn command_id_cannot_be_rebound_to_different_digest() {
+        let path = temp_database();
+        let store = Store::open(&path).unwrap();
+        let workspace = store.create_workspace("Replay proof", vec![], vec![]).unwrap();
+        let workspace_id = workspace["workspace_id"].as_str().unwrap();
+        let command_id = Uuid::new_v4().hyphenated().to_string();
+        store
+            .create_process_session(
+                workspace_id,
+                &command_id,
+                EMPTY_SHA256,
+                "/tmp",
+                "python3",
+                ".",
+                EMPTY_SHA256,
+            )
+            .unwrap();
+        let error = store
+            .get_session_for_command(
+                &command_id,
+                "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            )
+            .expect_err("digest mismatch must fail");
+        assert!(matches!(error, StoreError::Conflict(_)));
         let _ = fs::remove_file(path);
     }
 }
