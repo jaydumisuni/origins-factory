@@ -1,0 +1,69 @@
+name: Origins Contract Spine
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [impl/contract-spine-v1]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: origins-contract-spine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out reviewed revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up Rust 1.75
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.75.0
+          rustc --version
+          cargo --version
+
+      - name: Install Python proof dependency
+        run: python -m pip install --disable-pip-version-check pytest==8.3.5
+
+      - name: Compile Python contract package
+        run: python -m compileall -q python/origins_contracts python/tests tools/prove_contract_equivalence.py
+
+      - name: Run Python contract proof
+        env:
+          PYTHONPATH: python
+        run: python -m pytest python/tests -q
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path rust/Cargo.toml -- --check
+
+      - name: Reject Rust warnings
+        run: cargo clippy --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run Rust contract proof
+        run: cargo test --manifest-path rust/Cargo.toml --all-targets
+
+      - name: Build Rust contract proof CLI
+        run: cargo build --manifest-path rust/Cargo.toml --bin origins-contracts
+
+      - name: Prove Python/Rust equivalence
+        env:
+          PYTHONPATH: python
+        run: python tools/prove_contract_equivalence.py --rust-bin rust/target/debug/origins-contracts
+
+      - name: Repository whitespace gate
+        run: git diff --check HEAD^ HEAD
