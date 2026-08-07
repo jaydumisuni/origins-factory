@@ -1,6 +1,6 @@
 # ADR-0002 — originsd Foundation v1
 
-**Status:** ACCEPTED for implementation and challenge
+**Status:** PROVEN CANDIDATE — final exact locked-head verification pending
 **Date:** 2026-08-07
 **Depends on:** `ADR-0001-CONTRACT-SPINE.md`
 
@@ -8,19 +8,19 @@
 
 Implement the first persistent Rust mechanical-control surface for Origins Factory without coupling durability to the future React desktop wrapper or to Python intelligence workers.
 
-## Initial technology set
+## Proven technology set
 
-The first proof candidate uses:
+The foundation uses:
 
 - Rust 1.75;
-- Tokio for the local async runtime;
-- Axum for loopback HTTP and later WebSocket transport;
-- SQLite through Rusqlite for Origins-owned durable state;
+- Tokio `1.42.0` for the local async runtime;
+- Axum `0.7.9` for loopback HTTP and later WebSocket transport;
+- Rusqlite `0.31.0` with bundled SQLite for Origins-owned durable state;
 - the frozen `origins-contracts` crate for validation/canonical identity;
 - SHA-256 for journal chaining;
 - UUID v4 for Origins-owned IDs.
 
-These versions remain candidates until the branch proves compilation, Clippy, tests, restart recovery and loopback behavior under the pinned Rust toolchain. A failed compatibility proof means the dependency choice is corrected; it does not authorize changing the product boundary.
+The Challenge pass rejected Rusqlite `0.32.1` because it uses C-string literal syntax unavailable on Rust 1.75. Origins kept the frozen Rust proof boundary and corrected the dependency to `0.31.0`, which passed Clippy, tests, daemon build, and hosted restart proof. The exact dependency graph is frozen in `rust/Cargo.lock` only after the runtime proof passes.
 
 ## v1 server boundary
 
@@ -63,6 +63,8 @@ Priority:
 
 The token is never returned by health/status APIs and never written to the event journal.
 
+The hosted proof verifies both protected reads and durable writes reject missing authentication, and checks daemon output from accepted and rejected startup paths for token disclosure.
+
 ## Data directory
 
 Priority:
@@ -97,6 +99,8 @@ The daemon generates Origins-owned Workspace IDs and timestamps, builds a `works
 
 Foreign authority remains represented only by validated `authority_ref` contracts.
 
+Stored Workspace projections are revalidated and rehashed before they are returned. A controlled database-tamper test proves digest mismatch is reported as corruption rather than returned as valid state.
+
 ## Event journal
 
 Every accepted durable mutation emits a validated `event_envelope`.
@@ -118,7 +122,7 @@ Journal entry hashing is domain-separated:
 SHA256("origins-journal-v1\0" || previous_hash || "\0" || event_sha256)
 ```
 
-Startup/health verification recalculates contract hashes and the complete chain. Corruption is reported; it is never silently repaired.
+Startup/health verification recalculates contract hashes and the complete chain. Corruption is reported; it is never silently repaired. A deliberate journal-tamper test proves a modified chain hash fails closed.
 
 ## Capability registry
 
@@ -128,12 +132,28 @@ A `capability_descriptor` describes a capability but never grants authority.
 
 ## Restart theorem
 
-This slice must prove both:
+This slice proves:
 
-1. client/UI independence — the daemon can continue while a client disappears;
-2. daemon restart recovery — after process restart, Workspace projections and the event chain recover from SQLite.
+1. the real daemon starts on an ephemeral loopback port;
+2. non-loopback startup is refused explicitly;
+3. authenticated Workspace creation persists a canonical projection and event;
+4. the process can be terminated;
+5. a new daemon process can reopen the same SQLite database;
+6. the exact Workspace projection is recovered;
+7. the event chain recovers with the same non-empty journal head;
+8. local bearer credentials do not appear in daemon output.
 
 A live process/PTTY is not yet claimed resumable. That becomes a later explicit session contract and proof.
+
+## Dependency freeze
+
+The owner-branch workflow generates the exact lockfile only after logic and recovery proof succeed, then commits it as:
+
+```text
+Freeze originsd dependency lock
+```
+
+The frozen lock must receive a fresh owner-triggered exact-head proof before the PR is promoted. A pre-lock green run alone is insufficient.
 
 ## Non-goals
 
