@@ -54,7 +54,10 @@ impl WorkspaceRootPolicy {
 
     pub fn authorize_existing_dir(&self, path: impl AsRef<Path>) -> Result<PathBuf, String> {
         let canonical = std::fs::canonicalize(path.as_ref()).map_err(|error| {
-            format!("Workspace path {:?} cannot be resolved: {error}", path.as_ref())
+            format!(
+                "Workspace path {:?} cannot be resolved: {error}",
+                path.as_ref()
+            )
         })?;
         if !canonical.is_dir() {
             return Err(format!("Workspace path {:?} is not a directory", canonical));

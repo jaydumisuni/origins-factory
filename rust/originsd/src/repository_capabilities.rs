@@ -28,7 +28,9 @@ pub fn initialize(store: &Store) -> Result<(), StoreError> {
             StoreError::Contract("repository capability_id missing after validation".to_owned())
         })?;
         let version = descriptor["version"].as_str().ok_or_else(|| {
-            StoreError::Contract("repository capability version missing after validation".to_owned())
+            StoreError::Contract(
+                "repository capability version missing after validation".to_owned(),
+            )
         })?;
         connection.execute(
             "INSERT INTO capabilities (

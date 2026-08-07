@@ -429,10 +429,7 @@ fn validate_repository_projection(object: &Map<String, Value>) -> Result<(), Con
             "attached repository requires OID and symbolic branch",
         ));
     }
-    if !head_ref.is_empty()
-        && !branch.is_empty()
-        && head_ref != format!("refs/heads/{branch}")
-    {
+    if !head_ref.is_empty() && !branch.is_empty() && head_ref != format!("refs/heads/{branch}") {
         return Err(ContractError::new(
             "INVALID_REPOSITORY_STATE",
             "head_ref and branch disagree",

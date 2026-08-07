@@ -110,7 +110,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/repositories/inspect", post(inspect_repository_route))
         .route("/v1/repositories", get(list_repositories))
         .route("/v1/repositories/:repository_id", get(get_repository))
-        .route("/v1/repositories/:repository_id/diff", get(get_repository_diff))
+        .route(
+            "/v1/repositories/:repository_id/diff",
+            get(get_repository_diff),
+        )
         .route("/v1/commands", post(run_command))
         .route("/v1/events", get(list_events))
         .route("/v1/events/live", get(live_events))

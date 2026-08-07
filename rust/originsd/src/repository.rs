@@ -119,8 +119,8 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        let (canonical, digest) = stored
-            .ok_or_else(|| StoreError::NotFound(format!("repository {repository_id}")))?;
+        let (canonical, digest) =
+            stored.ok_or_else(|| StoreError::NotFound(format!("repository {repository_id}")))?;
         verify_stored_contract("repository", repository_id, &canonical, &digest)
     }
 
@@ -326,13 +326,23 @@ pub async fn inspect_repository(
     let common_dir_text = git_text(&worktree, &["rev-parse", "--git-common-dir"]).await?;
     let common_dir = canonical_git_path(&worktree, &common_dir_text)?;
 
-    let head_run = run_git(&worktree, &["rev-parse", "--verify", "HEAD"], METADATA_RETAIN_BYTES).await?;
+    let head_run = run_git(
+        &worktree,
+        &["rev-parse", "--verify", "HEAD"],
+        METADATA_RETAIN_BYTES,
+    )
+    .await?;
     let head_oid = if head_run.success {
         capture_text(&head_run.stdout, "HEAD oid")?
     } else {
         String::new()
     };
-    let head_ref_run = run_git(&worktree, &["symbolic-ref", "-q", "HEAD"], METADATA_RETAIN_BYTES).await?;
+    let head_ref_run = run_git(
+        &worktree,
+        &["symbolic-ref", "-q", "HEAD"],
+        METADATA_RETAIN_BYTES,
+    )
+    .await?;
     let head_ref = if head_ref_run.success {
         capture_text(&head_ref_run.stdout, "HEAD ref")?
     } else {
@@ -363,7 +373,8 @@ pub async fn inspect_repository(
             "repository status exceeds the {MAX_STATUS_BYTES}-byte v1 inspection bound"
         )));
     }
-    let (staged_count, unstaged_count, untracked_count) = parse_porcelain_status(&status.stdout.retained)?;
+    let (staged_count, unstaged_count, untracked_count) =
+        parse_porcelain_status(&status.stdout.retained)?;
 
     let observation = RepositoryObservation {
         worktree_root: path_text(&worktree, "worktree root")?,
@@ -408,7 +419,14 @@ pub async fn repository_diff(
     let repository = refresh_repository(store, policy, repository_id).await?;
     let worktree = PathBuf::from(required_projection_string(&repository, "worktree_root")?);
     let args: &[&str] = match kind {
-        "unstaged" => &["diff", "--no-ext-diff", "--binary", "--no-color", "--full-index", "--"],
+        "unstaged" => &[
+            "diff",
+            "--no-ext-diff",
+            "--binary",
+            "--no-color",
+            "--full-index",
+            "--",
+        ],
         "staged" => &[
             "diff",
             "--cached",
@@ -461,7 +479,9 @@ fn parse_porcelain_status(bytes: &[u8]) -> Result<(u64, u64, u64), StoreError> {
             .iter()
             .position(|byte| *byte == 0)
             .map(|offset| index + 3 + offset)
-            .ok_or_else(|| StoreError::Corrupt("Git status record lacks NUL terminator".to_owned()))?;
+            .ok_or_else(|| {
+                StoreError::Corrupt("Git status record lacks NUL terminator".to_owned())
+            })?;
         if x == b'?' && y == b'?' {
             untracked += 1;
         } else {
@@ -622,7 +642,10 @@ fn canonical_git_path(worktree: &Path, value: &str) -> Result<PathBuf, StoreErro
         worktree.join(path)
     };
     std::fs::canonicalize(&candidate).map_err(|error| {
-        StoreError::InvalidInput(format!("Git path {:?} cannot be resolved: {error}", candidate))
+        StoreError::InvalidInput(format!(
+            "Git path {:?} cannot be resolved: {error}",
+            candidate
+        ))
     })
 }
 
