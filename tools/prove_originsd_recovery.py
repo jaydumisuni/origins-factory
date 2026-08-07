@@ -20,6 +20,8 @@ def main() -> int:
     parser.add_argument("--binary", required=True, type=Path)
     args = parser.parse_args()
 
+    prove_non_loopback_refusal(args.binary)
+
     with tempfile.TemporaryDirectory(prefix="originsd-proof-") as temp_dir:
         data_dir = Path(temp_dir)
         port = reserve_port()
@@ -43,6 +45,12 @@ def main() -> int:
             assert health["journal"]["entries"] == 0
 
             assert_http_status(f"{base_url}/v1/capabilities", 401)
+            assert_http_status(
+                f"{base_url}/v1/workspaces",
+                401,
+                method="POST",
+                payload={"name": "Unauthorized", "authority_refs": [], "session_refs": []},
+            )
             capabilities = request_json(f"{base_url}/v1/capabilities", token=TOKEN)
             assert len(capabilities["capabilities"]) == 2
 
@@ -57,7 +65,7 @@ def main() -> int:
             recovered = request_json(f"{base_url}/v1/workspaces/{workspace_id}", token=TOKEN)
             assert recovered == workspace
         finally:
-            stop(first)
+            first_stdout, first_stderr = stop(first)
 
         second = start(args.binary, env)
         try:
@@ -70,9 +78,9 @@ def main() -> int:
             )
             assert recovered_after_restart == workspace
         finally:
-            stdout, stderr = stop(second)
+            second_stdout, second_stderr = stop(second)
 
-        combined = f"{stdout}\n{stderr}"
+        combined = "\n".join((first_stdout, first_stderr, second_stdout, second_stderr))
         if TOKEN in combined:
             raise AssertionError("local token leaked into daemon output")
 
@@ -80,8 +88,35 @@ def main() -> int:
         if not database.exists() or database.stat().st_size == 0:
             raise AssertionError("durable SQLite database was not created")
 
-    print("PASS: originsd auth, persistence, journal and restart recovery")
+    print("PASS: originsd bind, auth, persistence, journal and restart recovery")
     return 0
+
+
+def prove_non_loopback_refusal(binary: Path) -> None:
+    with tempfile.TemporaryDirectory(prefix="originsd-bind-proof-") as temp_dir:
+        env = os.environ.copy()
+        env.update(
+            {
+                "ORIGINS_BIND": "0.0.0.0:48700",
+                "ORIGINS_DATA_DIR": temp_dir,
+                "ORIGINS_LOCAL_TOKEN": TOKEN,
+            }
+        )
+        completed = subprocess.run(
+            [str(binary)],
+            env=env,
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=10,
+        )
+        if completed.returncode == 0:
+            raise AssertionError("originsd accepted a non-loopback bind")
+        output = f"{completed.stdout}\n{completed.stderr}"
+        if "refuses non-loopback bind addresses" not in output:
+            raise AssertionError(f"non-loopback refusal was not explicit: {output[-1000:]}")
+        if TOKEN in output:
+            raise AssertionError("local token leaked during rejected startup")
 
 
 def reserve_port() -> int:
@@ -146,9 +181,15 @@ def request_json(
         return json.loads(response.read().decode("utf-8"))
 
 
-def assert_http_status(url: str, expected_status: int) -> None:
+def assert_http_status(
+    url: str,
+    expected_status: int,
+    *,
+    method: str = "GET",
+    payload: dict | None = None,
+) -> None:
     try:
-        request_json(url)
+        request_json(url, method=method, payload=payload)
     except urllib.error.HTTPError as error:
         if error.code != expected_status:
             raise AssertionError(f"expected HTTP {expected_status}, got {error.code}") from error
