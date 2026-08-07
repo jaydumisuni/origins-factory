@@ -14,7 +14,6 @@ from pathlib import Path
 
 TOKEN = "origins-proof-token"
 EXPECTED_CAPABILITY_IDS = {
-    "origins.hunter.transport",
     "origins.journal.verify",
     "origins.process.run",
     "origins.repository.diff",
