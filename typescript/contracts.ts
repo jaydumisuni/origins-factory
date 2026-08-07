@@ -19,6 +19,7 @@ const SESSION_STATES = [
 ] as const;
 const SEMVER_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
+const OID_RE = /^[0-9a-f]{40}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PID_RE = /^[0-9]+$/;
 const RFC3339_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
@@ -75,6 +76,9 @@ export function validateContract(value: JsonValue): JsonObject {
       break;
     case "session_projection":
       validateSessionProjection(object);
+      break;
+    case "repository_projection":
+      validateRepositoryProjection(object);
       break;
     default:
       throw new ContractError("UNKNOWN_CONTRACT_TYPE", `unsupported contract_type: ${contractType}`);
@@ -279,6 +283,78 @@ function validateSessionProjection(value: JsonObject): void {
       "INVALID_SESSION_STATE",
       `${state} session must not claim exit_code`,
     );
+  }
+}
+
+function validateRepositoryProjection(value: JsonObject): void {
+  exactFields(value, [
+    "contract_type",
+    "schema_version",
+    "repository_id",
+    "workspace_id",
+    "revision",
+    "worktree_root",
+    "git_dir",
+    "common_dir",
+    "head_oid",
+    "head_ref",
+    "branch",
+    "detached",
+    "unborn",
+    "staged_count",
+    "unstaged_count",
+    "untracked_count",
+    "status_sha256",
+    "observed_at",
+  ]);
+  canonicalUuid(value, "repository_id");
+  canonicalUuid(value, "workspace_id");
+  const revision = nonnegativeInteger(value, "revision", "INVALID_REVISION");
+  if (revision < 1) {
+    throw new ContractError("INVALID_REVISION", "repository revision must be at least 1");
+  }
+  nonemptyString(value, "worktree_root");
+  nonemptyString(value, "git_dir");
+  nonemptyString(value, "common_dir");
+  const headOid = stringField(value, "head_oid");
+  if (headOid !== "" && !OID_RE.test(headOid)) {
+    throw new ContractError(
+      "INVALID_GIT_OID",
+      "head_oid must be empty or lowercase 40-hex Git OID",
+    );
+  }
+  const headRef = stringField(value, "head_ref");
+  const branch = stringField(value, "branch");
+  const detached = booleanField(value, "detached");
+  const unborn = booleanField(value, "unborn");
+  nonnegativeInteger(value, "staged_count", "INVALID_STATUS_COUNT");
+  nonnegativeInteger(value, "unstaged_count", "INVALID_STATUS_COUNT");
+  nonnegativeInteger(value, "untracked_count", "INVALID_STATUS_COUNT");
+  digestField(value, "status_sha256", false);
+  timestamp(value, "observed_at");
+
+  if (unborn) {
+    if (headOid !== "" || detached || headRef === "" || branch === "") {
+      throw new ContractError(
+        "INVALID_REPOSITORY_STATE",
+        "unborn repository requires symbolic branch and no OID",
+      );
+    }
+  } else if (detached) {
+    if (headOid === "" || headRef !== "" || branch !== "") {
+      throw new ContractError(
+        "INVALID_REPOSITORY_STATE",
+        "detached repository requires OID and no symbolic branch",
+      );
+    }
+  } else if (headOid === "" || headRef === "" || branch === "") {
+    throw new ContractError(
+      "INVALID_REPOSITORY_STATE",
+      "attached repository requires OID and symbolic branch",
+    );
+  }
+  if (headRef !== "" && branch !== "" && headRef !== `refs/heads/${branch}`) {
+    throw new ContractError("INVALID_REPOSITORY_STATE", "head_ref and branch disagree");
   }
 }
 
