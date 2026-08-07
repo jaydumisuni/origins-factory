@@ -6,6 +6,7 @@ use std::fmt::{Display, Formatter};
 use uuid::Uuid;
 
 pub const SCHEMA_VERSION: &str = "1.0.0";
+const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const EFFECTS: &[&str] = &["draft", "execute", "mutate", "observe", "publish", "verify"];
 const NODE_OS: &[&str] = &["any", "linux", "macos", "windows"];
 const MATURITY: &[&str] = &["experimental", "frozen", "planned", "proven"];
@@ -35,7 +36,7 @@ impl Display for ContractError {
 impl std::error::Error for ContractError {}
 
 pub fn canonical_json(value: &Value) -> Result<String, ContractError> {
-    reject_floats(value, "$")?;
+    validate_numbers(value, "$")?;
     serde_json::to_string(value)
         .map_err(|error| ContractError::new("SERIALIZATION_ERROR", error.to_string()))
 }
@@ -53,7 +54,7 @@ pub fn validate_contract(value: &Value) -> Result<(), ContractError> {
     let object = value
         .as_object()
         .ok_or_else(|| ContractError::new("INVALID_ROOT", "contract root must be an object"))?;
-    reject_floats(value, "$")?;
+    validate_numbers(value, "$")?;
 
     let contract_type = nonempty_string(object, "contract_type")?;
     if string(object, "schema_version")? != SCHEMA_VERSION {
@@ -129,8 +130,7 @@ fn validate_workspace_projection(object: &Map<String, Value>) -> Result<(), Cont
     )?;
     canonical_uuid(object, "workspace_id")?;
     nonempty_string(object, "name")?;
-    let revision = nonnegative_integer(object, "revision", "INVALID_REVISION")?;
-    let _ = revision;
+    nonnegative_integer(object, "revision", "INVALID_REVISION")?;
     authority_ref_list(object, "authority_refs")?;
     authority_ref_list(object, "session_refs")?;
     let created = timestamp(object, "created_at")?;
@@ -246,21 +246,42 @@ fn validate_event_envelope(object: &Map<String, Value>) -> Result<(), ContractEr
     Ok(())
 }
 
-fn reject_floats(value: &Value, path: &str) -> Result<(), ContractError> {
+fn validate_numbers(value: &Value, path: &str) -> Result<(), ContractError> {
     match value {
-        Value::Number(number) if !number.is_i64() && !number.is_u64() => Err(ContractError::new(
-            "FLOAT_FORBIDDEN",
-            format!("floating-point value forbidden at {path}"),
-        )),
+        Value::Number(number) => {
+            if let Some(integer) = number.as_i64() {
+                let max = MAX_SAFE_INTEGER as i64;
+                if integer < -max || integer > max {
+                    return Err(ContractError::new(
+                        "INTEGER_OUT_OF_RANGE",
+                        format!("integer outside cross-language safe range at {path}"),
+                    ));
+                }
+                Ok(())
+            } else if let Some(integer) = number.as_u64() {
+                if integer > MAX_SAFE_INTEGER {
+                    return Err(ContractError::new(
+                        "INTEGER_OUT_OF_RANGE",
+                        format!("integer outside cross-language safe range at {path}"),
+                    ));
+                }
+                Ok(())
+            } else {
+                Err(ContractError::new(
+                    "FLOAT_FORBIDDEN",
+                    format!("floating-point value forbidden at {path}"),
+                ))
+            }
+        }
         Value::Array(items) => {
             for (index, child) in items.iter().enumerate() {
-                reject_floats(child, &format!("{path}[{index}]"))?;
+                validate_numbers(child, &format!("{path}[{index}]"))?;
             }
             Ok(())
         }
         Value::Object(object) => {
             for (key, child) in object {
-                reject_floats(child, &format!("{path}.{key}"))?;
+                validate_numbers(child, &format!("{path}.{key}"))?;
             }
             Ok(())
         }
@@ -339,7 +360,9 @@ fn timestamp(object: &Map<String, Value>, field: &str) -> Result<DateTime<Utc>, 
     }
     DateTime::parse_from_rfc3339(text)
         .map(|value| value.with_timezone(&Utc))
-        .map_err(|_| ContractError::new("INVALID_TIMESTAMP", format!("{field} is not valid RFC3339")))
+        .map_err(|_| {
+            ContractError::new("INVALID_TIMESTAMP", format!("{field} is not valid RFC3339"))
+        })
 }
 
 fn enum_string<'a>(
@@ -378,12 +401,15 @@ fn sorted_unique_string_list<'a>(
         .ok_or_else(|| ContractError::new("INVALID_LIST", format!("{field} must be a list")))?;
     let mut values = Vec::with_capacity(items.len());
     for item in items {
-        let text = item.as_str().filter(|value| !value.is_empty()).ok_or_else(|| {
-            ContractError::new(
-                "INVALID_LIST",
-                format!("{field} must be a list of non-empty strings"),
-            )
-        })?;
+        let text = item
+            .as_str()
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| {
+                ContractError::new(
+                    "INVALID_LIST",
+                    format!("{field} must be a list of non-empty strings"),
+                )
+            })?;
         values.push(text);
     }
     let mut sorted = values.clone();
@@ -437,7 +463,10 @@ fn authority_ref_list(object: &Map<String, Value>, field: &str) -> Result<(), Co
     for item in items {
         validate_contract(item)?;
         let child = item.as_object().ok_or_else(|| {
-            ContractError::new("INVALID_REFERENCE", format!("{field} contains a non-object"))
+            ContractError::new(
+                "INVALID_REFERENCE",
+                format!("{field} contains a non-object"),
+            )
         })?;
         if string(child, "contract_type")? != "authority_ref" {
             return Err(ContractError::new(
