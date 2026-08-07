@@ -194,13 +194,13 @@ async fn cancel_session(
     Path(session_id): Path<String>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_auth(&headers, &state.local_token)?;
-    state
-        .process_supervisor
-        .cancel(&session_id)
-        .map_err(ApiError::from_store)?;
     let event = state
         .store
         .record_process_cancel_requested(&session_id)
+        .map_err(ApiError::from_store)?;
+    state
+        .process_supervisor
+        .cancel(&session_id)
         .map_err(ApiError::from_store)?;
     Ok((
         StatusCode::ACCEPTED,
