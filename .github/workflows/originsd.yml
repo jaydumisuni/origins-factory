@@ -2,7 +2,9 @@ name: Origins Daemon Foundation
 
 on:
   push:
-    branches: [impl/originsd-foundation-v1]
+    branches:
+      - impl/originsd-foundation-v1
+      - impl/process-sessions-v1
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -40,8 +42,8 @@ jobs:
       - name: Generate exact dependency lock
         run: cargo generate-lockfile --manifest-path rust/Cargo.toml
 
-      - name: Compile recovery proof
-        run: python -m compileall -q tools/prove_originsd_recovery.py
+      - name: Compile hosted proofs
+        run: python -m compileall -q tools/prove_originsd_recovery.py tools/prove_process_sessions.py
 
       - name: Reject Rust warnings
         run: cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
@@ -55,18 +57,18 @@ jobs:
       - name: Prove auth persistence journal and restart recovery
         run: python tools/prove_originsd_recovery.py --binary rust/target/debug/originsd
 
+      - name: Prove supervised process sessions
+        run: python tools/prove_process_sessions.py --binary rust/target/debug/originsd
+
       - name: Repository whitespace gate
         run: git diff --check origin/main...HEAD
 
-      - name: Check Rust formatting
-        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
-
-  freeze-lock:
+  normalize-runtime:
     if: >-
       github.event_name == 'push' &&
-      github.ref == 'refs/heads/impl/originsd-foundation-v1' &&
+      startsWith(github.ref, 'refs/heads/impl/') &&
       github.actor == 'jaydumisuni' &&
-      !startsWith(github.event.head_commit.message, 'Freeze originsd dependency lock')
+      !startsWith(github.event.head_commit.message, 'Normalize Origins runtime')
     needs: runtime-proof
     runs-on: ubuntu-latest
     permissions:
@@ -83,24 +85,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.75.0 --profile minimal
+          rustup toolchain install 1.75.0 --profile minimal --component rustfmt
           rustup override set 1.75.0
 
-      - name: Generate proven lockfile
-        run: cargo generate-lockfile --manifest-path rust/Cargo.toml
+      - name: Normalize proven dependency graph and Rust sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+          cargo fmt --manifest-path rust/Cargo.toml --all
 
-      - name: Freeze dependency lock on implementation branch
+      - name: Freeze normalized runtime on implementation branch
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ -z "$(git status --porcelain -- rust/Cargo.lock)" ]]; then
-            echo "Dependency lock is already frozen."
+          if [[ -z "$(git status --porcelain -- rust)" ]]; then
+            echo "Rust runtime is already normalized."
             exit 0
           fi
           git config user.name "THETECHGUY Origins Freezer"
           git config user.email "actions@users.noreply.github.com"
-          git add rust/Cargo.lock
-          git commit -m "Freeze originsd dependency lock"
-          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" HEAD:impl/originsd-foundation-v1
+          git add rust
+          git commit -m "Normalize Origins runtime"
+          git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"

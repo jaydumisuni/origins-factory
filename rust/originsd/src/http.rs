@@ -1,3 +1,5 @@
+use crate::process::{execute_command as execute_process_command, ProcessPolicy};
+use crate::sessions::SessionOutputRecord;
 use crate::store::{Store, StoreError};
 use axum::extract::{Path, State};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
@@ -11,6 +13,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct AppState {
     pub store: Store,
+    pub process_policy: ProcessPolicy,
     pub local_token: Arc<str>,
     pub started_at: Arc<str>,
 }
@@ -30,6 +33,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/workspaces", post(create_workspace))
         .route("/v1/workspaces/:workspace_id", get(get_workspace))
+        .route("/v1/commands", post(run_command))
+        .route("/v1/sessions", get(list_sessions))
+        .route("/v1/sessions/:session_id", get(get_session))
+        .route("/v1/sessions/:session_id/output", get(get_session_output))
         .with_state(state)
 }
 
@@ -42,6 +49,7 @@ async fn health(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
         "database_schema_version": state.store.schema_version().map_err(ApiError::from_store)?,
         "started_at": state.started_at.as_ref(),
         "workspaces": state.store.workspace_count().map_err(ApiError::from_store)?,
+        "sessions": state.store.session_count().map_err(ApiError::from_store)?,
         "capabilities": state.store.capability_count().map_err(ApiError::from_store)?,
         "journal": {
             "ok": journal.ok,
@@ -87,6 +95,86 @@ async fn get_workspace(
         .get_workspace(&workspace_id)
         .map_err(ApiError::from_store)?;
     Ok(Json(workspace))
+}
+
+async fn run_command(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(envelope): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let result = execute_process_command(state.store, state.process_policy, envelope)
+        .await
+        .map_err(ApiError::from_store)?;
+    let session_id = result.session["session_id"]
+        .as_str()
+        .ok_or_else(|| {
+            ApiError::new(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "CORRUPT_STATE",
+                "process session_id missing after execution",
+            )
+        })?
+        .to_owned();
+    Ok(Json(json!({
+        "replayed": result.replayed,
+        "session": result.session,
+        "output": output_json(&session_id, result.output),
+    })))
+}
+
+async fn list_sessions(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let sessions = state.store.list_sessions().map_err(ApiError::from_store)?;
+    Ok(Json(json!({"sessions": sessions})))
+}
+
+async fn get_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let session = state
+        .store
+        .get_session(&session_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(session))
+}
+
+async fn get_session_output(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let output = state
+        .store
+        .get_session_output(&session_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(output_json(&session_id, output)))
+}
+
+fn output_json(session_id: &str, output: SessionOutputRecord) -> Value {
+    let stdout_text = String::from_utf8(output.stdout.clone()).ok();
+    let stderr_text = String::from_utf8(output.stderr.clone()).ok();
+    json!({
+        "session_id": session_id,
+        "stdout": stdout_text,
+        "stderr": stderr_text,
+        "stdout_hex": hex::encode(&output.stdout),
+        "stderr_hex": hex::encode(&output.stderr),
+        "stdout_retained_bytes": output.stdout.len(),
+        "stderr_retained_bytes": output.stderr.len(),
+        "stdout_bytes": output.stdout_bytes,
+        "stderr_bytes": output.stderr_bytes,
+        "stdout_sha256": output.stdout_sha256,
+        "stderr_sha256": output.stderr_sha256,
+        "output_truncated": output.output_truncated,
+    })
 }
 
 fn require_auth(headers: &HeaderMap, expected: &str) -> Result<(), ApiError> {
@@ -138,6 +226,7 @@ impl ApiError {
                 Self::new(StatusCode::BAD_REQUEST, "INVALID_REQUEST", message)
             }
             StoreError::NotFound(message) => Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message),
+            StoreError::Conflict(message) => Self::new(StatusCode::CONFLICT, "CONFLICT", message),
             StoreError::Corrupt(message) => {
                 Self::new(StatusCode::SERVICE_UNAVAILABLE, "CORRUPT_STATE", message)
             }

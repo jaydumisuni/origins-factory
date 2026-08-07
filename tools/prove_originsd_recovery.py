@@ -39,9 +39,10 @@ def main() -> int:
         try:
             health = wait_for_health(base_url, first)
             assert health["ok"] is True
-            assert health["database_schema_version"] == 1
+            assert health["database_schema_version"] == 2
             assert health["workspaces"] == 0
-            assert health["capabilities"] == 2
+            assert health["sessions"] == 0
+            assert health["capabilities"] == 3
             assert health["journal"]["entries"] == 0
 
             assert_http_status(f"{base_url}/v1/capabilities", 401)
@@ -52,7 +53,7 @@ def main() -> int:
                 payload={"name": "Unauthorized", "authority_refs": [], "session_refs": []},
             )
             capabilities = request_json(f"{base_url}/v1/capabilities", token=TOKEN)
-            assert len(capabilities["capabilities"]) == 2
+            assert len(capabilities["capabilities"]) == 3
 
             workspace = request_json(
                 f"{base_url}/v1/workspaces",
@@ -71,6 +72,7 @@ def main() -> int:
         try:
             health = wait_for_health(base_url, second)
             assert health["workspaces"] == 1
+            assert health["sessions"] == 0
             assert health["journal"]["entries"] == 1
             assert health["journal"]["head_hash"]
             recovered_after_restart = request_json(

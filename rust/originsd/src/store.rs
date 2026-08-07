@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const DATABASE_SCHEMA_VERSION: i64 = 1;
+const DATABASE_SCHEMA_VERSION: i64 = 2;
 const JOURNAL_DOMAIN: &[u8] = b"origins-journal-v1\0";
 const BUILTIN_CAPABILITIES: &str = include_str!("../../../capabilities/builtin.json");
 
@@ -19,6 +19,7 @@ pub enum StoreError {
     Contract(String),
     InvalidInput(String),
     NotFound(String),
+    Conflict(String),
     Corrupt(String),
 }
 
@@ -30,6 +31,7 @@ impl Display for StoreError {
             Self::Contract(message) => write!(formatter, "contract error: {message}"),
             Self::InvalidInput(message) => write!(formatter, "invalid input: {message}"),
             Self::NotFound(message) => write!(formatter, "not found: {message}"),
+            Self::Conflict(message) => write!(formatter, "conflict: {message}"),
             Self::Corrupt(message) => write!(formatter, "corrupt state: {message}"),
         }
     }
@@ -66,6 +68,9 @@ impl Store {
         let connection = store.connection()?;
         migrate(&connection)?;
         seed_capabilities(&connection)?;
+        drop(connection);
+        store.verify_journal()?;
+        crate::sessions::recover_interrupted_sessions(&store)?;
         store.verify_journal()?;
         Ok(store)
     }
@@ -150,46 +155,42 @@ impl Store {
             .optional()?;
         let (canonical, expected_digest) =
             stored.ok_or_else(|| StoreError::NotFound(format!("workspace {workspace_id}")))?;
-        let value: Value = serde_json::from_str(&canonical)
-            .map_err(|error| StoreError::Corrupt(format!("workspace JSON: {error}")))?;
-        validate_contract(&value)
-            .map_err(|error| StoreError::Corrupt(format!("workspace contract: {error}")))?;
-        let actual_digest = contract_sha256(&value)
-            .map_err(|error| StoreError::Corrupt(format!("workspace digest: {error}")))?;
-        if actual_digest != expected_digest {
-            return Err(StoreError::Corrupt(format!(
-                "workspace {workspace_id} digest mismatch"
-            )));
-        }
-        Ok(value)
+        verify_stored_contract("workspace", workspace_id, &canonical, &expected_digest)
+    }
+
+    pub fn workspace_exists(&self, workspace_id: &str) -> Result<bool, StoreError> {
+        let connection = self.connection()?;
+        let exists: i64 = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM workspaces WHERE workspace_id = ?1)",
+            [workspace_id],
+            |row| row.get(0),
+        )?;
+        Ok(exists == 1)
     }
 
     pub fn list_capabilities(&self) -> Result<Vec<Value>, StoreError> {
         let connection = self.connection()?;
         let mut statement = connection.prepare(
-            "SELECT descriptor_json, descriptor_sha256 FROM capabilities
+            "SELECT capability_id, descriptor_json, descriptor_sha256 FROM capabilities
              ORDER BY capability_id, version",
         )?;
         let rows = statement.query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+            ))
         })?;
 
         let mut result = Vec::new();
         for row in rows {
-            let (canonical, expected_digest) = row?;
-            let value: Value = serde_json::from_str(&canonical)
-                .map_err(|error| StoreError::Corrupt(format!("capability JSON: {error}")))?;
-            validate_contract(&value)
-                .map_err(|error| StoreError::Corrupt(format!("capability contract: {error}")))?;
-            let actual_digest = contract_sha256(&value)
-                .map_err(|error| StoreError::Corrupt(format!("capability digest: {error}")))?;
-            if actual_digest != expected_digest {
-                return Err(StoreError::Corrupt(format!(
-                    "capability {} digest mismatch",
-                    value["capability_id"].as_str().unwrap_or("unknown")
-                )));
-            }
-            result.push(value);
+            let (capability_id, canonical, expected_digest) = row?;
+            result.push(verify_stored_contract(
+                "capability",
+                &capability_id,
+                &canonical,
+                &expected_digest,
+            )?);
         }
         Ok(result)
     }
@@ -282,7 +283,7 @@ impl Store {
         })
     }
 
-    fn connection(&self) -> Result<Connection, StoreError> {
+    pub(crate) fn connection(&self) -> Result<Connection, StoreError> {
         let connection = Connection::open(&self.database_path)?;
         connection.busy_timeout(std::time::Duration::from_secs(5))?;
         connection.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
@@ -306,25 +307,32 @@ fn migrate(connection: &Connection) -> Result<(), StoreError> {
         )
         .optional()?;
 
-    match current {
-        Some(value) => {
-            let version: i64 = value
-                .parse()
-                .map_err(|_| StoreError::Corrupt("invalid database schema version".to_owned()))?;
-            if version != DATABASE_SCHEMA_VERSION {
-                return Err(StoreError::Corrupt(format!(
-                    "unsupported database schema version {version}; expected {DATABASE_SCHEMA_VERSION}"
-                )));
-            }
-        }
-        None => {
-            connection.execute(
-                "INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?1)",
-                [DATABASE_SCHEMA_VERSION.to_string()],
-            )?;
-        }
+    let version = match current {
+        Some(value) => value
+            .parse::<i64>()
+            .map_err(|_| StoreError::Corrupt("invalid database schema version".to_owned()))?,
+        None => 0,
+    };
+    if version > DATABASE_SCHEMA_VERSION {
+        return Err(StoreError::Corrupt(format!(
+            "unsupported newer database schema version {version}; current is {DATABASE_SCHEMA_VERSION}"
+        )));
     }
 
+    create_core_tables(connection)?;
+    crate::sessions::create_session_tables(connection)?;
+
+    if version != DATABASE_SCHEMA_VERSION {
+        connection.execute(
+            "INSERT INTO schema_meta (key, value) VALUES ('schema_version', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            [DATABASE_SCHEMA_VERSION.to_string()],
+        )?;
+    }
+    Ok(())
+}
+
+fn create_core_tables(connection: &Connection) -> Result<(), StoreError> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS workspaces (
             workspace_id TEXT PRIMARY KEY NOT NULL,
@@ -407,7 +415,7 @@ fn seed_capabilities(connection: &Connection) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn validate_authority_refs(references: &[Value]) -> Result<(), StoreError> {
+pub(crate) fn validate_authority_refs(references: &[Value]) -> Result<(), StoreError> {
     for reference in references {
         validate_contract(reference).map_err(|error| StoreError::Contract(error.to_string()))?;
         if reference["contract_type"] != "authority_ref" {
@@ -419,7 +427,7 @@ fn validate_authority_refs(references: &[Value]) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn append_event(
+pub(crate) fn append_event(
     transaction: &Transaction<'_>,
     workspace_id: &str,
     kind: &str,
@@ -484,8 +492,26 @@ fn journal_hash(previous_hash: &str, event_digest: &str) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn now_rfc3339() -> String {
+pub(crate) fn now_rfc3339() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true)
+}
+
+pub(crate) fn verify_stored_contract(
+    kind: &str,
+    id: &str,
+    canonical: &str,
+    expected_digest: &str,
+) -> Result<Value, StoreError> {
+    let value: Value = serde_json::from_str(canonical)
+        .map_err(|error| StoreError::Corrupt(format!("{kind} JSON: {error}")))?;
+    validate_contract(&value)
+        .map_err(|error| StoreError::Corrupt(format!("{kind} contract: {error}")))?;
+    let actual_digest = contract_sha256(&value)
+        .map_err(|error| StoreError::Corrupt(format!("{kind} digest: {error}")))?;
+    if actual_digest != expected_digest {
+        return Err(StoreError::Corrupt(format!("{kind} {id} digest mismatch")));
+    }
+    Ok(value)
 }
 
 #[cfg(test)]
@@ -517,7 +543,7 @@ mod tests {
         assert_eq!(journal.entries, 1);
         assert!(!journal.head_hash.is_empty());
         assert_eq!(reopened.schema_version().unwrap(), DATABASE_SCHEMA_VERSION);
-        assert_eq!(reopened.capability_count().unwrap(), 2);
+        assert_eq!(reopened.capability_count().unwrap(), 3);
 
         let _ = fs::remove_file(path);
     }

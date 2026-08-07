@@ -8,9 +8,19 @@ const EFFECTS = ["draft", "execute", "mutate", "observe", "publish", "verify"] a
 const NODE_OS = ["any", "linux", "macos", "windows"] as const;
 const MATURITY = ["experimental", "frozen", "planned", "proven"] as const;
 const MODEL_DEPENDENCY = ["none", "optional", "required"] as const;
+const SESSION_KINDS = ["process"] as const;
+const SESSION_STATES = [
+  "completed",
+  "failed",
+  "interrupted",
+  "running",
+  "starting",
+  "timed_out",
+] as const;
 const SEMVER_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PID_RE = /^[0-9]+$/;
 const RFC3339_UTC_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const encoder = new TextEncoder();
 
@@ -63,6 +73,9 @@ export function validateContract(value: JsonValue): JsonObject {
     case "event_envelope":
       validateEventEnvelope(object);
       break;
+    case "session_projection":
+      validateSessionProjection(object);
+      break;
     default:
       throw new ContractError("UNKNOWN_CONTRACT_TYPE", `unsupported contract_type: ${contractType}`);
   }
@@ -86,10 +99,7 @@ function validateAuthorityRef(value: JsonObject): void {
   nonemptyString(value, "id");
   stringField(value, "revision");
   stringField(value, "uri");
-  const digest = stringField(value, "digest");
-  if (digest !== "" && !SHA256_RE.test(digest)) {
-    throw new ContractError("INVALID_DIGEST", "digest must be empty or lowercase SHA-256");
-  }
+  digestField(value, "digest", true);
   timestamp(value, "observed_at");
 }
 
@@ -189,6 +199,87 @@ function validateEventEnvelope(value: JsonObject): void {
   asObject(value.payload, "INVALID_PAYLOAD", "payload must be an object");
   authorityRefList(value, "evidence_refs");
   timestamp(value, "created_at");
+}
+
+function validateSessionProjection(value: JsonObject): void {
+  exactFields(value, [
+    "contract_type",
+    "schema_version",
+    "session_id",
+    "workspace_id",
+    "command_id",
+    "capability_id",
+    "kind",
+    "workspace_root",
+    "state",
+    "pid",
+    "started_at",
+    "updated_at",
+    "ended_at",
+    "exit_code",
+    "timed_out",
+    "stdout_bytes",
+    "stderr_bytes",
+    "stdout_sha256",
+    "stderr_sha256",
+    "output_truncated",
+  ]);
+  canonicalUuid(value, "session_id");
+  canonicalUuid(value, "workspace_id");
+  canonicalUuid(value, "command_id");
+  nonemptyString(value, "capability_id");
+  enumField(value, "kind", SESSION_KINDS);
+  nonemptyString(value, "workspace_root");
+  const state = enumField(value, "state", SESSION_STATES);
+  const pid = stringField(value, "pid");
+  if (pid !== "" && !PID_RE.test(pid)) {
+    throw new ContractError("INVALID_PID", "pid must be empty or ASCII decimal digits");
+  }
+  const started = timestamp(value, "started_at");
+  const updated = timestamp(value, "updated_at");
+  if (updated < started) {
+    throw new ContractError("INVALID_TIMESTAMP_ORDER", "updated_at cannot precede started_at");
+  }
+  const ended = optionalTimestamp(value, "ended_at");
+  if (ended !== null && ended < started) {
+    throw new ContractError("INVALID_TIMESTAMP_ORDER", "ended_at cannot precede started_at");
+  }
+  const exitCode = optionalInteger(value, "exit_code", "INVALID_EXIT_CODE");
+  const timedOut = booleanField(value, "timed_out");
+  nonnegativeInteger(value, "stdout_bytes", "INVALID_BYTE_COUNT");
+  nonnegativeInteger(value, "stderr_bytes", "INVALID_BYTE_COUNT");
+  digestField(value, "stdout_sha256", false);
+  digestField(value, "stderr_sha256", false);
+  booleanField(value, "output_truncated");
+
+  const active = state === "starting" || state === "running";
+  if (active && ended !== null) {
+    throw new ContractError("INVALID_SESSION_STATE", "active session cannot have ended_at");
+  }
+  if (active && exitCode !== null) {
+    throw new ContractError("INVALID_SESSION_STATE", "active session cannot have exit_code");
+  }
+  if (!active && ended === null) {
+    throw new ContractError("INVALID_SESSION_STATE", "terminal session state requires ended_at");
+  }
+  if (timedOut !== (state === "timed_out")) {
+    throw new ContractError("INVALID_SESSION_STATE", "timed_out flag must match timed_out state");
+  }
+  if (state === "completed" && exitCode !== 0) {
+    throw new ContractError("INVALID_SESSION_STATE", "completed session requires exit_code 0");
+  }
+  if (state === "failed" && (exitCode === null || exitCode === 0)) {
+    throw new ContractError(
+      "INVALID_SESSION_STATE",
+      "failed session requires a non-zero exit_code",
+    );
+  }
+  if ((state === "timed_out" || state === "interrupted") && exitCode !== null) {
+    throw new ContractError(
+      "INVALID_SESSION_STATE",
+      `${state} session must not claim exit_code`,
+    );
+  }
 }
 
 function validateNumbers(value: JsonValue, path: string): void {
@@ -295,6 +386,11 @@ function timestamp(value: JsonObject, field: string): number {
   return parsed;
 }
 
+function optionalTimestamp(value: JsonObject, field: string): number | null {
+  const item = stringField(value, field);
+  return item === "" ? null : timestamp(value, field);
+}
+
 function enumField<T extends string>(
   value: JsonObject,
   field: string,
@@ -311,6 +407,24 @@ function nonnegativeInteger(value: JsonObject, field: string, code: string): num
   const item = value[field];
   if (typeof item !== "number" || !Number.isSafeInteger(item) || item < 0) {
     throw new ContractError(code, `${field} must be a non-negative integer`);
+  }
+  return item;
+}
+
+function optionalInteger(value: JsonObject, field: string, code: string): number | null {
+  const item = value[field];
+  if (item === null) return null;
+  if (typeof item !== "number" || !Number.isSafeInteger(item)) {
+    throw new ContractError(code, `${field} must be null or an integer`);
+  }
+  return item;
+}
+
+function digestField(value: JsonObject, field: string, allowEmpty: boolean): string {
+  const item = stringField(value, field);
+  if (item === "" && allowEmpty) return item;
+  if (!SHA256_RE.test(item)) {
+    throw new ContractError("INVALID_DIGEST", `${field} must be lowercase SHA-256`);
   }
   return item;
 }
