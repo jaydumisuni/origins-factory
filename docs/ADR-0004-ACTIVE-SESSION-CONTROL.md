@@ -1,6 +1,6 @@
 # ADR-0004 — Active Session Control v1
 
-**Status:** PROVEN CANDIDATE — final normalized-head proof required before promotion
+**Status:** PROVEN
 **Date:** 2026-08-07
 **Depends on:** ADR-0001 Contract Spine, ADR-0002 originsd Foundation, ADR-0003 Supervised Process Sessions
 
@@ -43,11 +43,7 @@ POST /v1/sessions/{session_id}/cancel
 
 V1 cancellation is intentionally narrow: only a Session observed as `running` and controlled by the current daemon generation is cancellable.
 
-Before the in-memory cancellation signal is delivered, Origins commits:
-
-```text
-process.session.cancel_requested
-```
+Before the in-memory cancellation signal is delivered, Origins commits `process.session.cancel_requested` to the durable journal.
 
 The existing `session_projection` contract is not expanded solely for this slice. A successfully cancelled process ends as:
 
@@ -57,7 +53,7 @@ exit_code = null
 timed_out = false
 ```
 
-and its terminal event carries the `cancelled_by_client` reason. This preserves the ADR-0003 rule that Origins does not invent a portable exit code when normal process completion was not observed.
+and its terminal event carries the `cancelled_by_client` reason. This preserves ADR-0003 mechanical truth rather than inventing a portable exit code.
 
 `starting` Sessions are not claimed cancellable in v1. Terminal Sessions cannot be cancelled as though still active. A durable-active Session without a current daemon control handle reports conflict rather than false control.
 
@@ -75,36 +71,25 @@ Authenticated read surface:
 GET /v1/events?after_sequence=<n>&limit=<n>
 ```
 
-The store verifies the journal before returning validated canonical `event_envelope` records in ascending sequence order. The response includes:
+The store verifies the journal before returning validated canonical `event_envelope` records in ascending sequence order. The response includes the requested cursor, next cursor, current head sequence, and current hash-chain head.
 
-- requested `after_sequence`;
-- returned events;
-- `next_sequence` cursor;
-- current `head_sequence`;
-- current hash-chain head.
+A client can disconnect, retain its last sequence, reconnect, and replay only later durable events. This is pull-based event replay, not yet push streaming.
 
-A client can therefore disconnect, retain its last sequence, reconnect, and replay only later durable events. This is pull-based event replay, not yet push streaming.
+## Proof
 
-## Challenge evidence
+The challenged exact source passed:
 
-The substantive candidate has passed the inherited runtime/contract gates plus a hosted active-control proof covering:
+- Python, TypeScript, and Rust contract proof;
+- exact three-runtime canonical/validity/error/SHA equivalence;
+- Clippy with warnings denied;
+- all Rust daemon/session/event/integrity tests;
+- originsd build under Rust 1.75;
+- ADR-0002 auth/persistence/journal/restart hosted proof;
+- ADR-0003 process/integrity hosted proof adapted to asynchronous command acceptance;
+- hosted active-control proof demonstrating early HTTP 202 return, immediate Session readability, active exact replay, running-process cancellation, terminal re-cancel rejection, authenticated ordered event pagination, durable cancellation-event ordering, and event replay after daemon restart;
+- repository sanitation and rustfmt.
 
-1. a deliberately slow command returns HTTP 202 before child completion;
-2. the returned Session identity is immediately readable;
-3. the Session later reaches its truthful terminal state;
-4. exact replay while active returns the same Session;
-5. changed replay remains conflict;
-6. a running process receives an explicit cancellation request;
-7. cancellation resolves to `interrupted` with null exit code and `timed_out=false`;
-8. terminal re-cancel is rejected;
-9. event reads require authentication;
-10. event cursor pages are ordered and non-duplicating;
-11. `cancel_requested` is durably ordered before the cancellation terminal event;
-12. reconnect after daemon restart replays the same post-cursor events;
-13. ADR-0002 restart and ADR-0003 process/integrity proofs remain green;
-14. Clippy, Rust tests/build, contract equivalence, and repository sanitation remain mandatory.
-
-The Rust source/dependency normalizer runs only after substantive proof. Its normalized head must receive a fresh complete proof before this ADR is promoted to `PROVEN`.
+The proof-gated Rust normalizer produced no unresolved semantic delta. The documentation-adjusted head must retain the same full green proof before merge.
 
 ## Explicit non-claims
 
