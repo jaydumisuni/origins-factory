@@ -13,10 +13,12 @@ fn main() -> ExitCode {
         }
     };
 
-    let text = match fs::read_to_string(&path) {
+    let text = match fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) => {
-            print_json(json!({"ok": false, "error_code": "READ_ERROR", "error": error.to_string()}));
+            print_json(
+                json!({"ok": false, "error_code": "READ_ERROR", "error": error.to_string()}),
+            );
             return ExitCode::from(2);
         }
     };
@@ -24,7 +26,9 @@ fn main() -> ExitCode {
     let value: Value = match serde_json::from_str(&text) {
         Ok(value) => value,
         Err(error) => {
-            print_json(json!({"ok": false, "error_code": "MALFORMED_JSON", "error": error.to_string()}));
+            print_json(
+                json!({"ok": false, "error_code": "MALFORMED_JSON", "error": error.to_string()}),
+            );
             return ExitCode::from(1);
         }
     };
@@ -54,5 +58,8 @@ fn main() -> ExitCode {
 }
 
 fn print_json(value: Value) {
-    println!("{}", serde_json::to_string(&value).expect("result JSON must serialize"));
+    println!(
+        "{}",
+        serde_json::to_string(&value).expect("result JSON must serialize")
+    );
 }
