@@ -1,7 +1,11 @@
 use crate::live::{journal_stream, output_stream, LiveStream};
 use crate::process::{accept_command as accept_process_command, ProcessPolicy, ProcessSupervisor};
+use crate::repository::{
+    inspect_repository, repository_diff, DEFAULT_DIFF_RETAIN_BYTES, MAX_DIFF_RETAIN_BYTES,
+};
 use crate::sessions::SessionOutputRecord;
 use crate::store::{Store, StoreError};
+use crate::workspace_roots::WorkspaceRootPolicy;
 use axum::extract::{Path, Query, State};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -16,6 +20,7 @@ pub struct AppState {
     pub store: Store,
     pub process_policy: ProcessPolicy,
     pub process_supervisor: ProcessSupervisor,
+    pub repository_policy: WorkspaceRootPolicy,
     pub local_token: Arc<str>,
     pub started_at: Arc<str>,
 }
@@ -27,6 +32,25 @@ pub struct CreateWorkspaceRequest {
     pub authority_refs: Vec<Value>,
     #[serde(default)]
     pub session_refs: Vec<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct InspectRepositoryRequest {
+    pub workspace_id: String,
+    pub path: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepositoryListQuery {
+    pub workspace_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RepositoryDiffQuery {
+    #[serde(default = "default_diff_kind")]
+    pub kind: String,
+    #[serde(default = "default_diff_limit")]
+    pub limit: usize,
 }
 
 #[derive(Debug, Deserialize)]
@@ -61,6 +85,14 @@ pub struct OutputLiveQuery {
     pub stderr_after: u64,
 }
 
+fn default_diff_kind() -> String {
+    "unstaged".to_owned()
+}
+
+fn default_diff_limit() -> usize {
+    DEFAULT_DIFF_RETAIN_BYTES
+}
+
 fn default_event_limit() -> u64 {
     100
 }
@@ -75,6 +107,10 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/capabilities", get(capabilities))
         .route("/v1/workspaces", post(create_workspace))
         .route("/v1/workspaces/:workspace_id", get(get_workspace))
+        .route("/v1/repositories/inspect", post(inspect_repository_route))
+        .route("/v1/repositories", get(list_repositories))
+        .route("/v1/repositories/:repository_id", get(get_repository))
+        .route("/v1/repositories/:repository_id/diff", get(get_repository_diff))
         .route("/v1/commands", post(run_command))
         .route("/v1/events", get(list_events))
         .route("/v1/events/live", get(live_events))
@@ -100,8 +136,10 @@ async fn health(State(state): State<AppState>) -> Result<Json<Value>, ApiError> 
         "service": "originsd",
         "api_version": "v1",
         "database_schema_version": state.store.schema_version().map_err(ApiError::from_store)?,
+        "repository_schema_version": state.store.repository_schema_version().map_err(ApiError::from_store)?,
         "started_at": state.started_at.as_ref(),
         "workspaces": state.store.workspace_count().map_err(ApiError::from_store)?,
+        "repositories": state.store.repository_count().map_err(ApiError::from_store)?,
         "sessions": state.store.session_count().map_err(ApiError::from_store)?,
         "capabilities": state.store.capability_count().map_err(ApiError::from_store)?,
         "journal": {
@@ -150,12 +188,105 @@ async fn get_workspace(
     Ok(Json(workspace))
 }
 
+async fn inspect_repository_route(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<InspectRepositoryRequest>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let repository = inspect_repository(
+        &state.store,
+        &state.repository_policy,
+        &request.workspace_id,
+        &request.path,
+    )
+    .await
+    .map_err(ApiError::from_store)?;
+    Ok(Json(repository))
+}
+
+async fn list_repositories(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<RepositoryListQuery>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    if let Some(workspace_id) = query.workspace_id.as_deref() {
+        if !state
+            .store
+            .workspace_exists(workspace_id)
+            .map_err(ApiError::from_store)?
+        {
+            return Err(ApiError::new(
+                StatusCode::NOT_FOUND,
+                "NOT_FOUND",
+                format!("workspace {workspace_id}"),
+            ));
+        }
+    }
+    let repositories = state
+        .store
+        .list_repositories(query.workspace_id.as_deref())
+        .map_err(ApiError::from_store)?;
+    Ok(Json(json!({"repositories": repositories})))
+}
+
+async fn get_repository(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(repository_id): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let repository = state
+        .store
+        .get_repository(&repository_id)
+        .map_err(ApiError::from_store)?;
+    Ok(Json(repository))
+}
+
+async fn get_repository_diff(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(repository_id): Path<String>,
+    Query(query): Query<RepositoryDiffQuery>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    if query.limit == 0 || query.limit > MAX_DIFF_RETAIN_BYTES {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "INVALID_REQUEST",
+            format!("diff limit must be between 1 and {MAX_DIFF_RETAIN_BYTES} bytes"),
+        ));
+    }
+    let diff = repository_diff(
+        &state.store,
+        &state.repository_policy,
+        &repository_id,
+        &query.kind,
+        query.limit,
+    )
+    .await
+    .map_err(ApiError::from_store)?;
+    let text = String::from_utf8(diff.retained.clone()).ok();
+    Ok(Json(json!({
+        "repository": diff.repository,
+        "kind": diff.kind,
+        "retained_text": text,
+        "retained_hex": hex::encode(&diff.retained),
+        "retained_bytes": diff.retained.len(),
+        "complete_bytes": diff.complete_bytes,
+        "sha256": diff.sha256,
+        "truncated": diff.truncated,
+    })))
+}
+
 async fn run_command(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(envelope): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     require_auth(&headers, &state.local_token)?;
+    reject_generic_git_process(&envelope)?;
     let result = accept_process_command(
         state.store,
         state.process_policy,
@@ -170,6 +301,25 @@ async fn run_command(
             "session": result.session
         })),
     ))
+}
+
+fn reject_generic_git_process(envelope: &Value) -> Result<(), ApiError> {
+    if envelope.get("capability_id").and_then(Value::as_str) != Some("origins.process.run") {
+        return Ok(());
+    }
+    let executable = envelope
+        .get("payload")
+        .and_then(|payload| payload.get("executable"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    if matches!(executable.to_ascii_lowercase().as_str(), "git" | "git.exe") {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "DEDICATED_CAPABILITY_REQUIRED",
+            "Git mechanical reads must use the dedicated Origins repository capability",
+        ));
+    }
+    Ok(())
 }
 
 async fn list_events(
@@ -405,5 +555,15 @@ mod tests {
         assert!(constant_time_eq(b"origins_secret", b"origins_secret"));
         assert!(!constant_time_eq(b"origins_secret", b"origins_secreu"));
         assert!(!constant_time_eq(b"short", b"longer"));
+    }
+
+    #[test]
+    fn generic_git_process_is_rejected() {
+        let envelope = json!({
+            "capability_id": "origins.process.run",
+            "payload": {"executable": "git"}
+        });
+        let error = reject_generic_git_process(&envelope).expect_err("Git must use repository API");
+        assert_eq!(error.code, "DEDICATED_CAPABILITY_REQUIRED");
     }
 }
