@@ -1,57 +1,60 @@
 # ADR-0009 — Live Engineering Mount v1
 
-**Status:** ACCEPTED for implementation and challenge
+**Status:** FROZEN — implementation and fixture-hosted proof accepted; actual target-host live-owner receipt pending
 **Date:** 2026-08-07
 **Depends on:** ADR-0001 through ADR-0008
 **Corrects:** ADR-0007 CodeOps-config path ownership
 
 ## Purpose
 
-Provide the controlled live-owner smoke path that can promote an engineering mount from `compatible` to `proven` **only when the actual AgentOps/CodeOps/Sergeant owners are installed and the complete read-only integration path succeeds**.
+Provide the controlled smoke path that can promote an engineering mount from `compatible` to `proven` only when the actual AgentOps/CodeOps/Sergeant owners are installed and the complete read-only integration path succeeds.
 
-This slice also corrects one pre-live assumption: the CodeOps configuration is an integration resource, not a project edit artifact.
+This slice also corrects one pre-live assumption: CodeOps configuration is an integration resource, not a project edit artifact.
 
-## Config authority correction
+## Authority correction
 
-ADR-0007 correctly keeps changed files and edit plans inside the target Repository. It was too strict in requiring the CodeOps `--config` reference to be Repository-relative.
+Project files and edit plans remain Repository-scoped. CodeOps `--config` is an engineering-stack integration reference and may be absolute or relative.
 
-Recovered owning contracts show:
+Origins therefore:
 
-- AgentOps carries `config: Path("config/code_ops_switcher.example.json")` independently from `workspace`;
-- CodeOps CLI accepts `--config` as its own integration/provider configuration input;
-- project file/plan containment is enforced separately.
+- validates config as non-empty and NUL-free;
+- does not treat config as permission to edit outside the Repository;
+- does not copy the config into every project;
+- does not read, persist, or rewrite config contents merely because the bridge references it;
+- keeps edit-plan references Repository-relative and escape-resistant.
 
-Therefore:
+ADR-0007 was corrected in place to reflect this split.
+
+## Fresh Repository theorem
+
+Doctor and bridge work must begin from fresh mechanical Git truth.
 
 ```text
-project files / edit plan
-→ remain Repository-scoped
-
-CodeOps config
-→ explicit integration configuration reference
-→ may be relative to the process working directory or absolute
-→ never treated as permission to edit outside the Repository
+Repository ID
+→ read durable Workspace/worktree identity
+→ originsd Repository inspect
+→ require same Repository ID
+→ use refreshed revision + HEAD
+→ semantic engineering / assurance work
 ```
 
-Origins validates a config reference as non-empty and NUL-free but does not falsely bind it to the target Repository. It does not read, copy, persist, or rewrite the config contents.
-
-The operator/host is responsible for mounting a valid CodeOps config path. A later configuration-object capability may replace raw paths, but v1 does not invent one before evidence requires it.
+A stored projection alone is not sufficient evidence for a new engineering Attempt.
 
 ## Live smoke theorem
 
-A live engineering mount may become `proven` only through:
+A mount may become `proven` only through:
 
 ```text
 Production Engineering Mount doctor
 → every required surface compatible
-→ actual ExternalContracts loader
-→ actual AgentOps packet validation
-→ actual CodeOps route Session through originsd
-→ actual CodeOps Sergeant-command Session through originsd
-→ actual Sergeant review Session through originsd
-→ actual CodeOps verdict ingestion
+→ production ExternalContracts loader
+→ AgentOps packet validation
+→ CodeOps route Session through originsd
+→ CodeOps Sergeant-command Session through originsd
+→ Sergeant review Session through originsd
+→ CodeOps verdict ingestion
 → canonical non-UNKNOWN verdict
-→ bounded smoke receipt
+→ bounded integrity-addressed receipt
 ```
 
 No project mutation is required or allowed by the smoke.
@@ -61,29 +64,19 @@ No project mutation is required or allowed by the smoke.
 The smoke uses:
 
 - an existing durable Origins `repository_id`;
-- explicit CodeOps config reference;
-- a generated external operation ID for the smoke;
-- no files unless explicitly requested for read-only review scope;
+- an explicit CodeOps config reference;
+- a generated external operation ID;
+- optional read-only review file scope;
 - no edit plan;
 - `apply_plan=false`;
 - `ApprovalState.NOT_REQUIRED`;
-- no provider execution.
+- no provider/model execution.
 
-Task intent is read-only integration verification.
+The Engineering Assurance Bridge remains the semantic path. All CodeOps/Sergeant mechanical processes remain originsd Sessions.
 
-The existing Engineering Assurance Bridge performs:
+## Project verdict versus mount proof
 
-1. AgentOps packet validation;
-2. CodeOps `route` through originsd;
-3. CodeOps `sergeant-command` through originsd;
-4. Sergeant review through originsd;
-5. CodeOps verdict ingestion.
-
-The smoke does not call CodeOps provider execution or patch application.
-
-## Proven verdict requirement
-
-A live smoke is successful only when CodeOps normalizes actual Sergeant output to one of:
+Canonical review results are:
 
 ```text
 PASS
@@ -91,95 +84,130 @@ NEEDS WORK
 BLOCK
 ```
 
-All three prove the owner stack can communicate end-to-end; they describe project review quality, not mount quality.
+Any of those may prove that the actual owner stack communicated end-to-end. They describe project quality, not mount quality.
 
-`UNKNOWN` does **not** prove the mount because actual Sergeant output was not canonically understood by the owning CodeOps ingestion contract.
+`UNKNOWN` never proves the mount.
 
-The smoke receipt records the project verdict separately from mount proof.
+Exact recommendation semantics remain:
 
-## Doctor gate
+```text
+PASS       → complete_candidate
+NEEDS WORK → correct
+BLOCK      → block
+UNKNOWN    → unresolved
+```
 
-Before any smoke process is launched:
+`complete_candidate` remains advice to AgentOps, not Origins completion authority.
 
-- doctor overall status must equal `compatible`;
-- every required surface must be compatible;
-- doctor `live_engineering_proven` remains false;
-- any missing/available owner blocks the smoke before new mechanical Sessions are created.
-
-The smoke does not repair a failed doctor.
-
-## Proof scope
-
-Two proof scopes are explicit:
+## Proof scopes
 
 ```text
 fixture
-→ CI protocol/logic proof using controlled owner fixtures
+→ controlled CI owner fixtures
+→ may prove Origins routing/protocol behavior
 → can never set live_engineering_proven=true
 
 live_owner
-→ actual installed owner packages/binaries via production loaders
+→ production constructor + actual installed owners
 → may set live_engineering_proven=true after full successful smoke
 ```
 
-Fixture proof cannot be relabeled as live proof by changing a display string. Production construction creates the `live_owner` scope internally; fixture construction is test-only.
+The proof-scope token is internal. A display string cannot promote fixture evidence into live-owner proof.
 
 ## Receipt
 
-A successful smoke receipt contains:
+A smoke receipt contains:
 
 - proof scope;
+- mount status;
+- `live_engineering_proven`;
 - Repository ID/revision/HEAD;
 - generated operation ID;
-- doctor surface statuses/versions and doctor Session IDs;
+- doctor surface status/version/Session evidence;
 - CodeOps route Session ID;
 - CodeOps Sergeant-command Session ID;
 - Sergeant review Session ID;
 - review stdout SHA-256;
-- normalized project verdict;
+- canonical project verdict;
 - recommended AgentOps action;
-- `live_engineering_proven`.
+- canonical receipt SHA-256.
 
-It contains no raw CodeOps config contents, no provider credentials, and no raw review output.
+The receipt excludes raw CodeOps config, provider credentials, raw review text, and stdout/stderr bodies.
 
-In v1 the receipt is returned to the caller. It is not stored in a shadow AgentOps lifecycle database. Durable semantic receipt ownership remains an AgentOps concern until its production backend exists.
+The receipt SHA-256 is computed over canonical Origins JSON for the compact receipt body. Identical bodies produce identical digests; changed evidence changes the digest.
+
+The receipt is returned to the caller in v1. Origins does not invent a shadow AgentOps lifecycle database to persist semantic completion.
 
 ## Mechanical authority
 
 Every executable probe/review remains under originsd. The smoke module contains no Python subprocess execution.
 
-The smoke does not add new originsd mutation routes and does not restore generic Git execution.
+The smoke adds no new mutation route and does not restore generic Git execution.
 
-## Proof requirements
+## Challenge evidence
 
-Before promotion the exact head must prove:
+The first strengthened doctor run failed for a valid reason in the **fixture environment**, not production code: the missing-Sergeant restart replaced `PATH` with the CodeOps fixture directory only. After Repository freshness became mandatory, that accidentally removed Git as well.
 
-1. ADR-0007 config-path rule is corrected in place while edit-plan containment remains unchanged;
-2. config references may be absolute or relative but reject empty/NUL values;
-3. plan references remain Repository-relative and escape-resistant;
-4. smoke code contains no Python subprocess use;
-5. incompatible doctor blocks smoke before bridge attempt;
-6. fixture scope can never produce `live_engineering_proven=true`;
-7. production construction is the only path to `live_owner` scope;
-8. fixture PASS/NEEDS WORK/BLOCK can prove fixture end-to-end mount communication but remain `live_engineering_proven=false`;
-9. fixture UNKNOWN fails mount proof;
-10. smoke uses no plan/apply/provider execution;
-11. all CodeOps/Sergeant mechanical work continues through originsd Sessions;
-12. receipt contains IDs/digests/verdict/status only, not raw review/config contents;
-13. hosted fixture proof runs doctor gate + bridge over real originsd/Repository/Sessions;
-14. a missing-owner doctor fixture blocks before any smoke bridge Sessions are added;
-15. all ADR-0002 through ADR-0008 proofs remain green;
-16. documentation states that CI fixture proof is not actual target-host proof.
+The proof was corrected so the restart PATH contains only:
+
+```text
+CodeOps fixture directory
++ system Git directory
+```
+
+and explicitly asserts Sergeant remains absent. The same correction was applied to the hosted live-mount smoke.
+
+A second challenge found that `tools/prove_live_engineering_mount.py` existed but was not yet wired into the daemon workflow. The existing runtime workflow was corrected in place so this proof is compiled and executed; no parallel CI island was created.
+
+On exact implementation head `8fa5e096e81fa70226ccc65b30dd7d9a1638aad6`, both required suites passed:
+
+- **Origins Contract Spine** — success;
+- **Origins Daemon Foundation** — success.
+
+The daemon proof included successful execution of:
+
+1. originsd auth/persistence/journal/restart recovery;
+2. supervised Process Sessions;
+3. active Session control/event replay;
+4. live Session observation/cursor reconnect;
+5. Repository/Git Sessions;
+6. Engineering Assurance Bridge protocol;
+7. Production Engineering Mount doctor;
+8. Live Engineering Mount hosted smoke;
+9. repository whitespace gate.
+
+The hosted live smoke proves, against real originsd and controlled exact-name owner fixtures:
+
+- external CodeOps config outside the target Repository;
+- fresh Repository inspection before doctor/bridge work;
+- doctor compatibility gate;
+- durable CodeOps route and Sergeant-command Sessions;
+- durable Sergeant review Session;
+- CodeOps-owned verdict normalization;
+- fixture `NEEDS WORK → correct` routing;
+- fixture scope cannot self-promote;
+- compact canonical receipt SHA-256;
+- no raw config/token leakage into permanent journal evidence;
+- missing Sergeant blocks before bridge work after restart;
+- Git remains available during that missing-owner check;
+- no automatic repair or owner substitution.
+
+## Operator surface
+
+A thin operator-facing smoke command exists for the production constructor. It consumes originsd loopback auth through the existing environment contract and emits the compact JSON receipt. It does not install owners, execute providers, apply plans, or mutate project files.
 
 ## Explicit non-claims
 
-This generation does not provide or claim:
+This generation does **not** claim:
 
-- actual live proof until run on a host with the real owner packages/binaries;
-- automatic installation/repair;
-- AgentOps persistent lifecycle backend;
+- that the user's actual target host has compatible AgentOps/CodeOps/Sergeant installations;
+- an actual `live_owner` receipt from that host;
+- automatic package installation or repair;
+- AgentOps production persistent lifecycle/completion backend;
 - provider/model execution;
 - project mutation during smoke;
-- Hunter production mount;
-- React UI;
+- production Hunter mount;
+- React Workspace UI;
 - PTY interaction.
+
+Actual target-host proof is a deployment verification step, not something CI fixtures may impersonate.
