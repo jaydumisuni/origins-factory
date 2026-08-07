@@ -11,6 +11,15 @@ const EFFECTS: &[&str] = &["draft", "execute", "mutate", "observe", "publish", "
 const NODE_OS: &[&str] = &["any", "linux", "macos", "windows"];
 const MATURITY: &[&str] = &["experimental", "frozen", "planned", "proven"];
 const MODEL_DEPENDENCY: &[&str] = &["none", "optional", "required"];
+const SESSION_KINDS: &[&str] = &["process"];
+const SESSION_STATES: &[&str] = &[
+    "completed",
+    "failed",
+    "interrupted",
+    "running",
+    "starting",
+    "timed_out",
+];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContractError {
@@ -70,6 +79,7 @@ pub fn validate_contract(value: &Value) -> Result<(), ContractError> {
         "capability_descriptor" => validate_capability_descriptor(object),
         "command_envelope" => validate_command_envelope(object),
         "event_envelope" => validate_event_envelope(object),
+        "session_projection" => validate_session_projection(object),
         other => Err(ContractError::new(
             "UNKNOWN_CONTRACT_TYPE",
             format!("unsupported contract_type: {other}"),
@@ -97,18 +107,7 @@ fn validate_authority_ref(object: &Map<String, Value>) -> Result<(), ContractErr
     nonempty_string(object, "id")?;
     string(object, "revision")?;
     string(object, "uri")?;
-    let digest = string(object, "digest")?;
-    if !digest.is_empty()
-        && (digest.len() != 64
-            || !digest
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)))
-    {
-        return Err(ContractError::new(
-            "INVALID_DIGEST",
-            "digest must be empty or lowercase SHA-256",
-        ));
-    }
+    digest_field(object, "digest", true)?;
     timestamp(object, "observed_at")?;
     Ok(())
 }
@@ -246,6 +245,117 @@ fn validate_event_envelope(object: &Map<String, Value>) -> Result<(), ContractEr
     Ok(())
 }
 
+fn validate_session_projection(object: &Map<String, Value>) -> Result<(), ContractError> {
+    exact_fields(
+        object,
+        &[
+            "contract_type",
+            "schema_version",
+            "session_id",
+            "workspace_id",
+            "command_id",
+            "capability_id",
+            "kind",
+            "workspace_root",
+            "state",
+            "pid",
+            "started_at",
+            "updated_at",
+            "ended_at",
+            "exit_code",
+            "timed_out",
+            "stdout_bytes",
+            "stderr_bytes",
+            "stdout_sha256",
+            "stderr_sha256",
+            "output_truncated",
+        ],
+    )?;
+    canonical_uuid(object, "session_id")?;
+    canonical_uuid(object, "workspace_id")?;
+    canonical_uuid(object, "command_id")?;
+    nonempty_string(object, "capability_id")?;
+    enum_string(object, "kind", SESSION_KINDS)?;
+    nonempty_string(object, "workspace_root")?;
+    let state = enum_string(object, "state", SESSION_STATES)?;
+    let pid = string(object, "pid")?;
+    if !pid.is_empty() && !pid.bytes().all(|byte| byte.is_ascii_digit()) {
+        return Err(ContractError::new(
+            "INVALID_PID",
+            "pid must be empty or ASCII decimal digits",
+        ));
+    }
+    let started = timestamp(object, "started_at")?;
+    let updated = timestamp(object, "updated_at")?;
+    if updated < started {
+        return Err(ContractError::new(
+            "INVALID_TIMESTAMP_ORDER",
+            "updated_at cannot precede started_at",
+        ));
+    }
+    let ended = optional_timestamp(object, "ended_at")?;
+    if let Some(ended_at) = ended.as_ref() {
+        if ended_at < &started {
+            return Err(ContractError::new(
+                "INVALID_TIMESTAMP_ORDER",
+                "ended_at cannot precede started_at",
+            ));
+        }
+    }
+    let exit_code = optional_integer(object, "exit_code", "INVALID_EXIT_CODE")?;
+    let timed_out = boolean(object, "timed_out")?;
+    nonnegative_integer(object, "stdout_bytes", "INVALID_BYTE_COUNT")?;
+    nonnegative_integer(object, "stderr_bytes", "INVALID_BYTE_COUNT")?;
+    digest_field(object, "stdout_sha256", false)?;
+    digest_field(object, "stderr_sha256", false)?;
+    boolean(object, "output_truncated")?;
+
+    let active = matches!(state, "starting" | "running");
+    if active && ended.is_some() {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "active session cannot have ended_at",
+        ));
+    }
+    if active && exit_code.is_some() {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "active session cannot have exit_code",
+        ));
+    }
+    if !active && ended.is_none() {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "terminal session state requires ended_at",
+        ));
+    }
+    if timed_out != (state == "timed_out") {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "timed_out flag must match timed_out state",
+        ));
+    }
+    if state == "completed" && exit_code != Some(0) {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "completed session requires exit_code 0",
+        ));
+    }
+    if state == "failed" && (exit_code.is_none() || exit_code == Some(0)) {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            "failed session requires a non-zero exit_code",
+        ));
+    }
+    if matches!(state, "timed_out" | "interrupted") && exit_code.is_some() {
+        return Err(ContractError::new(
+            "INVALID_SESSION_STATE",
+            format!("{state} session must not claim exit_code"),
+        ));
+    }
+    Ok(())
+}
+
 fn validate_numbers(value: &Value, path: &str) -> Result<(), ContractError> {
     match value {
         Value::Number(number) => {
@@ -365,6 +475,17 @@ fn timestamp(object: &Map<String, Value>, field: &str) -> Result<DateTime<Utc>, 
         })
 }
 
+fn optional_timestamp(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<DateTime<Utc>>, ContractError> {
+    let text = string(object, field)?;
+    if text.is_empty() {
+        return Ok(None);
+    }
+    timestamp(object, field).map(Some)
+}
+
 fn enum_string<'a>(
     object: &'a Map<String, Value>,
     field: &str,
@@ -389,6 +510,46 @@ fn nonnegative_integer(
         .get(field)
         .and_then(Value::as_u64)
         .ok_or_else(|| ContractError::new(code, format!("{field} must be a non-negative integer")))
+}
+
+fn optional_integer(
+    object: &Map<String, Value>,
+    field: &str,
+    code: &'static str,
+) -> Result<Option<i64>, ContractError> {
+    match object.get(field) {
+        Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_i64()
+            .map(Some)
+            .ok_or_else(|| ContractError::new(code, format!("{field} must be null or an integer"))),
+        None => Err(ContractError::new(
+            "MISSING_FIELD",
+            format!("missing field: {field}"),
+        )),
+    }
+}
+
+fn digest_field(
+    object: &Map<String, Value>,
+    field: &str,
+    allow_empty: bool,
+) -> Result<(), ContractError> {
+    let digest = string(object, field)?;
+    if digest.is_empty() && allow_empty {
+        return Ok(());
+    }
+    if digest.len() != 64
+        || !digest
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    {
+        return Err(ContractError::new(
+            "INVALID_DIGEST",
+            format!("{field} must be lowercase SHA-256"),
+        ));
+    }
+    Ok(())
 }
 
 fn sorted_unique_string_list<'a>(
