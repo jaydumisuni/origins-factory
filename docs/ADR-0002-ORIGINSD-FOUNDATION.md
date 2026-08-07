@@ -1,6 +1,6 @@
 # ADR-0002 — originsd Foundation v1
 
-**Status:** PROVEN CANDIDATE — final exact locked-head verification pending
+**Status:** PROVEN FOUNDATION
 **Date:** 2026-08-07
 **Depends on:** `ADR-0001-CONTRACT-SPINE.md`
 
@@ -153,7 +153,30 @@ The owner-branch workflow generates the exact lockfile only after logic and reco
 Freeze originsd dependency lock
 ```
 
-The frozen lock must receive a fresh owner-triggered exact-head proof before the PR is promoted. A pre-lock green run alone is insufficient.
+The frozen lock received a fresh owner-triggered exact-head proof after the freeze. Both the daemon runtime suite and the full Rust/Python/TypeScript Contract Spine suite passed against the locked dependency graph.
+
+## Proof result
+
+The foundation has passed:
+
+- Rust 1.75 dependency compatibility;
+- Clippy with warnings denied;
+- all Rust contract, daemon, and controlled-tamper tests;
+- `originsd` build;
+- real non-loopback bind refusal;
+- protected-route authentication rejection;
+- authenticated Workspace creation/read;
+- daemon termination and restart against the same SQLite database;
+- exact Workspace projection recovery;
+- hash-chained event-journal recovery;
+- Workspace digest tamper detection;
+- journal chain tamper detection;
+- token non-disclosure checks;
+- repository whitespace gate;
+- full-workspace rustfmt;
+- the existing three-language Contract Spine suite on the same head.
+
+This ADR freezes the persistence/control-plane foundation only. It does not claim process/PTTY sessions, external adapters, Python integration, the workspace UI, or the custom OS.
 
 ## Non-goals
 
