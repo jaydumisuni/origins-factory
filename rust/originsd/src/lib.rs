@@ -6,6 +6,7 @@ pub mod live;
 pub mod output_live;
 pub mod process;
 pub mod repository;
+pub mod repository_capabilities;
 pub mod sessions;
 pub mod store;
 pub mod workspace_roots;
@@ -14,6 +15,7 @@ use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
 use crate::process::{ProcessPolicy, ProcessSupervisor};
 use crate::repository::initialize as initialize_repository_store;
+use crate::repository_capabilities::initialize as initialize_repository_capabilities;
 use crate::store::Store;
 use crate::workspace_roots::WorkspaceRootPolicy;
 use chrono::{SecondsFormat, Utc};
@@ -92,6 +94,8 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
+    initialize_repository_capabilities(&store)
+        .map_err(|error| RuntimeError::Store(error.to_string()))?;
     let state = AppState {
         store,
         process_policy,
