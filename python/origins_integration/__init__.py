@@ -12,6 +12,11 @@ from .engineering import (
     IntegrationUnavailable,
     OriginsClient,
 )
+from .live_mount import (
+    LiveEngineeringMount,
+    LiveEngineeringMountReceipt,
+    MountSmokeError,
+)
 
 __all__ = [
     "BridgeError",
@@ -22,6 +27,9 @@ __all__ = [
     "EngineeringMountDoctorResult",
     "ExternalContracts",
     "IntegrationUnavailable",
+    "LiveEngineeringMount",
+    "LiveEngineeringMountReceipt",
+    "MountSmokeError",
     "MountSurfaceResult",
     "OriginsClient",
 ]
