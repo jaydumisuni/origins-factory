@@ -56,7 +56,10 @@ async fn capabilities(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     require_auth(&headers, &state.local_token)?;
-    let capabilities = state.store.list_capabilities().map_err(ApiError::from_store)?;
+    let capabilities = state
+        .store
+        .list_capabilities()
+        .map_err(ApiError::from_store)?;
     Ok(Json(json!({"capabilities": capabilities})))
 }
 
@@ -134,14 +137,10 @@ impl ApiError {
             StoreError::InvalidInput(message) | StoreError::Contract(message) => {
                 Self::new(StatusCode::BAD_REQUEST, "INVALID_REQUEST", message)
             }
-            StoreError::NotFound(message) => {
-                Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message)
+            StoreError::NotFound(message) => Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message),
+            StoreError::Corrupt(message) => {
+                Self::new(StatusCode::SERVICE_UNAVAILABLE, "CORRUPT_STATE", message)
             }
-            StoreError::Corrupt(message) => Self::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "CORRUPT_STATE",
-                message,
-            ),
             StoreError::Io(message) | StoreError::Database(message) => Self::new(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "STORAGE_UNAVAILABLE",
