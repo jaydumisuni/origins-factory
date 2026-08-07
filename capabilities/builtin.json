@@ -40,33 +40,5 @@
     "model_dependency": "none",
     "review_required": true,
     "self_promotable": false
-  },
-  {
-    "contract_type": "capability_descriptor",
-    "schema_version": "1.0.0",
-    "capability_id": "origins.repository.inspect",
-    "version": "1.0.0",
-    "owner": "jaydumisuni/origins-factory",
-    "effects": ["observe", "verify"],
-    "permissions": ["origins.repository.read", "origins.workspace.read"],
-    "node_os": ["linux", "macos", "windows"],
-    "maturity": "experimental",
-    "model_dependency": "none",
-    "review_required": false,
-    "self_promotable": false
-  },
-  {
-    "contract_type": "capability_descriptor",
-    "schema_version": "1.0.0",
-    "capability_id": "origins.repository.diff",
-    "version": "1.0.0",
-    "owner": "jaydumisuni/origins-factory",
-    "effects": ["observe", "verify"],
-    "permissions": ["origins.repository.diff", "origins.repository.read", "origins.workspace.read"],
-    "node_os": ["linux", "macos", "windows"],
-    "maturity": "experimental",
-    "model_dependency": "none",
-    "review_required": false,
-    "self_promotable": false
   }
 ]
