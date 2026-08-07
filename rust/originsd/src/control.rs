@@ -19,9 +19,9 @@ impl Store {
         let observed_state = projection["state"]
             .as_str()
             .ok_or_else(|| StoreError::Corrupt("session state is invalid".to_owned()))?;
-        if !matches!(observed_state, "starting" | "running") {
+        if observed_state != "running" {
             return Err(StoreError::Conflict(format!(
-                "session {session_id} is already terminal with state {observed_state}"
+                "session {session_id} is not cancellable in state {observed_state}; v1 cancels running Sessions only"
             )));
         }
         let workspace_id = projection["workspace_id"]
