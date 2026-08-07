@@ -1,7 +1,7 @@
 # Origins Factory — First Repository-Engineering Vertical Slice
 
-**Status:** FROZEN implementation target  
-**Architecture:** Origins Factory v1.0  
+**Status:** FROZEN implementation target
+**Architecture:** Origins Factory v1.0
 **Purpose:** prove the complete mission-continuity loop before broad UI work
 
 ## Mission
