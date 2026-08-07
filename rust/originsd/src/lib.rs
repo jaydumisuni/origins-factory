@@ -98,13 +98,16 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let repository_policy = WorkspaceRootPolicy::from_env().map_err(RuntimeError::Config)?;
     let hunter_transport = HunterTransport::from_env()
         .map_err(|error| RuntimeError::Config(error.to_string()))?;
+    let hunter_configured = hunter_transport.is_some();
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_capabilities(&store)
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
-    initialize_hunter_capabilities(&store)
-        .map_err(|error| RuntimeError::Store(error.to_string()))?;
+    if hunter_configured {
+        initialize_hunter_capabilities(&store)
+            .map_err(|error| RuntimeError::Store(error.to_string()))?;
+    }
 
     let base_state = AppState {
         store: store.clone(),
