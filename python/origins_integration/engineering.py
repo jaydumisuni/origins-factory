@@ -61,7 +61,7 @@ class EngineeringAttemptRequest:
             raise BridgeError(
                 "approval_state must be one of: " + ", ".join(sorted(APPROVAL_STATES))
             )
-        _validate_relative_path(self.config, "CodeOps config")
+        _validate_config_reference(self.config, "CodeOps config")
         if self.plan:
             _validate_relative_path(self.plan, "CodeOps plan")
         if not self.review_mode.strip():
@@ -515,6 +515,11 @@ def _validate_packet_identity(packet: Any, request: EngineeringAttemptRequest, w
         actual = getattr(packet, field, None)
         if actual != expected_value:
             raise BridgeError(f"AgentOps packet changed {field}: expected {expected_value!r}, got {actual!r}")
+
+
+def _validate_config_reference(value: str, label: str) -> None:
+    if not isinstance(value, str) or not value.strip() or "\x00" in value:
+        raise BridgeError(f"{label} must be a non-empty NUL-free path reference")
 
 
 def _validate_relative_path(value: str, label: str) -> None:
