@@ -1,0 +1,30 @@
+[
+  {
+    "contract_type": "capability_descriptor",
+    "schema_version": "1.0.0",
+    "capability_id": "origins.workspace.persistence",
+    "version": "1.0.0",
+    "owner": "jaydumisuni/origins-factory",
+    "effects": ["mutate", "observe", "verify"],
+    "permissions": ["origins.workspace.read", "origins.workspace.write"],
+    "node_os": ["linux", "macos", "windows"],
+    "maturity": "experimental",
+    "model_dependency": "none",
+    "review_required": false,
+    "self_promotable": false
+  },
+  {
+    "contract_type": "capability_descriptor",
+    "schema_version": "1.0.0",
+    "capability_id": "origins.journal.verify",
+    "version": "1.0.0",
+    "owner": "jaydumisuni/origins-factory",
+    "effects": ["observe", "verify"],
+    "permissions": ["origins.journal.read"],
+    "node_os": ["linux", "macos", "windows"],
+    "maturity": "experimental",
+    "model_dependency": "none",
+    "review_required": false,
+    "self_promotable": false
+  }
+]
