@@ -13,6 +13,7 @@ import urllib.request
 from pathlib import Path
 
 TOKEN = "origins-proof-token"
+EXPECTED_CAPABILITIES = 5
 
 
 def main() -> int:
@@ -24,6 +25,8 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="originsd-proof-") as temp_dir:
         data_dir = Path(temp_dir)
+        workspace_root = data_dir / "workspaces"
+        workspace_root.mkdir()
         port = reserve_port()
         base_url = f"http://127.0.0.1:{port}"
         env = os.environ.copy()
@@ -32,6 +35,7 @@ def main() -> int:
                 "ORIGINS_BIND": f"127.0.0.1:{port}",
                 "ORIGINS_DATA_DIR": str(data_dir),
                 "ORIGINS_LOCAL_TOKEN": TOKEN,
+                "ORIGINS_WORKSPACE_ROOTS": str(workspace_root),
             }
         )
 
@@ -40,9 +44,11 @@ def main() -> int:
             health = wait_for_health(base_url, first)
             assert health["ok"] is True
             assert health["database_schema_version"] == 2
+            assert health["repository_schema_version"] == 1
             assert health["workspaces"] == 0
+            assert health["repositories"] == 0
             assert health["sessions"] == 0
-            assert health["capabilities"] == 3
+            assert health["capabilities"] == EXPECTED_CAPABILITIES
             assert health["journal"]["entries"] == 0
 
             assert_http_status(f"{base_url}/v1/capabilities", 401)
@@ -53,7 +59,16 @@ def main() -> int:
                 payload={"name": "Unauthorized", "authority_refs": [], "session_refs": []},
             )
             capabilities = request_json(f"{base_url}/v1/capabilities", token=TOKEN)
-            assert len(capabilities["capabilities"]) == 3
+            capability_ids = {
+                descriptor["capability_id"] for descriptor in capabilities["capabilities"]
+            }
+            assert capability_ids == {
+                "origins.journal.verify",
+                "origins.process.run",
+                "origins.repository.diff",
+                "origins.repository.inspect",
+                "origins.workspace.persistence",
+            }
 
             workspace = request_json(
                 f"{base_url}/v1/workspaces",
@@ -72,6 +87,7 @@ def main() -> int:
         try:
             health = wait_for_health(base_url, second)
             assert health["workspaces"] == 1
+            assert health["repositories"] == 0
             assert health["sessions"] == 0
             assert health["journal"]["entries"] == 1
             assert health["journal"]["head_hash"]
@@ -90,18 +106,21 @@ def main() -> int:
         if not database.exists() or database.stat().st_size == 0:
             raise AssertionError("durable SQLite database was not created")
 
-    print("PASS: originsd bind, auth, persistence, journal and restart recovery")
+    print("PASS: originsd bind, auth, persistence, journal, repository schema and restart recovery")
     return 0
 
 
 def prove_non_loopback_refusal(binary: Path) -> None:
     with tempfile.TemporaryDirectory(prefix="originsd-bind-proof-") as temp_dir:
+        workspace_root = Path(temp_dir) / "workspaces"
+        workspace_root.mkdir()
         env = os.environ.copy()
         env.update(
             {
                 "ORIGINS_BIND": "0.0.0.0:48700",
                 "ORIGINS_DATA_DIR": temp_dir,
                 "ORIGINS_LOCAL_TOKEN": TOKEN,
+                "ORIGINS_WORKSPACE_ROOTS": str(workspace_root),
             }
         )
         completed = subprocess.run(
