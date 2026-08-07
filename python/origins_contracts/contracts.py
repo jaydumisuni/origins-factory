@@ -13,6 +13,8 @@ EFFECTS = ("draft", "execute", "mutate", "observe", "publish", "verify")
 NODE_OS = ("any", "linux", "macos", "windows")
 MATURITY = ("experimental", "frozen", "planned", "proven")
 MODEL_DEPENDENCY = ("none", "optional", "required")
+SESSION_KINDS = ("process",)
+SESSION_STATES = ("completed", "failed", "interrupted", "running", "starting", "timed_out")
 SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -53,6 +55,7 @@ def validate_contract(value: Any) -> dict[str, Any]:
         "capability_descriptor": _validate_capability_descriptor,
         "command_envelope": _validate_command_envelope,
         "event_envelope": _validate_event_envelope,
+        "session_projection": _validate_session_projection,
     }
     validator = validators.get(contract_type)
     if validator is None:
@@ -81,9 +84,7 @@ def _validate_authority_ref(value: dict[str, Any]) -> None:
     _nonempty_string(value, "id")
     _string(value, "revision")
     _string(value, "uri")
-    digest = _string(value, "digest")
-    if digest and not SHA256_RE.fullmatch(digest):
-        raise ContractError("INVALID_DIGEST", "digest must be empty or lowercase SHA-256")
+    _digest(value, "digest", allow_empty=True)
     _timestamp(value, "observed_at")
 
 
@@ -104,9 +105,7 @@ def _validate_workspace_projection(value: dict[str, Any]) -> None:
     )
     _uuid(value, "workspace_id")
     _nonempty_string(value, "name")
-    revision = value.get("revision")
-    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
-        raise ContractError("INVALID_REVISION", "revision must be a non-negative integer")
+    _nonnegative_integer(value, "revision", "INVALID_REVISION")
     _authority_ref_list(value, "authority_refs")
     _authority_ref_list(value, "session_refs")
     created = _timestamp(value, "created_at")
@@ -144,8 +143,7 @@ def _validate_capability_descriptor(value: dict[str, Any]) -> None:
     _enum(value, "maturity", MATURITY)
     _enum(value, "model_dependency", MODEL_DEPENDENCY)
     _bool(value, "review_required")
-    self_promotable = _bool(value, "self_promotable")
-    if self_promotable:
+    if _bool(value, "self_promotable"):
         raise ContractError("SELF_PROMOTION_FORBIDDEN", "capabilities cannot self-promote")
 
 
@@ -192,13 +190,81 @@ def _validate_event_envelope(value: dict[str, Any]) -> None:
     _uuid(value, "workspace_id")
     _nonempty_string(value, "producer")
     _nonempty_string(value, "kind")
-    sequence = value.get("sequence")
-    if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 0:
-        raise ContractError("INVALID_SEQUENCE", "sequence must be a non-negative integer")
+    _nonnegative_integer(value, "sequence", "INVALID_SEQUENCE")
     if not isinstance(value.get("payload"), dict):
         raise ContractError("INVALID_PAYLOAD", "payload must be an object")
     _authority_ref_list(value, "evidence_refs")
     _timestamp(value, "created_at")
+
+
+def _validate_session_projection(value: dict[str, Any]) -> None:
+    _exact_fields(
+        value,
+        {
+            "contract_type",
+            "schema_version",
+            "session_id",
+            "workspace_id",
+            "command_id",
+            "capability_id",
+            "kind",
+            "workspace_root",
+            "state",
+            "pid",
+            "started_at",
+            "updated_at",
+            "ended_at",
+            "exit_code",
+            "timed_out",
+            "stdout_bytes",
+            "stderr_bytes",
+            "stdout_sha256",
+            "stderr_sha256",
+            "output_truncated",
+        },
+    )
+    _uuid(value, "session_id")
+    _uuid(value, "workspace_id")
+    _uuid(value, "command_id")
+    _nonempty_string(value, "capability_id")
+    _enum(value, "kind", SESSION_KINDS)
+    _nonempty_string(value, "workspace_root")
+    state = _enum(value, "state", SESSION_STATES)
+    pid = _string(value, "pid")
+    if pid and not pid.isascii() or (pid and not pid.isdigit()):
+        raise ContractError("INVALID_PID", "pid must be empty or ASCII decimal digits")
+    started = _timestamp(value, "started_at")
+    updated = _timestamp(value, "updated_at")
+    if updated < started:
+        raise ContractError("INVALID_TIMESTAMP_ORDER", "updated_at cannot precede started_at")
+    ended = _optional_timestamp(value, "ended_at")
+    if ended is not None and ended < started:
+        raise ContractError("INVALID_TIMESTAMP_ORDER", "ended_at cannot precede started_at")
+    exit_code = value.get("exit_code")
+    if exit_code is not None and (not isinstance(exit_code, int) or isinstance(exit_code, bool)):
+        raise ContractError("INVALID_EXIT_CODE", "exit_code must be null or an integer")
+    timed_out = _bool(value, "timed_out")
+    _nonnegative_integer(value, "stdout_bytes", "INVALID_BYTE_COUNT")
+    _nonnegative_integer(value, "stderr_bytes", "INVALID_BYTE_COUNT")
+    _digest(value, "stdout_sha256", allow_empty=False)
+    _digest(value, "stderr_sha256", allow_empty=False)
+    _bool(value, "output_truncated")
+
+    active = state in {"starting", "running"}
+    if active and ended is not None:
+        raise ContractError("INVALID_SESSION_STATE", "active session cannot have ended_at")
+    if active and exit_code is not None:
+        raise ContractError("INVALID_SESSION_STATE", "active session cannot have exit_code")
+    if not active and ended is None:
+        raise ContractError("INVALID_SESSION_STATE", "terminal session state requires ended_at")
+    if timed_out != (state == "timed_out"):
+        raise ContractError("INVALID_SESSION_STATE", "timed_out flag must match timed_out state")
+    if state == "completed" and exit_code != 0:
+        raise ContractError("INVALID_SESSION_STATE", "completed session requires exit_code 0")
+    if state == "failed" and (exit_code is None or exit_code == 0):
+        raise ContractError("INVALID_SESSION_STATE", "failed session requires a non-zero exit_code")
+    if state in {"timed_out", "interrupted"} and exit_code is not None:
+        raise ContractError("INVALID_SESSION_STATE", f"{state} session must not claim exit_code")
 
 
 def _validate_numbers(value: Any, path: str = "$") -> None:
@@ -273,10 +339,31 @@ def _timestamp(value: dict[str, Any], field: str) -> datetime:
     return parsed
 
 
+def _optional_timestamp(value: dict[str, Any], field: str) -> datetime | None:
+    item = _string(value, field)
+    return None if item == "" else _timestamp(value, field)
+
+
 def _enum(value: dict[str, Any], field: str, allowed: tuple[str, ...]) -> str:
     item = _nonempty_string(value, field)
     if item not in allowed:
         raise ContractError("INVALID_ENUM", f"{field} must be one of: {', '.join(allowed)}")
+    return item
+
+
+def _nonnegative_integer(value: dict[str, Any], field: str, code: str) -> int:
+    item = value.get(field)
+    if not isinstance(item, int) or isinstance(item, bool) or item < 0:
+        raise ContractError(code, f"{field} must be a non-negative integer")
+    return item
+
+
+def _digest(value: dict[str, Any], field: str, *, allow_empty: bool) -> str:
+    item = _string(value, field)
+    if item == "" and allow_empty:
+        return item
+    if not SHA256_RE.fullmatch(item):
+        raise ContractError("INVALID_DIGEST", f"{field} must be lowercase SHA-256")
     return item
 
 
