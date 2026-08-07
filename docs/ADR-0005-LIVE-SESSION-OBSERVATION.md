@@ -1,29 +1,31 @@
 # ADR-0005 — Live Session Observation v1
 
-**Status:** ACCEPTED for implementation and challenge
+**Status:** PROVEN CANDIDATE — final exact normalized-head proof required before promotion
 **Date:** 2026-08-07
 **Depends on:** ADR-0001 through ADR-0004
 
-## Purpose
+## Decision
 
-Let an Origins client observe durable events and bounded process output while work is still running, disconnect, reconnect with cursors, and continue without making a UI/WebSocket buffer the source of truth.
+Origins can project durable events and bounded process output while work is still running without making a socket, UI buffer, or second raw-output database authoritative.
 
-This slice adds two projections over existing durable state:
+This generation adds:
 
-1. live journal-event delivery over the proven event-sequence cursor;
-2. incremental retained stdout/stderr observation over the existing `session_outputs` record.
-
-No second raw-output database or duplicate retained-output copy is introduced.
+1. authenticated live journal-event delivery over the proven event-sequence cursor;
+2. incremental retained stdout/stderr persistence in the existing `session_outputs` record;
+3. authenticated byte-cursor delta reads;
+4. authenticated live output delivery over the same durable retained-byte cursors.
 
 ## One-copy output rule
 
 `session_outputs` remains the single local retained raw-output store.
 
-During process execution, the capture tasks append only the bytes that fit inside the already-approved retention bound to the existing stdout/stderr blobs and update their retained-byte digests transactionally.
+During process execution, capture tasks append only bytes that fit inside the command's existing retention bound to the existing stdout/stderr blobs. Each append transactionally verifies the prior retained digest and writes the next retained digest.
 
-The final Session projection still records complete observed stream byte counts and SHA-256 values. When a stream exceeds the retained-output limit, the database keeps only the retained prefix while the final projection proves the size/hash of the complete observed stream.
+No `session_output_chunks` or other second raw-output table is introduced.
 
-The permanent hash-chained journal continues to contain process metadata and digests only; raw output does not enter the journal.
+The final Session projection continues to record complete observed stream byte counts and SHA-256. If a stream exceeds retention, SQLite holds only the retained prefix while the final projection describes the complete observed stream.
+
+The permanent hash-chained journal remains metadata/digest-only; raw stdout/stderr do not enter it.
 
 ## Reconnectable output cursor
 
@@ -38,17 +40,17 @@ GET /v1/sessions/{session_id}/output/delta
 
 Each stream returns:
 
-- requested byte offset;
-- next byte offset;
+- requested retained-byte offset;
+- next retained-byte offset;
 - current retained head offset;
 - exact bytes as hexadecimal;
-- UTF-8 text only when the returned bytes are valid UTF-8.
+- UTF-8 text only when that returned slice is valid UTF-8.
 
-Offsets refer to retained bytes, not complete-stream byte counts after truncation. A cursor beyond the retained head is rejected rather than silently reset.
+A repeated read from the returned `next` offset produces only later retained bytes. A cursor beyond the retained head is conflict rather than silent reset.
 
 ## Live transport
 
-Origins exposes authenticated server-sent event projections:
+Authenticated server-sent event projections:
 
 ```text
 GET /v1/events/live?after_sequence=<n>
@@ -56,40 +58,50 @@ GET /v1/sessions/{session_id}/output/live
     ?stdout_after=<n>&stderr_after=<n>
 ```
 
-The live journal stream repeatedly reads the durable journal cursor and emits validated `event_envelope` projections.
+The journal stream repeatedly reads the verified durable event cursor and emits canonical `event_envelope` records with their durable sequence as SSE ID.
 
-The live output stream repeatedly reads durable retained-output byte cursors and emits only newly available retained bytes. When the Session becomes terminal, it drains the final retained delta, emits terminal metadata, and closes.
+The output stream repeatedly reads the durable retained stdout/stderr cursors and emits only later retained bytes. Its SSE ID is the pair `stdout_next:stderr_next`.
 
-The push connection is not durable truth. A disconnected client resumes through the same query cursors used by ordinary authenticated reads.
+When a Session becomes terminal, the output stream drains remaining retained bytes, emits terminal metadata, and closes.
+
+SSE is a transport projection only. Disconnect/reconnect resumes from the ordinary durable query cursors; stream connection state is not mechanical truth.
 
 ## Retention and integrity
 
-This generation keeps ADR-0003 retention bounds. It does not create unbounded output history.
+ADR-0003 output bounds remain authoritative. This slice does not create unbounded output history.
 
-Incremental writes:
+Incremental persistence failure is a mechanical execution failure: the capture path fails and the Session does not continue as though output remained observable.
 
-- never exceed the per-stream retained prefix chosen by the command;
-- update retained-byte SHA-256 after each durable append;
-- fail the process Session closed if incremental output persistence fails.
+Authenticated delta/live reads verify retained-byte digests before returning data.
 
-Reads verify retained-byte digests before returning data.
+## Challenge evidence
 
-## Proof requirements
+The substantive candidate passed:
 
-Before promotion the exact head must prove:
+- Rust 1.75 dependency generation with `tokio-stream 0.1.17`;
+- Clippy with warnings denied;
+- all Rust contract/daemon/Session/event/output tests;
+- originsd build;
+- ADR-0002 authentication, persistence, journal, tamper, and restart hosted proof;
+- ADR-0003 supervised process proof;
+- ADR-0004 asynchronous acceptance, cancellation, and durable event-cursor proof;
+- a new hosted Live Session Observation proof demonstrating:
+  1. stdout retained bytes are durably readable before a slow process completes;
+  2. the same byte cursor read twice does not duplicate data;
+  3. disconnect/reconnect continues after the prior stdout/stderr cursors;
+  4. live journal SSE starts strictly after the supplied durable sequence;
+  5. journal SSE reconnect continues after the prior durable sequence;
+  6. live output SSE resumes from retained-byte cursors;
+  7. terminal live output emits terminal metadata and closes;
+  8. live routes require local authentication;
+  9. final retained stdout/stderr exactly match the incrementally persisted bytes;
+  10. SQLite contains one retained raw-output table/row path rather than a duplicate chunk store;
+  11. raw output is absent from permanent journal entries.
+- repository whitespace sanitation.
 
-1. output becomes readable before a deliberately slow process completes;
-2. only one retained raw-output copy exists in SQLite;
-3. byte-cursor delta reads return no duplicates;
-4. disconnect/reconnect with prior byte cursors resumes at the next byte;
-5. truncation remains bounded while final complete-stream byte count/hash remain truthful;
-6. retained-output tampering still fails closed;
-7. event live delivery begins after the requested journal sequence;
-8. journal live reconnect resumes without duplicate durable events;
-9. output live delivery drains final retained bytes and terminates after Session terminal state;
-10. live endpoints require authentication;
-11. raw output remains absent from the permanent journal;
-12. every ADR-0002/0003/0004 and cross-language contract proof remains green.
+The three-language Contract Spine proof also passed all semantic/equivalence gates on the substantive candidate; its only failure was rustfmt. The proof-gated owner-branch normalizer then produced the exact formatting/dependency state at head `5e6b32dd035d5b21f07f75764337a29385cff8d1`.
+
+GitHub did not execute PR workflows on that bot-authored normalization commit, so this owner-authored evidence update is the trigger for the required exact normalized-head proof. A pre-normalization green run alone is not the merge gate.
 
 ## Explicit non-claims
 
