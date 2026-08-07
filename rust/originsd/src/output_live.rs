@@ -84,8 +84,9 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
-        let (stdout, stderr, stdout_digest, stderr_digest) = stored
-            .ok_or_else(|| StoreError::Corrupt(format!("session {session_id} has no output row")))?;
+        let (stdout, stderr, stdout_digest, stderr_digest) = stored.ok_or_else(|| {
+            StoreError::Corrupt(format!("session {session_id} has no output row"))
+        })?;
         if sha256_bytes(&stdout) != stdout_digest {
             return Err(StoreError::Corrupt(format!(
                 "session {session_id} retained stdout digest mismatch"
@@ -108,12 +109,7 @@ impl Store {
     }
 }
 
-fn stream_delta(
-    stream: &str,
-    bytes: &[u8],
-    after: u64,
-    limit: u64,
-) -> Result<Value, StoreError> {
+fn stream_delta(stream: &str, bytes: &[u8], after: u64, limit: u64) -> Result<Value, StoreError> {
     let head = u64::try_from(bytes.len())
         .map_err(|_| StoreError::Corrupt(format!("retained {stream} length overflow")))?;
     if after > head {
@@ -151,8 +147,7 @@ mod tests {
     use std::path::PathBuf;
     use uuid::Uuid;
 
-    const EMPTY_SHA256: &str =
-        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+    const EMPTY_SHA256: &str = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
     fn temp_database() -> PathBuf {
         std::env::temp_dir().join(format!("originsd-live-output-{}.sqlite3", Uuid::new_v4()))
@@ -162,7 +157,9 @@ mod tests {
     fn byte_cursor_reads_only_new_retained_bytes() {
         let path = temp_database();
         let store = Store::open(&path).unwrap();
-        let workspace = store.create_workspace("Output proof", vec![], vec![]).unwrap();
+        let workspace = store
+            .create_workspace("Output proof", vec![], vec![])
+            .unwrap();
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         let command_id = Uuid::new_v4().hyphenated().to_string();
         let session = store
@@ -177,7 +174,9 @@ mod tests {
             })
             .unwrap();
         let session_id = session["session_id"].as_str().unwrap();
-        store.append_retained_output(session_id, "stdout", b"abc").unwrap();
+        store
+            .append_retained_output(session_id, "stdout", b"abc")
+            .unwrap();
         let first = store.read_output_delta(session_id, 0, 0, 2).unwrap();
         assert_eq!(first["stdout"]["text"], "ab");
         assert_eq!(first["stdout"]["next"], 2);

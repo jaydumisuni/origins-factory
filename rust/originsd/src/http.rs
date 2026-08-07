@@ -267,12 +267,7 @@ async fn live_session_output(
     require_auth(&headers, &state.local_token)?;
     state
         .store
-        .read_output_delta(
-            &session_id,
-            query.stdout_after,
-            query.stderr_after,
-            1,
-        )
+        .read_output_delta(&session_id, query.stdout_after, query.stderr_after, 1)
         .map_err(ApiError::from_store)?;
     Ok(output_stream(
         state.store,

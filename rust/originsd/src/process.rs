@@ -606,7 +606,9 @@ where
             let chunk = &buffer[..retain_count];
             store
                 .append_retained_output(&session_id, stream, chunk)
-                .map_err(|error| std::io::Error::new(std::io::ErrorKind::Other, error.to_string()))?;
+                .map_err(|error| {
+                    std::io::Error::new(std::io::ErrorKind::Other, error.to_string())
+                })?;
             retained.extend_from_slice(chunk);
         }
     }

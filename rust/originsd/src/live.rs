@@ -28,15 +28,20 @@ pub fn journal_stream(store: Store, after_sequence: u64) -> LiveStream {
                         let sequence = match event["sequence"].as_u64() {
                             Some(sequence) => sequence,
                             None => {
-                                send_error(&sender, "CORRUPT_STATE", "journal event sequence missing")
-                                    .await;
+                                send_error(
+                                    &sender,
+                                    "CORRUPT_STATE",
+                                    "journal event sequence missing",
+                                )
+                                .await;
                                 return;
                             }
                         };
                         let data = match serde_json::to_string(&event) {
                             Ok(data) => data,
                             Err(error) => {
-                                send_error(&sender, "SERIALIZATION_ERROR", &error.to_string()).await;
+                                send_error(&sender, "SERIALIZATION_ERROR", &error.to_string())
+                                    .await;
                                 return;
                             }
                         };
@@ -76,12 +81,7 @@ pub fn output_stream(
         let mut stdout_cursor = stdout_after;
         let mut stderr_cursor = stderr_after;
         loop {
-            match store.read_output_delta(
-                &session_id,
-                stdout_cursor,
-                stderr_cursor,
-                OUTPUT_PAGE,
-            ) {
+            match store.read_output_delta(&session_id, stdout_cursor, stderr_cursor, OUTPUT_PAGE) {
                 Ok(delta) => {
                     let stdout_next = match delta["stdout"]["next"].as_u64() {
                         Some(value) => value,
@@ -102,7 +102,8 @@ pub fn output_stream(
                         let data = match serde_json::to_string(&delta) {
                             Ok(data) => data,
                             Err(error) => {
-                                send_error(&sender, "SERIALIZATION_ERROR", &error.to_string()).await;
+                                send_error(&sender, "SERIALIZATION_ERROR", &error.to_string())
+                                    .await;
                                 return;
                             }
                         };
