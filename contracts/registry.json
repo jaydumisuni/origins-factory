@@ -1,5 +1,5 @@
 {
-  "registry_version": "1.1.0",
+  "registry_version": "1.2.0",
   "canonicalization": {
     "encoding": "utf-8",
     "sort_object_keys": true,
@@ -33,6 +33,10 @@
     "session_projection": {
       "schema_version": "1.0.0",
       "authority": "origins.session.projection"
+    },
+    "repository_projection": {
+      "schema_version": "1.0.0",
+      "authority": "origins.repository.projection"
     }
   }
 }

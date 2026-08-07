@@ -2,17 +2,17 @@
 
 **Recorded:** 2026-08-07
 **Architecture version:** 1.0.0 — accepted product and architecture authority
-**Implementation status:** Contract Spine + persistent originsd + Process Sessions + Active Control + Live Session Observation implemented and mechanically proven
+**Implementation status:** Contract Spine + persistent originsd + Process Sessions + Active Control + Live Observation + Repository/Git Sessions implemented and mechanically proven
 
 ## Contribution status
 
 Current work contributes **New implementation + Correction + Verification**.
 
-Origins Factory is not yet the complete workspace. Its accepted mechanical foundation now provides cross-language contracts, persistent Rust state, bounded local process execution, asynchronous control, cancellation, durable event replay, live authenticated event projection, and reconnectable one-copy retained process output.
+Origins Factory is not yet the complete workspace. Its accepted mechanical foundation now provides cross-language contracts, persistent Rust state, bounded local process execution, asynchronous control/cancellation, reconnectable event/output observation, and durable read-first repository/Git identity beneath CodeOps.
 
 ## Proven foundation
 
-### Contract Spine
+### Contract Spine v1.2
 
 Rust, Python, and TypeScript share exact validation/canonicalization for:
 
@@ -21,9 +21,10 @@ Rust, Python, and TypeScript share exact validation/canonicalization for:
 - `capability_descriptor`;
 - `command_envelope`;
 - `event_envelope`;
-- `session_projection`.
+- `session_projection`;
+- `repository_projection`.
 
-The spine enforces deterministic JSON/SHA identity, no floats, cross-language safe integers, unknown-field rejection, and no capability self-promotion. Exact three-runtime validity/error/canonical/SHA equivalence is proven.
+The spine enforces deterministic JSON/SHA identity, no floats, cross-language safe integers, unknown-field rejection, no capability self-promotion, and fail-closed Repository attached/detached/unborn state rules. Exact three-runtime validity/error/canonical/SHA equivalence is proven across the current 15-case corpus.
 
 ### originsd persistence
 
@@ -31,63 +32,72 @@ The Rust 1.75 daemon provides:
 
 - loopback-only service binding;
 - per-install local bearer authentication;
-- SQLite schema v2 with WAL/foreign keys;
+- SQLite core schema v2 with WAL/foreign keys;
 - durable Workspace and Session projections;
-- built-in capability projections;
+- core and subsystem capability projections in one durable registry;
 - append-only SHA-256 hash-chained event journal;
-- canonical validation and digest checks on durable reads;
-- Workspace, journal, and retained-output tamper detection;
+- canonical validation/digest checks on durable reads;
+- Workspace, journal, retained-output, and Repository projection tamper detection;
 - restart recovery;
 - proof-frozen Rust dependency state.
 
 ### Supervised Process Sessions v1
 
-`origins.process.run` provides:
+`origins.process.run` provides bounded non-interactive execution through registered executable + argv, authorized Workspace roots, contained relative `cwd`, cleared/minimal child environment, timeout/output bounds, complete-stream byte/SHA evidence, exact command replay binding, truthful terminal states, and honest `interrupted` restart recovery.
 
-- registered executable + argv execution without generic shell parsing;
-- installation-authorized Workspace-root policy and contained relative `cwd`;
-- cleared child environment with reviewed minimal forwarding;
-- no caller-supplied environment or stdin;
-- timeout and retained-output bounds;
-- complete stdout/stderr byte counts and SHA-256;
-- independent retained-output digests;
-- exact command-envelope digest bound to command ID;
-- exact replay idempotency and changed-replay conflict;
-- truthful `starting → running → completed | failed | timed_out | interrupted` state;
-- no invented exit codes;
-- stale active Session → `interrupted` restart recovery;
-- Workspace Session references and journal metadata without raw argv/stdout/stderr.
+Generic shells remain rejected. After Repository/Git v1, public generic process commands also reject `git`/`git.exe`; Git mechanical reads now have one dedicated authority path.
 
 ### Active Session Control v1
 
-- `POST /v1/commands` returns HTTP 202 with durable Session identity before child completion;
-- active exact replay returns the same Session without duplicate execution;
-- controlled `running` Sessions can be cancelled explicitly;
+- `POST /v1/commands` returns HTTP 202 before child completion;
+- active exact replay does not execute twice;
+- controlled `running` Sessions can be cancelled;
 - cancellation intent is journaled before the process-control signal;
 - cancelled work resolves through truthful `interrupted` state with null exit code;
-- durable event history is readable by `after_sequence` cursor across disconnect/restart.
+- durable event history is replayable by sequence cursor across disconnect/restart.
 
 ### Live Session Observation v1
 
-Live transport is now a projection over durable state rather than a new source of truth:
+- incremental retained stdout/stderr uses the existing one-copy `session_outputs` storage;
+- no duplicate raw-output/chunk database exists;
+- retained-output digests update transactionally;
+- final Session evidence still describes complete observed streams beyond retention bounds;
+- authenticated output delta reads use retained-byte cursors;
+- authenticated SSE events project the durable journal cursor;
+- authenticated SSE output resumes from durable byte cursors and drains on terminal state;
+- raw output remains outside the permanent hash-chained journal.
 
-- incremental retained stdout/stderr bytes are written into the existing `session_outputs` row while a process runs;
-- there is no second raw-output/chunk store;
-- each retained append verifies and updates its retained-byte SHA-256 transactionally;
-- final Session evidence still describes the complete observed stream even when retention truncates it;
-- authenticated output delta reads use independent stdout/stderr retained-byte cursors;
-- authenticated SSE journal delivery starts after a supplied durable event sequence;
-- authenticated SSE output delivery resumes from retained byte cursors;
-- output SSE drains remaining retained bytes, emits terminal metadata, and closes when the Session becomes terminal;
-- raw process output remains absent from the permanent hash-chained journal.
+### Repository/Git Sessions v1
 
-Current routes:
+Origins now owns read-first mechanical Git truth beneath CodeOps:
+
+- dedicated Repository/Git subsystem schema v1;
+- subsystem-owned capability manifests `origins.repository.inspect` and `origins.repository.diff` registered into the shared capability table;
+- durable Repository identity keyed by Workspace + canonical worktree root;
+- canonical worktree, Git directory, and Git common-directory identity;
+- attached branch, detached HEAD, and unborn state representation;
+- exact HEAD OID/ref/branch truth;
+- staged, unstaged, and untracked counts;
+- SHA-256 over the complete raw porcelain status stream;
+- bounded staged/unstaged diff retention with complete observed byte count/SHA and truncation truth;
+- linked-worktree identity preserving distinct Git directories and shared common directory;
+- Repository projections survive daemon restart and fail closed on digest/contract tamper;
+- raw diff content stays out of the permanent journal;
+- direct Git argv only, no shell and no Git mutation capability.
+
+CodeOps continues to own semantic repository recovery/analysis, patch planning/application, proof, correction, rollback, cross-repository engineering, and Sergeant handoff.
+
+## Current authenticated routes
 
 ```text
 GET  /v1/health
 GET  /v1/capabilities
 POST /v1/workspaces
 GET  /v1/workspaces/{workspace_id}
+POST /v1/repositories/inspect
+GET  /v1/repositories?workspace_id=<workspace_id>
+GET  /v1/repositories/{repository_id}
+GET  /v1/repositories/{repository_id}/diff?kind=staged|unstaged&limit=<bytes>
 POST /v1/commands
 GET  /v1/events
 GET  /v1/events/live
@@ -101,22 +111,26 @@ POST /v1/sessions/{session_id}/cancel
 
 ## Proof state
 
-The Live Observation challenge has passed on normalized source:
+The Repository/Git candidate has passed substantive challenge on normalized Rust source:
 
-- Python contract proof;
+- 10 Python contract tests;
 - TypeScript contract proof;
 - Rust contract proof;
-- exact Rust/Python/TypeScript equivalence;
-- Clippy with warnings denied;
-- all Rust daemon/session/event/output/integrity tests;
-- originsd build under Rust 1.75;
-- existing daemon auth/persistence/journal/restart proof;
-- ADR-0003 supervised process proof;
-- ADR-0004 asynchronous control/cancellation/event-cursor proof;
-- hosted ADR-0005 proof demonstrating output-before-completion, non-duplicating byte cursors, output disconnect/reconnect, live journal cursor reconnect, live output reconnect, terminal drain, authentication, exact final retained output, one-copy SQLite raw-output storage, and permanent-journal output hygiene;
-- repository sanitation and rustfmt.
+- exact Rust/Python/TypeScript equivalence across 15 cases;
+- Clippy with warnings denied under Rust 1.75;
+- all Rust daemon/session/event/output/repository/integrity tests;
+- originsd build;
+- every inherited ADR-0002 through ADR-0005 hosted proof;
+- Repository/Git hosted proof for authentication, authorized roots, non-Git rejection, attached HEAD identity, clean/dirty status SHA/counts, bounded staged/unstaged diff evidence, generic Git process rejection, permanent-journal hygiene, detached HEAD, linked worktree common-dir identity, restart recovery, and deliberate Repository projection tamper detection;
+- repository whitespace gate.
 
-The proof-gated normalizer produced exact dependency/format state, and an owner-authored evidence commit triggered a fresh full runtime + Contract Spine proof on the normalized source before this state record was advanced.
+Challenge corrections remain visible:
+
+- Repository/Git capability descriptors were moved out of the core built-in manifest and into their owning subsystem manifest while sharing the same durable registry;
+- inherited Process Session health proof was advanced from three core capabilities to the five-capability initialized runtime;
+- ADR-0006 was corrected from its pre-implementation route sketch to the API and contract shape actually proven.
+
+The proof-gated normalizer produced the exact Rust formatting/dependency state at `71bc6144…`. This state record and frozen ADR are owner-authored evidence updates; final merge still requires a fresh exact-head runtime + Contract Spine proof after these documentation commits.
 
 ## Canonical repository authority
 
@@ -134,7 +148,8 @@ Implementation ADRs:
 - `docs/ADR-0002-ORIGINSD-FOUNDATION.md`;
 - `docs/ADR-0003-PROCESS-SESSIONS.md`;
 - `docs/ADR-0004-ACTIVE-SESSION-CONTROL.md`;
-- `docs/ADR-0005-LIVE-SESSION-OBSERVATION.md`.
+- `docs/ADR-0005-LIVE-SESSION-OBSERVATION.md`;
+- `docs/ADR-0006-REPOSITORY-GIT-SESSIONS.md`.
 
 The exploratory `build/initial-workspace` branch remains non-authoritative.
 
@@ -142,16 +157,16 @@ The exploratory `build/initial-workspace` branch remains non-authoritative.
 
 Not implemented or proven yet:
 
+- Git mutation capabilities in Origins;
+- CodeOps semantic repository loop mounted through Origins;
+- AgentOps lifecycle/approval mount;
+- Sergeant correction/completion loop inside Origins;
+- accepted Python Origins integration runtime;
+- production Hunter mount;
 - PTY/interactive terminal Sessions;
 - stdin and terminal resize;
 - process reattachment after daemon restart;
 - stronger OS-level process/resource isolation;
-- native repository/Git Session model beyond invoking registered Git tooling;
-- accepted Python Origins integration runtime;
-- production Hunter mount;
-- AgentOps lifecycle/approval mount;
-- CodeOps mission loop inside Origins;
-- Sergeant correction/completion loop inside Origins;
 - React workspace shell;
 - Oracle integration;
 - Lumi integration;
@@ -162,17 +177,16 @@ Not implemented or proven yet:
 
 ## Next valid implementation slice
 
-Mechanical process observation is now sufficient to begin the **native repository/Git Session boundary required by CodeOps**, still before broad UI work:
+The mechanical substrate is now strong enough to mount the first semantic/assurance engineering loop **without broad UI work**:
 
-1. recover current CodeOps repository/open/diff/status/proof interfaces from its owning repository;
-2. define an Origins-owned repository Session projection that references canonical Git repository/revision truth rather than copying CodeOps state;
-3. implement read-first repository discovery/status/diff through registered deterministic Git capability boundaries;
-4. preserve branch/worktree identity and exact revisions across reconnect;
-5. keep mutations behind explicit typed capabilities rather than generic process execution;
-6. then mount AgentOps + CodeOps + Sergeant through their owning contracts;
-7. prove `NEEDS WORK → correction Attempt → fresh proof → PASS` through Origins;
-8. begin broad React Workspace construction only after those mechanical and assurance truths exist.
+1. recover the current AgentOps ↔ CodeOps runner/approval/evidence contracts and Sergeant verdict adapter from their owning repositories;
+2. define thin Origins reference/projection contracts only where Origins needs stable IDs/status display;
+3. create the Python Origins integration runtime that binds Hunter/AgentOps/CodeOps to originsd rather than bypassing it;
+4. execute repository work against durable Origins Repository IDs and mechanical Sessions;
+5. preserve CodeOps as engineering authority and Sergeant as independent reviewer;
+6. prove `NEEDS WORK → bounded correction Attempt → fresh proof → PASS` while AgentOps owns lifecycle/completion;
+7. only after that proof begin broad React Workspace construction.
 
 ## Blocking rule
 
-Do not let UI, Python workers, models, or external adapters bypass originsd or specialist authority because direct subprocess/network access would be easier. Mechanical truth and independent assurance are product boundaries, not implementation decoration.
+Do not let UI, Python workers, models, CodeOps, or external adapters bypass originsd or specialist authority because direct subprocess/network access would be easier. Mechanical truth and independent assurance are product boundaries, not implementation decoration.

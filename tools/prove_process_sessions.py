@@ -52,7 +52,7 @@ def main() -> int:
             health = wait_for_health(base_url, daemon)
             assert health["database_schema_version"] == 2
             assert health["sessions"] == 0
-            assert health["capabilities"] == 3
+            assert health["capabilities"] == 5
 
             workspace = request_json(
                 f"{base_url}/v1/workspaces",

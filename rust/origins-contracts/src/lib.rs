@@ -80,6 +80,7 @@ pub fn validate_contract(value: &Value) -> Result<(), ContractError> {
         "command_envelope" => validate_command_envelope(object),
         "event_envelope" => validate_event_envelope(object),
         "session_projection" => validate_session_projection(object),
+        "repository_projection" => validate_repository_projection(object),
         other => Err(ContractError::new(
             "UNKNOWN_CONTRACT_TYPE",
             format!("unsupported contract_type: {other}"),
@@ -351,6 +352,87 @@ fn validate_session_projection(object: &Map<String, Value>) -> Result<(), Contra
         return Err(ContractError::new(
             "INVALID_SESSION_STATE",
             format!("{state} session must not claim exit_code"),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_repository_projection(object: &Map<String, Value>) -> Result<(), ContractError> {
+    exact_fields(
+        object,
+        &[
+            "contract_type",
+            "schema_version",
+            "repository_id",
+            "workspace_id",
+            "revision",
+            "worktree_root",
+            "git_dir",
+            "common_dir",
+            "head_oid",
+            "head_ref",
+            "branch",
+            "detached",
+            "unborn",
+            "staged_count",
+            "unstaged_count",
+            "untracked_count",
+            "status_sha256",
+            "observed_at",
+        ],
+    )?;
+    canonical_uuid(object, "repository_id")?;
+    canonical_uuid(object, "workspace_id")?;
+    if nonnegative_integer(object, "revision", "INVALID_REVISION")? < 1 {
+        return Err(ContractError::new(
+            "INVALID_REVISION",
+            "repository revision must be at least 1",
+        ));
+    }
+    nonempty_string(object, "worktree_root")?;
+    nonempty_string(object, "git_dir")?;
+    nonempty_string(object, "common_dir")?;
+    let head_oid = string(object, "head_oid")?;
+    if !head_oid.is_empty() && !is_git_oid(head_oid) {
+        return Err(ContractError::new(
+            "INVALID_GIT_OID",
+            "head_oid must be empty or lowercase 40-hex Git OID",
+        ));
+    }
+    let head_ref = string(object, "head_ref")?;
+    let branch = string(object, "branch")?;
+    let detached = boolean(object, "detached")?;
+    let unborn = boolean(object, "unborn")?;
+    nonnegative_integer(object, "staged_count", "INVALID_STATUS_COUNT")?;
+    nonnegative_integer(object, "unstaged_count", "INVALID_STATUS_COUNT")?;
+    nonnegative_integer(object, "untracked_count", "INVALID_STATUS_COUNT")?;
+    digest_field(object, "status_sha256", false)?;
+    timestamp(object, "observed_at")?;
+
+    if unborn {
+        if !head_oid.is_empty() || detached || head_ref.is_empty() || branch.is_empty() {
+            return Err(ContractError::new(
+                "INVALID_REPOSITORY_STATE",
+                "unborn repository requires symbolic branch and no OID",
+            ));
+        }
+    } else if detached {
+        if head_oid.is_empty() || !head_ref.is_empty() || !branch.is_empty() {
+            return Err(ContractError::new(
+                "INVALID_REPOSITORY_STATE",
+                "detached repository requires OID and no symbolic branch",
+            ));
+        }
+    } else if head_oid.is_empty() || head_ref.is_empty() || branch.is_empty() {
+        return Err(ContractError::new(
+            "INVALID_REPOSITORY_STATE",
+            "attached repository requires OID and symbolic branch",
+        ));
+    }
+    if !head_ref.is_empty() && !branch.is_empty() && head_ref != format!("refs/heads/{branch}") {
+        return Err(ContractError::new(
+            "INVALID_REPOSITORY_STATE",
+            "head_ref and branch disagree",
         ));
     }
     Ok(())
@@ -648,6 +730,13 @@ fn authority_ref_list(object: &Map<String, Value>, field: &str) -> Result<(), Co
         }
     }
     Ok(())
+}
+
+fn is_git_oid(value: &str) -> bool {
+    value.len() == 40
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 fn is_simple_semver(value: &str) -> bool {
