@@ -5,6 +5,7 @@ on:
     branches:
       - impl/originsd-foundation-v1
       - impl/process-sessions-v1
+      - impl/active-session-control-v1
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -43,7 +44,11 @@ jobs:
         run: cargo generate-lockfile --manifest-path rust/Cargo.toml
 
       - name: Compile hosted proofs
-        run: python -m compileall -q tools/prove_originsd_recovery.py tools/prove_process_sessions.py
+        run: >-
+          python -m compileall -q
+          tools/prove_originsd_recovery.py
+          tools/prove_process_sessions.py
+          tools/prove_active_session_control.py
 
       - name: Reject Rust warnings
         run: cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
@@ -59,6 +64,9 @@ jobs:
 
       - name: Prove supervised process sessions
         run: python tools/prove_process_sessions.py --binary rust/target/debug/originsd
+
+      - name: Prove active Session control and event replay
+        run: python tools/prove_active_session_control.py --binary rust/target/debug/originsd
 
       - name: Repository whitespace gate
         run: git diff --check origin/main...HEAD

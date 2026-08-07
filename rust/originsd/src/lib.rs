@@ -1,4 +1,6 @@
 pub mod auth;
+pub mod control;
+pub mod events;
 pub mod http;
 pub mod process;
 pub mod sessions;
@@ -6,7 +8,7 @@ pub mod store;
 
 use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
-use crate::process::ProcessPolicy;
+use crate::process::{ProcessPolicy, ProcessSupervisor};
 use crate::store::Store;
 use chrono::{SecondsFormat, Utc};
 use std::env;
@@ -85,6 +87,7 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let state = AppState {
         store,
         process_policy,
+        process_supervisor: ProcessSupervisor::default(),
         local_token: Arc::<str>::from(token),
         started_at: Arc::<str>::from(now_rfc3339()),
     };

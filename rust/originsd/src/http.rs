@@ -1,7 +1,7 @@
-use crate::process::{execute_command as execute_process_command, ProcessPolicy};
+use crate::process::{accept_command as accept_process_command, ProcessPolicy, ProcessSupervisor};
 use crate::sessions::SessionOutputRecord;
 use crate::store::{Store, StoreError};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{header::AUTHORIZATION, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -14,6 +14,7 @@ use std::sync::Arc;
 pub struct AppState {
     pub store: Store,
     pub process_policy: ProcessPolicy,
+    pub process_supervisor: ProcessSupervisor,
     pub local_token: Arc<str>,
     pub started_at: Arc<str>,
 }
@@ -27,6 +28,18 @@ pub struct CreateWorkspaceRequest {
     pub session_refs: Vec<Value>,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct EventQuery {
+    #[serde(default)]
+    pub after_sequence: u64,
+    #[serde(default = "default_event_limit")]
+    pub limit: u64,
+}
+
+fn default_event_limit() -> u64 {
+    100
+}
+
 pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/v1/health", get(health))
@@ -34,9 +47,11 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/workspaces", post(create_workspace))
         .route("/v1/workspaces/:workspace_id", get(get_workspace))
         .route("/v1/commands", post(run_command))
+        .route("/v1/events", get(list_events))
         .route("/v1/sessions", get(list_sessions))
         .route("/v1/sessions/:session_id", get(get_session))
         .route("/v1/sessions/:session_id/output", get(get_session_output))
+        .route("/v1/sessions/:session_id/cancel", post(cancel_session))
         .with_state(state)
 }
 
@@ -101,25 +116,40 @@ async fn run_command(
     State(state): State<AppState>,
     headers: HeaderMap,
     Json(envelope): Json<Value>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let result = accept_process_command(
+        state.store,
+        state.process_policy,
+        state.process_supervisor,
+        envelope,
+    )
+    .map_err(ApiError::from_store)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "replayed": result.replayed,
+            "session": result.session
+        })),
+    ))
+}
+
+async fn list_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<EventQuery>,
 ) -> Result<Json<Value>, ApiError> {
     require_auth(&headers, &state.local_token)?;
-    let result = execute_process_command(state.store, state.process_policy, envelope)
-        .await
+    let page = state
+        .store
+        .list_events_after(query.after_sequence, query.limit)
         .map_err(ApiError::from_store)?;
-    let session_id = result.session["session_id"]
-        .as_str()
-        .ok_or_else(|| {
-            ApiError::new(
-                StatusCode::SERVICE_UNAVAILABLE,
-                "CORRUPT_STATE",
-                "process session_id missing after execution",
-            )
-        })?
-        .to_owned();
     Ok(Json(json!({
-        "replayed": result.replayed,
-        "session": result.session,
-        "output": output_json(&session_id, result.output),
+        "events": page.events,
+        "after_sequence": page.after_sequence,
+        "next_sequence": page.next_sequence,
+        "head_sequence": page.head_sequence,
+        "head_hash": page.head_hash
     })))
 }
 
@@ -156,6 +186,30 @@ async fn get_session_output(
         .get_session_output(&session_id)
         .map_err(ApiError::from_store)?;
     Ok(Json(output_json(&session_id, output)))
+}
+
+async fn cancel_session(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let event = state
+        .store
+        .record_process_cancel_requested(&session_id)
+        .map_err(ApiError::from_store)?;
+    state
+        .process_supervisor
+        .cancel(&session_id)
+        .map_err(ApiError::from_store)?;
+    Ok((
+        StatusCode::ACCEPTED,
+        Json(json!({
+            "accepted": true,
+            "session_id": session_id,
+            "event": event
+        })),
+    ))
 }
 
 fn output_json(session_id: &str, output: SessionOutputRecord) -> Value {

@@ -19,6 +19,7 @@ from pathlib import Path
 
 TOKEN = "origins-process-proof-token"
 SECRET_ARG = "SECRET_PROCESS_ARG_91"
+TERMINAL_STATES = {"completed", "failed", "interrupted", "timed_out"}
 
 
 def main() -> int:
@@ -89,33 +90,27 @@ def main() -> int:
                 ],
                 cwd="nested",
             )
-            success = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=success_command,
+            success_accept = submit_command(base_url, success_command)
+            assert success_accept["replayed"] is False
+            success_session_id = success_accept["session"]["session_id"]
+            success_session = wait_for_session(base_url, success_session_id)
+            assert success_session["state"] == "completed"
+            assert success_session["exit_code"] == 0
+            success_output = request_json(
+                f"{base_url}/v1/sessions/{success_session_id}/output", token=TOKEN
             )
-            assert success["replayed"] is False
-            assert success["session"]["state"] == "completed"
-            assert success["session"]["exit_code"] == 0
-            assert "VISIBLE_OUT" in success["output"]["stdout"]
-            assert "TOKEN_ABSENT" in success["output"]["stdout"]
-            assert "TOKEN_PRESENT" not in success["output"]["stdout"]
-            assert "VISIBLE_ERR" in success["output"]["stderr"]
-            success_session_id = success["session"]["session_id"]
-            stdout_bytes = bytes.fromhex(success["output"]["stdout_hex"])
-            stderr_bytes = bytes.fromhex(success["output"]["stderr_hex"])
-            assert hashlib.sha256(stdout_bytes).hexdigest() == success["session"]["stdout_sha256"]
-            assert hashlib.sha256(stderr_bytes).hexdigest() == success["session"]["stderr_sha256"]
-            assert len(stdout_bytes) == success["session"]["stdout_bytes"]
-            assert len(stderr_bytes) == success["session"]["stderr_bytes"]
+            assert "VISIBLE_OUT" in success_output["stdout"]
+            assert "TOKEN_ABSENT" in success_output["stdout"]
+            assert "TOKEN_PRESENT" not in success_output["stdout"]
+            assert "VISIBLE_ERR" in success_output["stderr"]
+            stdout_bytes = bytes.fromhex(success_output["stdout_hex"])
+            stderr_bytes = bytes.fromhex(success_output["stderr_hex"])
+            assert hashlib.sha256(stdout_bytes).hexdigest() == success_session["stdout_sha256"]
+            assert hashlib.sha256(stderr_bytes).hexdigest() == success_session["stderr_sha256"]
+            assert len(stdout_bytes) == success_session["stdout_bytes"]
+            assert len(stderr_bytes) == success_session["stderr_bytes"]
 
-            replay = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=success_command,
-            )
+            replay = submit_command(base_url, success_command)
             assert replay["replayed"] is True
             assert replay["session"]["session_id"] == success_session_id
 
@@ -129,40 +124,34 @@ def main() -> int:
                 payload=conflicting_replay,
             )
 
-            failed = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=command_envelope(
+            failed_session, _ = submit_and_wait(
+                base_url,
+                command_envelope(
                     workspace_id,
                     workspace_root,
                     executable="python3",
                     args=["-c", "import sys; sys.exit(7)"],
                 ),
             )
-            assert failed["session"]["state"] == "failed"
-            assert failed["session"]["exit_code"] == 7
+            assert failed_session["state"] == "failed"
+            assert failed_session["exit_code"] == 7
 
-            interrupted = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=command_envelope(
+            interrupted_session, _ = submit_and_wait(
+                base_url,
+                command_envelope(
                     workspace_id,
                     workspace_root,
                     executable="hunter-codeops-switcher",
                     args=[],
                 ),
             )
-            assert interrupted["session"]["state"] == "interrupted"
-            assert interrupted["session"]["exit_code"] is None
-            assert interrupted["session"]["timed_out"] is False
+            assert interrupted_session["state"] == "interrupted"
+            assert interrupted_session["exit_code"] is None
+            assert interrupted_session["timed_out"] is False
 
-            timed_out = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=command_envelope(
+            timed_out_session, _ = submit_and_wait(
+                base_url,
+                command_envelope(
                     workspace_id,
                     workspace_root,
                     executable="python3",
@@ -171,15 +160,13 @@ def main() -> int:
                 ),
                 timeout=8,
             )
-            assert timed_out["session"]["state"] == "timed_out"
-            assert timed_out["session"]["timed_out"] is True
-            assert timed_out["session"]["exit_code"] is None
+            assert timed_out_session["state"] == "timed_out"
+            assert timed_out_session["timed_out"] is True
+            assert timed_out_session["exit_code"] is None
 
-            truncated = request_json(
-                f"{base_url}/v1/commands",
-                token=TOKEN,
-                method="POST",
-                payload=command_envelope(
+            truncated_session, truncated_output = submit_and_wait(
+                base_url,
+                command_envelope(
                     workspace_id,
                     workspace_root,
                     executable="python3",
@@ -187,11 +174,11 @@ def main() -> int:
                     max_output_bytes=64,
                 ),
             )
-            assert truncated["session"]["state"] == "completed"
-            assert truncated["output"]["output_truncated"] is True
-            assert truncated["output"]["stdout_bytes"] > 64
-            assert truncated["output"]["stdout_retained_bytes"] == 64
-            assert len(bytes.fromhex(truncated["output"]["stdout_hex"])) == 64
+            assert truncated_session["state"] == "completed"
+            assert truncated_output["output_truncated"] is True
+            assert truncated_output["stdout_bytes"] > 64
+            assert truncated_output["stdout_retained_bytes"] == 64
+            assert len(bytes.fromhex(truncated_output["stdout_hex"])) == 64
 
             shell_command = command_envelope(
                 workspace_id,
@@ -242,7 +229,7 @@ def main() -> int:
                 f"{base_url}/v1/sessions/{success_session_id}/output", token=TOKEN
             )
             assert "VISIBLE_OUT" in output["stdout"]
-            assert output["stdout_hex"] == success["output"]["stdout_hex"]
+            assert output["stdout_hex"] == success_output["stdout_hex"]
 
             updated_workspace = request_json(
                 f"{base_url}/v1/workspaces/{workspace_id}", token=TOKEN
@@ -294,10 +281,39 @@ def main() -> int:
         assert SECRET_ARG not in combined
 
     print(
-        "PASS: supervised process sessions, replay binding, environment hygiene, "
+        "PASS: supervised process sessions, async acceptance, replay binding, environment hygiene, "
         "root policy, output integrity and journal hygiene"
     )
     return 0
+
+
+def submit_command(base_url: str, command: dict) -> dict:
+    return request_json(
+        f"{base_url}/v1/commands",
+        token=TOKEN,
+        method="POST",
+        payload=command,
+        expected_status=202,
+    )
+
+
+def submit_and_wait(base_url: str, command: dict, *, timeout: int = 10) -> tuple[dict, dict]:
+    accepted = submit_command(base_url, command)
+    session_id = accepted["session"]["session_id"]
+    session = wait_for_session(base_url, session_id, timeout=timeout)
+    output = request_json(f"{base_url}/v1/sessions/{session_id}/output", token=TOKEN)
+    return session, output
+
+
+def wait_for_session(base_url: str, session_id: str, *, timeout: int = 10) -> dict:
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        last = request_json(f"{base_url}/v1/sessions/{session_id}", token=TOKEN)
+        if last["state"] in TERMINAL_STATES:
+            return last
+        time.sleep(0.05)
+    raise AssertionError(f"session {session_id} did not become terminal: {last}")
 
 
 def command_envelope(

@@ -4,14 +4,16 @@ use origins_contracts::{contract_sha256, validate_contract};
 use serde::Deserialize;
 use serde_json::Value;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::env;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
-use tokio::time::timeout;
+use tokio::sync::oneshot;
+use tokio::time::sleep;
 
 const MAX_TIMEOUT_SECONDS: u64 = 3_600;
 const MAX_OUTPUT_BYTES: u64 = 8 * 1024 * 1024;
@@ -124,6 +126,50 @@ impl ProcessPolicy {
     }
 }
 
+#[derive(Clone, Default)]
+pub struct ProcessSupervisor {
+    controls: Arc<Mutex<HashMap<String, oneshot::Sender<()>>>>,
+}
+
+impl ProcessSupervisor {
+    fn register(&self, session_id: &str, sender: oneshot::Sender<()>) -> Result<(), StoreError> {
+        let mut controls = self
+            .controls
+            .lock()
+            .map_err(|_| StoreError::Corrupt("process supervisor lock poisoned".to_owned()))?;
+        if controls.insert(session_id.to_owned(), sender).is_some() {
+            return Err(StoreError::Conflict(format!(
+                "session {session_id} already has a live process control"
+            )));
+        }
+        Ok(())
+    }
+
+    fn remove(&self, session_id: &str) {
+        if let Ok(mut controls) = self.controls.lock() {
+            controls.remove(session_id);
+        }
+    }
+
+    pub fn cancel(&self, session_id: &str) -> Result<(), StoreError> {
+        let sender = self
+            .controls
+            .lock()
+            .map_err(|_| StoreError::Corrupt("process supervisor lock poisoned".to_owned()))?
+            .remove(session_id)
+            .ok_or_else(|| {
+                StoreError::Conflict(format!(
+                    "session {session_id} is not controlled by this daemon generation"
+                ))
+            })?;
+        sender.send(()).map_err(|_| {
+            StoreError::Conflict(format!(
+                "session {session_id} finished before cancellation was delivered"
+            ))
+        })
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProcessPayload {
@@ -136,17 +182,17 @@ struct ProcessPayload {
 }
 
 #[derive(Debug, Clone)]
-pub struct ProcessExecutionResult {
+pub struct ProcessAcceptanceResult {
     pub session: Value,
-    pub output: SessionOutputRecord,
     pub replayed: bool,
 }
 
-pub async fn execute_command(
+pub fn accept_command(
     store: Store,
     policy: ProcessPolicy,
+    supervisor: ProcessSupervisor,
     envelope: Value,
-) -> Result<ProcessExecutionResult, StoreError> {
+) -> Result<ProcessAcceptanceResult, StoreError> {
     validate_contract(&envelope).map_err(|error| StoreError::InvalidInput(error.to_string()))?;
     if envelope["contract_type"] != "command_envelope" {
         return Err(StoreError::InvalidInput(
@@ -163,11 +209,8 @@ pub async fn execute_command(
     let command_sha256 = contract_sha256(&envelope)
         .map_err(|error| StoreError::InvalidInput(format!("command digest failed: {error}")))?;
     if let Some(session) = store.get_session_for_command(command_id, &command_sha256)? {
-        let session_id = required_string(&session, "session_id")?;
-        let output = store.get_session_output(session_id)?;
-        return Ok(ProcessExecutionResult {
+        return Ok(ProcessAcceptanceResult {
             session,
-            output,
             replayed: true,
         });
     }
@@ -195,11 +238,8 @@ pub async fn execute_command(
         Ok(session) => session,
         Err(StoreError::Conflict(_)) => {
             if let Some(session) = store.get_session_for_command(command_id, &command_sha256)? {
-                let session_id = required_string(&session, "session_id")?;
-                let output = store.get_session_output(session_id)?;
-                return Ok(ProcessExecutionResult {
+                return Ok(ProcessAcceptanceResult {
                     session,
-                    output,
                     replayed: true,
                 });
             }
@@ -210,7 +250,46 @@ pub async fn execute_command(
         Err(error) => return Err(error),
     };
     let session_id = required_string(&starting, "session_id")?.to_owned();
+    let (cancel_sender, cancel_receiver) = oneshot::channel();
+    if let Err(error) = supervisor.register(&session_id, cancel_sender) {
+        let output = output_from_error("process supervisor registration failed", 1024);
+        let _ = store.finish_process_session(
+            &session_id,
+            "interrupted",
+            None,
+            false,
+            output,
+            "supervisor_registration_failed",
+        );
+        return Err(error);
+    }
 
+    let run_store = store.clone();
+    let cleanup_store = store.clone();
+    let cleanup_supervisor = supervisor.clone();
+    let cleanup_session_id = session_id.clone();
+    tokio::spawn(async move {
+        if run_process(run_store, &cleanup_session_id, prepared, cancel_receiver)
+            .await
+            .is_err()
+        {
+            let _ = cleanup_store.interrupt_process_session(&cleanup_session_id);
+        }
+        cleanup_supervisor.remove(&cleanup_session_id);
+    });
+
+    Ok(ProcessAcceptanceResult {
+        session: starting,
+        replayed: false,
+    })
+}
+
+async fn run_process(
+    store: Store,
+    session_id: &str,
+    prepared: PreparedProcess,
+    mut cancel_receiver: oneshot::Receiver<()>,
+) -> Result<(), StoreError> {
     let mut command = Command::new(&prepared.executable);
     command
         .args(&prepared.args)
@@ -226,19 +305,15 @@ pub async fn execute_command(
         Ok(child) => child,
         Err(error) => {
             let output = output_from_error(&error.to_string(), prepared.max_output_bytes as usize);
-            let session = store.finish_process_session(
-                &session_id,
+            store.finish_process_session(
+                session_id,
                 "interrupted",
                 None,
                 false,
-                output.clone(),
+                output,
                 "spawn_failed",
             )?;
-            return Ok(ProcessExecutionResult {
-                session,
-                output,
-                replayed: false,
-            });
+            return Ok(());
         }
     };
 
@@ -251,22 +326,18 @@ pub async fn execute_command(
                 "spawned process did not expose a process identifier",
                 prepared.max_output_bytes as usize,
             );
-            let session = store.finish_process_session(
-                &session_id,
+            store.finish_process_session(
+                session_id,
                 "interrupted",
                 None,
                 false,
-                output.clone(),
+                output,
                 "missing_process_id",
             )?;
-            return Ok(ProcessExecutionResult {
-                session,
-                output,
-                replayed: false,
-            });
+            return Ok(());
         }
     };
-    store.mark_process_running(&session_id, pid)?;
+    store.mark_process_running(session_id, pid)?;
 
     let stdout = child
         .stdout
@@ -279,21 +350,31 @@ pub async fn execute_command(
     let output_limit = prepared.max_output_bytes as usize;
     let stdout_task = tokio::spawn(capture_stream(stdout, output_limit));
     let stderr_task = tokio::spawn(capture_stream(stderr, output_limit));
+    let timeout_sleep = sleep(Duration::from_secs(prepared.timeout_seconds));
+    tokio::pin!(timeout_sleep);
 
-    let wait_outcome =
-        match timeout(Duration::from_secs(prepared.timeout_seconds), child.wait()).await {
-            Ok(Ok(status)) if status.success() => ("completed", Some(0), false, "exit_zero"),
-            Ok(Ok(status)) => match status.code() {
-                Some(code) => ("failed", Some(code), false, "nonzero_exit"),
-                None => ("interrupted", None, false, "terminated_without_exit_code"),
-            },
-            Ok(Err(_)) => ("interrupted", None, false, "wait_failed"),
-            Err(_) => {
-                let _ = child.kill().await;
-                let _ = child.wait().await;
-                ("timed_out", None, true, "timeout")
+    let wait_outcome = tokio::select! {
+        status = child.wait() => {
+            match status {
+                Ok(status) if status.success() => ("completed", Some(0), false, "exit_zero"),
+                Ok(status) => match status.code() {
+                    Some(code) => ("failed", Some(code), false, "nonzero_exit"),
+                    None => ("interrupted", None, false, "terminated_without_exit_code"),
+                },
+                Err(_) => ("interrupted", None, false, "wait_failed"),
             }
-        };
+        }
+        _ = &mut cancel_receiver => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            ("interrupted", None, false, "cancelled_by_client")
+        }
+        _ = &mut timeout_sleep => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            ("timed_out", None, true, "timeout")
+        }
+    };
 
     let stdout_capture = match stdout_task.await {
         Ok(Ok(capture)) => capture,
@@ -319,19 +400,8 @@ pub async fn execute_command(
     } else {
         wait_outcome
     };
-    let session = store.finish_process_session(
-        &session_id,
-        state,
-        exit_code,
-        timed_out,
-        output.clone(),
-        reason,
-    )?;
-    Ok(ProcessExecutionResult {
-        session,
-        output,
-        replayed: false,
-    })
+    store.finish_process_session(session_id, state, exit_code, timed_out, output, reason)?;
+    Ok(())
 }
 
 struct PreparedProcess {
