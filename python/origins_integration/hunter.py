@@ -190,7 +190,11 @@ class HunterIntelligenceMount:
         if service != "hunter-api-worker":
             raise HunterMountError(f"unexpected Hunter service identity {service!r}")
         environment = str(version_body.get("environment") or "")
-        deployment = version_body.get("deployment") if isinstance(version_body.get("deployment"), dict) else {}
+        deployment = (
+            version_body.get("deployment")
+            if isinstance(version_body.get("deployment"), dict)
+            else {}
+        )
         git_commit = str(deployment.get("gitCommit") or "")
 
         identity = session_body.get("identity")
@@ -214,19 +218,13 @@ class HunterIntelligenceMount:
 
         provider_values = provider_body.get("providers")
         providers_list = provider_values if isinstance(provider_values, list) else []
-        production_origin = origin.startswith("https://")
-        live_proven = (
-            self._proof_scope is _ProofScope.LIVE_OWNER
-            and production_origin
-            and environment == "production"
-        )
 
         return HunterDoctorResult(
             workspace_id=workspace_id,
             proof_scope=self._proof_scope.value,
             transport_origin=origin,
             compatible=True,
-            live_hunter_proven=live_proven,
+            live_hunter_proven=False,
             deployment_service=service,
             deployment_environment=environment,
             deployment_git_commit=git_commit,
@@ -306,11 +304,17 @@ class HunterIntelligenceMount:
         if save_body.get("ok") is not True:
             raise HunterMountError("Hunter chat save did not confirm success")
 
+        live_proven = (
+            self._proof_scope is _ProofScope.LIVE_OWNER
+            and doctor.transport_origin.startswith("https://")
+            and doctor.deployment_environment == "production"
+        )
+
         return HunterTurnReceipt(
             workspace_id=workspace_id,
             hunter_session_id=session_id,
             proof_scope=self._proof_scope.value,
-            live_hunter_proven=doctor.live_hunter_proven,
+            live_hunter_proven=live_proven,
             provider=provider,
             model=model,
             context=context,
@@ -418,7 +422,14 @@ def _compact_transport(value: dict[str, Any]) -> dict[str, Any]:
     transport = value.get("transport")
     if not isinstance(transport, dict):
         raise HunterMountError("originsd Hunter response omitted transport receipt")
-    required = ("request_id", "operation", "http_status", "request_sha256", "response_sha256", "response_bytes")
+    required = (
+        "request_id",
+        "operation",
+        "http_status",
+        "request_sha256",
+        "response_sha256",
+        "response_bytes",
+    )
     compact: dict[str, Any] = {}
     for field in required:
         if field not in transport:
