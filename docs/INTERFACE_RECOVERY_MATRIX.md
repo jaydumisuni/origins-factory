@@ -1,7 +1,7 @@
 # Origins Factory — Integration Recovery Matrix
 
-**Status:** FROZEN implementation input for Contract Spine v1  
-**Branch:** `impl/contract-spine-v1`  
+**Status:** FROZEN implementation input for Contract Spine v1
+**Branch:** `impl/contract-spine-v1`
 **Architecture authority:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 
 ## Purpose
