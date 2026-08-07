@@ -1,6 +1,6 @@
 # ADR-0001 — Origins Factory Contract Spine v1
 
-**Status:** ACCEPTED for initial implementation
+**Status:** FROZEN implementation foundation
 **Date:** 2026-08-07
 **Authority:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 
@@ -28,18 +28,22 @@ The desktop wrapper remains packaging, not runtime authority. Tauri, Qt or anoth
 
 ## Canonical JSON
 
-Origins reuses the proven Huawei canonicalization theorem:
+Origins reuses and extends the proven Huawei canonicalization theorem:
 
 - UTF-8;
 - object keys lexicographically sorted;
 - no insignificant whitespace;
 - array order preserved;
 - integers only in authoritative contract numeric fields;
+- integers are limited to the exact cross-language range `-9007199254740991..9007199254740991`;
+- larger counters/identifiers must be represented explicitly as strings rather than lossy JSON numbers;
 - floating point rejected;
 - Unicode preserved;
 - SHA-256 calculated over canonical UTF-8 bytes.
 
-Cross-language fixtures must prove identical canonical bytes and digest in Rust, Python and TypeScript before the registry is frozen.
+The safe-integer bound exists because Rust and Python can represent wider integers than JavaScript/TypeScript can represent exactly. Silent precision loss is forbidden.
+
+Cross-language fixtures prove identical validity decisions, stable error codes, canonical bytes and digests in Rust, Python and TypeScript.
 
 ## Initial Origins-owned contract types
 
@@ -178,6 +182,8 @@ Python is never allowed to bypass Rust/native or specialist authority merely bec
 
 The React/TypeScript UI consumes the same contracts. It may cache projections but cannot own Operation, device, browser, download or review truth.
 
+TypeScript participates in contract validation and canonicalization proof so the visible workspace cannot silently reinterpret authoritative documents. This does not make the UI an authority.
+
 ## Upgrade rule
 
 No capability may modify and activate its own replacement in one unchecked path.
@@ -215,12 +221,18 @@ Rejected because it destroys capability boundaries, effect classification and pr
 
 ## Proof gates
 
-Contract Spine v1 is not frozen until:
+Contract Spine v1 is frozen only when all of the following pass together:
 
 1. valid/invalid fixtures exist;
-2. Rust and Python canonicalization match exactly;
-3. unknown fields and floating-point values fail closed;
-4. contract digests match exactly;
-5. workspace projections cannot claim foreign authority;
-6. capability descriptors cannot grant permissions they merely describe;
-7. the first vertical slice runs through typed envelopes rather than UI-owned state.
+2. Rust, Python and TypeScript validity decisions match;
+3. Rust, Python and TypeScript canonical JSON and SHA-256 match exactly;
+4. unknown fields, floating-point values and unsafe-width integers fail closed;
+5. self-promotion is explicitly rejected;
+6. workspace projections remain references/projections rather than foreign truth;
+7. Python tests pass;
+8. TypeScript tests pass;
+9. Rust Clippy passes with warnings denied;
+10. Rust tests and proof CLI build pass;
+11. repository whitespace and rustfmt gates pass.
+
+These gates have been exercised successfully on the Contract Spine v1 implementation branch before promotion. The next implementation stage may build `originsd` against these frozen semantics.
