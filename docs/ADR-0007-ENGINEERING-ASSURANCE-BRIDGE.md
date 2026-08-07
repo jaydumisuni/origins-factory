@@ -1,6 +1,6 @@
 # ADR-0007 — Engineering Assurance Bridge v1
 
-**Status:** ACCEPTED for implementation and challenge
+**Status:** FROZEN — protocol bridge mechanically proven; live private-package mount pending
 **Date:** 2026-08-07
 **Depends on:** ADR-0001 through ADR-0006
 **External authorities recovered:** `jaydumisuni/Hunter-AgentOps`, `jaydumisuni/hunter-codeops`, `jaydumisuni/Sergeant`
@@ -8,8 +8,6 @@
 ## Purpose
 
 Mount the first semantic engineering + independent-assurance loop into Origins without copying AgentOps lifecycle, CodeOps engineering, or Sergeant review authority.
-
-The bridge connects the already-proven Origins mechanical substrate to the current owning contracts:
 
 ```text
 AgentOps operation packet / approval
@@ -22,7 +20,7 @@ AgentOps operation packet / approval
 → exact action returned to AgentOps
 ```
 
-This is the first Origins integration slice where semantic work and assurance cross the native mechanical substrate.
+This is the first Origins integration slice where semantic engineering work and independent assurance cross the native mechanical substrate.
 
 ## Recovered authority
 
@@ -36,27 +34,27 @@ Current `hunter_agentops.code_ops_switcher_runner` proves:
 - AgentOps owns operation state, approval, evidence transport, loop control, and completion;
 - production lifecycle/audit backend wiring is still explicitly pending in AgentOps.
 
-Origins therefore must not create a competing semantic operation database and must not claim AgentOps completion persistence in this generation.
+Origins therefore does not create a competing semantic operation database and does not claim AgentOps completion persistence in this generation.
 
 ### CodeOps
 
-Current CodeOps CLI exposes machine-facing JSON commands:
+Current CodeOps machine-facing interfaces expose:
 
 - `route`;
 - `apply-plan`;
 - `sergeant-command`;
 - `ingest-sergeant`.
 
-Current SRG contracts define CodeOps as builder/router/patch/proof/correction authority while Sergeant remains independent. Canonical review actions are:
+Current CodeOps SRG contracts keep CodeOps as builder/router/patch/proof/correction authority while Sergeant remains independent. Canonical review routing is:
 
 ```text
-PASS       → complete candidate / verified evidence
-NEEDS WORK → correct / failed verification
-BLOCK      → block / failed verification
-UNKNOWN    → unresolved / partial evidence
+PASS       → complete candidate
+NEEDS WORK → correct
+BLOCK      → block
+UNKNOWN    → unresolved
 ```
 
-Origins must not replace this mapping with substring parsing or its own reviewer semantics.
+Origins does not replace CodeOps' verdict ingestion with substring parsing or its own review semantics.
 
 ### Sergeant
 
@@ -68,7 +66,7 @@ NEEDS WORK
 BLOCK
 ```
 
-Sergeant does not auto-modify or auto-merge project code. Optional model support is not required for this bridge.
+Sergeant does not auto-modify or auto-merge project code. Optional model support is not required by this bridge.
 
 ## Runtime boundary
 
@@ -79,7 +77,7 @@ It may:
 - recover an Origins Repository projection through authenticated originsd HTTP;
 - construct/validate the owning AgentOps `CodeOpsOperationPacket` when the AgentOps package is installed;
 - submit CodeOps and Sergeant executables through `origins.process.run` only;
-- wait for durable Origins Sessions and read their retained output through originsd;
+- wait for durable Origins Sessions and read retained output through originsd;
 - use CodeOps' owning Sergeant result-ingestion function in-process for semantic normalization;
 - return a structured attempt result to AgentOps/Hunter.
 
@@ -92,22 +90,37 @@ It may not:
 - parse a Sergeant verdict with Origins-owned substring rules;
 - mark PASS as AgentOps-complete by itself.
 
+## External package mount
+
+Production mode dynamically imports exactly:
+
+```text
+hunter_agentops.code_ops_switcher_runner
+hunter_codeops.code_ops_sergeant_ingest
+```
+
+It expects the owning `ApprovalState`, `CodeOpsOperationPacket`, and `ingest_sergeant_result_text` interfaces. Missing or incompatible owning packages fail closed with `IntegrationUnavailable`.
+
+Origins does not vendor copies of these authorities.
+
+The production loader itself is unit-proven to target those exact module names. **The current CI does not install or execute the user's private AgentOps/CodeOps packages, so live production-package compatibility is not yet claimed.**
+
 ## Restart honesty
 
 AgentOps' production persistent lifecycle wiring is not yet accepted in its owning repository. Therefore Engineering Assurance Bridge v1 is restart-honest:
 
-- Origins mechanical Sessions/Repository evidence remain durable;
-- the bridge returns operation ID + mechanical Session IDs + normalized review result to AgentOps;
+- Origins Repository and mechanical Session evidence remain durable;
+- the bridge returns operation ID, Session IDs, review digest, normalized verdict, and recommended action;
 - Origins does not claim durable semantic loop resumption from its own database;
-- full semantic resume waits for the owning AgentOps lifecycle backend or a later accepted contract from that repository.
+- full semantic resume waits for the owning AgentOps lifecycle backend or a later accepted AgentOps contract.
 
-No shadow operation store is introduced merely to make the demo look persistent.
+No shadow operation store is introduced merely to simulate persistence.
 
 ## Attempt model
 
-One bridge call is one bounded engineering attempt.
+One bridge call is one bounded engineering Attempt.
 
-Input references:
+Input references include:
 
 - AgentOps `operation_id`;
 - Origins `repository_id`;
@@ -118,22 +131,22 @@ Input references:
 - apply intent + AgentOps approval state;
 - CodeOps route settings.
 
-Output contains:
+Output includes:
 
 - operation ID;
-- Repository ID and exact repository projection revision observed before work;
+- Repository ID and observed repository projection revision/HEAD;
 - CodeOps route Session/result;
 - optional CodeOps dry-run/apply Session/result;
 - Sergeant-command Session/result;
-- Sergeant review Session/result digest;
+- Sergeant review Session and stdout SHA-256;
 - CodeOps-normalized verdict, `needs_loop`, `blocked`, and summary;
 - recommended AgentOps action: `complete_candidate`, `correct`, `block`, or `unresolved`.
 
-The action is advice to the AgentOps lifecycle owner, not Origins completion authority.
+The recommendation is advice to the AgentOps lifecycle owner, not Origins completion authority.
 
 ## Correction loop
 
-A full loop is repeated bounded attempts under the same AgentOps operation ID:
+A full loop is repeated bounded Attempts under the same AgentOps operation ID:
 
 ```text
 Attempt 1
@@ -150,7 +163,7 @@ Attempt 2
 → AgentOps decides completion
 ```
 
-A `BLOCK` never silently enters correction. `UNKNOWN` never becomes PASS.
+`BLOCK` does not silently enter correction. `UNKNOWN` does not become PASS.
 
 ## Plan and path rules
 
@@ -158,11 +171,11 @@ Origins adds no new file mutation engine.
 
 For v1:
 
-- changed files must remain relative and are validated by AgentOps' owning packet;
-- optional plan path must be relative to the Repository worktree and must not contain parent/root/drive escape semantics;
-- `apply-plan` is never sent with `--apply` unless AgentOps approval is `approved`;
+- changed files remain relative and are validated by the AgentOps packet interface;
+- config and optional plan paths must remain relative to the Repository worktree and reject parent/root/drive escape semantics;
+- `apply-plan --apply` is never submitted unless AgentOps packet validation accepts the approved apply intent;
 - route-only and dry-run paths do not imply mutation approval;
-- provider execution is outside this first bridge slice; this avoids silently bypassing paid/external-provider approval policy.
+- provider execution is outside this first bridge slice, avoiding unreviewed paid/external-provider policy bypass.
 
 ## Mechanical command routing
 
@@ -173,57 +186,58 @@ hunter-codeops-switcher ...
 sergeant ...
 ```
 
-They therefore inherit originsd's current mechanical controls:
+They therefore inherit originsd controls: executable allowlist, argv rather than shell strings, authorized Workspace root, bounded output, durable Session identity, cancellation/observation, exact replay binding, and no generic Git path.
 
-- executable allowlist;
-- argv rather than shell strings;
-- authorized Workspace root;
-- bounded Session output;
-- durable Session identity;
-- cancellation/observation;
-- exact command replay binding;
-- no generic Git path.
-
-## External package mount
-
-Production mode dynamically imports the current owning packages:
+The CodeOps-produced Sergeant argv is constrained before execution to the recovered contract:
 
 ```text
-hunter_agentops.code_ops_switcher_runner
-hunter_codeops.code_ops_sergeant_ingest
+sergeant app-review <repository-worktree> --mode <review-mode> [--files <exact-scope>] [--pretty]
 ```
 
-Missing or incompatible owning packages fail closed with an explicit integration-unavailable error.
+A changed executable, worktree, file scope, or unsupported flag fails before Sergeant execution.
 
-Origins does not vendor copies of these authorities.
+Sergeant semantic ingestion requires a successful, non-truncated mechanical Session so incomplete review output cannot be normalized as a verdict.
 
-CI may use protocol fixtures to prove the Origins bridge independently of private-repository installation. Such fixture proof demonstrates Origins routing/loop behavior only; it must not be reported as live production AgentOps/CodeOps/Sergeant package proof.
+## Protocol-fixture proof boundary
 
-## Proof requirements
+CI uses protocol fixtures for the private AgentOps/CodeOps package surfaces. The fixture proof demonstrates the **Origins bridge routing, approval, mechanical Session, evidence, and loop behavior** independently of private-package installation.
 
-Before promotion the exact head must prove:
+It does not prove that the private packages are installed on a target machine, that their current executable packaging is available there, or that AgentOps' production lifecycle backend exists.
 
-1. no Python subprocess use in the Origins engineering bridge;
-2. Repository identity/worktree comes from originsd, not caller-supplied mechanical truth;
-3. AgentOps packet validation is invoked through the owning adapter interface;
-4. unsafe relative plan paths fail before mechanical execution;
-5. unapproved apply intent fails before mechanical execution;
-6. CodeOps route command executes only through an originsd Session;
-7. CodeOps `sergeant-command` executes only through an originsd Session;
-8. returned Sergeant command is constrained to the expected `sergeant` executable and Repository worktree;
-9. Sergeant review executes only through originsd;
-10. review output digest is preserved;
-11. verdict normalization is delegated to the CodeOps ingest interface;
-12. `PASS`, `NEEDS WORK`, `BLOCK`, and `UNKNOWN` map to distinct AgentOps recommendations without promotion by substring;
-13. a two-attempt fixture proves `NEEDS WORK → correction → fresh PASS` while keeping the same external operation ID and distinct mechanical Sessions;
-14. plan apply is absent without approved AgentOps state;
-15. all ADR-0002 through ADR-0006 Origins runtime/contract proofs remain green;
-16. documentation never claims the AgentOps production lifecycle backend is already mounted.
+## Challenge evidence
+
+The challenged exact candidate passed:
+
+1. Python bridge source contains no Python `subprocess` import/use;
+2. unsafe config/plan paths are rejected;
+3. exact AgentOps/CodeOps production import module names are pinned by test;
+4. canonical review recommendation map is exact and non-promoting;
+5. CodeOps-produced Sergeant command shape is constrained before execution;
+6. all CodeOps and Sergeant fixture processes execute through real durable `originsd` Sessions;
+7. a real Origins Workspace + Repository projection anchors the hosted proof;
+8. Attempt 1 returns canonical `NEEDS WORK` and recommendation `correct`;
+9. review stdout SHA-256 matches the durable Session evidence;
+10. the compact bridge evidence record keeps normalized verdict/IDs/digests without duplicating raw review summary/output;
+11. unapproved `apply_plan=True` is rejected by the AgentOps adapter before any new mechanical Session is created;
+12. unsafe plan escape is rejected before mechanical execution;
+13. Attempt 2 uses the same external AgentOps operation ID but distinct CodeOps dry-run/apply/review Sessions;
+14. approved correction mutates only through the CodeOps fixture command routed by originsd;
+15. a fresh independent review returns canonical `PASS` and recommendation `complete_candidate`;
+16. separate fixture states prove `BLOCK → block` and ambiguous/noncanonical review text → `UNKNOWN → unresolved`;
+17. raw corrected file content and Origins token do not enter the permanent journal;
+18. all Sessions in the hosted loop are mechanical `origins.process.run` Sessions;
+19. every inherited ADR-0002 through ADR-0006 runtime proof remains green;
+20. Contract Spine Python/TypeScript/Rust tests, exact three-runtime equivalence, Clippy, Rust tests/build, whitespace, and rustfmt remain green.
+
+The first hosted bridge challenge failed because the **proof contained a contradictory assertion**: it simultaneously prohibited `NEEDS WORK` from the compact evidence record and required the normalized verdict field to equal `NEEDS WORK`. Only the proof was corrected. The actual sanitation rule is that raw review summary/output is not duplicated; the normalized canonical verdict is retained.
+
+After that correction and an additional ownership-loader test, both the Origins Daemon Foundation and Contract Spine suites passed on exact head `8906cf184c57d7c4e0e1fbffcbf1f87350518c0f`.
 
 ## Explicit non-claims
 
 This generation does not provide or claim:
 
+- live production installation/compatibility proof of the private AgentOps/CodeOps Python packages or their CLIs;
 - production AgentOps persistent lifecycle/completion backend;
 - autonomous approval;
 - provider/model execution through paid/external routes;
@@ -231,5 +245,6 @@ This generation does not provide or claim:
 - Origins-owned Sergeant verdict semantics;
 - automatic AgentOps completion after PASS;
 - semantic loop restart recovery before AgentOps persistence exists;
+- production Hunter mount;
 - React engineering UI;
 - PTY interaction.
