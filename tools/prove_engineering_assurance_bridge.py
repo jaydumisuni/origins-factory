@@ -143,8 +143,9 @@ def main() -> int:
             }
             first_review_bytes = bytes.fromhex(first.sergeant_review.output["stdout_hex"])
             assert hashlib.sha256(first_review_bytes).hexdigest() == first.review_sha256
-            assert "NEEDS WORK" not in json.dumps(first.evidence_record())
-            assert first.evidence_record()["verdict"] == "NEEDS WORK"
+            first_evidence = first.evidence_record()
+            assert first_evidence["verdict"] == "NEEDS WORK"
+            assert "fixture correction required" not in json.dumps(first_evidence)
 
             before_unapproved = session_count(base_url)
             try:
@@ -249,7 +250,7 @@ def main() -> int:
             assert unresolved.recommended_agentops_action == "unresolved"
             assert unresolved.needs_loop is True
 
-            assert contracts.packet_calls == 5  # includes rejected unapproved packet
+            assert contracts.packet_calls == 5
             assert contracts.ingest_calls == 4
 
             sessions = request_json(base_url + "/v1/sessions", token=TOKEN)["sessions"]
