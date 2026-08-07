@@ -2,13 +2,13 @@
 
 **Recorded:** 2026-08-07
 **Architecture version:** 1.0.0 — accepted product and architecture authority
-**Implementation status:** Contract Spine v1 merged; `originsd` persistence foundation implemented and proven pre-promotion; final exact locked-head verification in progress
+**Implementation status:** Contract Spine v1 merged; `originsd` persistence foundation implemented and mechanically proven
 
 ## Contribution status
 
 Current work contributes **New implementation + Correction + Verification**.
 
-Origins Factory is not yet the complete workspace, but it now has both the frozen cross-language Contract Spine and a real persistent Rust daemon candidate rather than only architecture documents.
+Origins Factory is not yet the complete workspace, but it now has both the frozen cross-language Contract Spine and a proven persistent Rust daemon foundation rather than only architecture documents.
 
 ## Accepted foundation already on `main`
 
@@ -34,9 +34,9 @@ Canonical implementation documents:
 - `docs/ADR-0001-CONTRACT-SPINE.md`;
 - `docs/FIRST_VERTICAL_SLICE.md`.
 
-## `originsd` foundation implemented on the active PR
+## `originsd` persistence foundation
 
-The current daemon candidate includes:
+The proven daemon foundation includes:
 
 - Rust 1.75 runtime boundary;
 - loopback-only bind with explicit rejection of non-loopback addresses;
@@ -51,7 +51,7 @@ The current daemon candidate includes:
 - authenticated Workspace create/read and capability-read HTTP routes;
 - real process startup, shutdown and restart recovery proof;
 - deliberate Workspace-digest and journal-chain tamper tests;
-- exact dependency lock frozen after successful runtime proof.
+- proof-frozen dependency lock.
 
 Current routes:
 
@@ -66,7 +66,7 @@ No placeholder terminal, command, model, device or external-system route is expo
 
 ## Challenge evidence
 
-The daemon Challenge pass has already established:
+The daemon Challenge pass established:
 
 - Rusqlite `0.32.1` is incompatible with the frozen Rust 1.75 boundary because it uses newer C-string literal syntax;
 - the dependency was corrected to Rusqlite `0.31.0` rather than weakening the Rust proof boundary;
@@ -81,10 +81,12 @@ The daemon Challenge pass has already established:
 - deliberate journal chain tampering is detected;
 - the local token is not emitted in daemon stdout/stderr during the hosted proof;
 - repository whitespace gates pass;
-- rustfmt passes after the multi-crate workspace gate was corrected to use `--all`;
-- `rust/Cargo.lock` was frozen only after the successful runtime proof.
+- rustfmt passes across the complete multi-crate Rust workspace;
+- `rust/Cargo.lock` was frozen only after successful runtime proof;
+- the frozen lock then received a fresh exact-head daemon proof;
+- the complete Rust/Python/TypeScript Contract Spine proof also passes on the same locked head.
 
-The exact frozen dependency head is being re-proved before PR promotion. The pre-lock green run is not treated as sufficient final proof.
+No independent PR review finding or unresolved review thread currently contradicts this evidence.
 
 ## Current repository authority
 
@@ -119,7 +121,7 @@ The exploratory `build/initial-workspace` branch remains non-authoritative and m
 - custom OS integration;
 - release proof.
 
-## Next valid work after the current PR is promoted
+## Next valid work
 
 1. implement supervised repository/process sessions in Rust;
 2. define their durable session/recovery semantics before adding terminal UI;
