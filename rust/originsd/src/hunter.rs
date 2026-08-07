@@ -106,7 +106,9 @@ impl Display for HunterError {
             Self::Config(message) => write!(formatter, "Hunter configuration error: {message}"),
             Self::InvalidInput(message) => write!(formatter, "Hunter request error: {message}"),
             Self::NotConfigured => write!(formatter, "Hunter transport is not configured"),
-            Self::Unavailable(message) => write!(formatter, "Hunter transport unavailable: {message}"),
+            Self::Unavailable(message) => {
+                write!(formatter, "Hunter transport unavailable: {message}")
+            }
             Self::InvalidResponse(message) => write!(formatter, "Hunter response error: {message}"),
             Self::Store(error) => write!(formatter, "Hunter evidence store error: {error}"),
         }
