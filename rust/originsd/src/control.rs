@@ -16,14 +16,9 @@ impl Store {
         let (canonical, digest) =
             stored.ok_or_else(|| StoreError::NotFound(format!("session {session_id}")))?;
         let projection = verify_stored_contract("session", session_id, &canonical, &digest)?;
-        let state = projection["state"]
+        let observed_state = projection["state"]
             .as_str()
             .ok_or_else(|| StoreError::Corrupt("session state is invalid".to_owned()))?;
-        if !matches!(state, "starting" | "running") {
-            return Err(StoreError::Conflict(format!(
-                "session {session_id} is already terminal with state {state}"
-            )));
-        }
         let workspace_id = projection["workspace_id"]
             .as_str()
             .ok_or_else(|| StoreError::Corrupt("session workspace_id is invalid".to_owned()))?;
@@ -37,7 +32,7 @@ impl Store {
             json!({
                 "session_id": session_id,
                 "command_id": command_id,
-                "state": state
+                "observed_state": observed_state
             }),
             Vec::new(),
         )?;
