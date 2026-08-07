@@ -32,6 +32,26 @@ impl SessionOutputRecord {
     }
 }
 
+pub(crate) struct ProcessSessionStart<'a> {
+    pub workspace_id: &'a str,
+    pub command_id: &'a str,
+    pub command_sha256: &'a str,
+    pub workspace_root: &'a str,
+    pub executable: &'a str,
+    pub cwd: &'a str,
+    pub args_sha256: &'a str,
+}
+
+struct SessionTransition<'a> {
+    next_state: &'a str,
+    pid: Option<String>,
+    exit_code: Option<i32>,
+    timed_out: bool,
+    output: Option<SessionOutputRecord>,
+    event_kind: &'a str,
+    event_extra: Value,
+}
+
 pub(crate) fn create_session_tables(connection: &Connection) -> Result<(), StoreError> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS sessions (
@@ -83,18 +103,15 @@ pub(crate) fn recover_interrupted_sessions(store: &Store) -> Result<(), StoreErr
 }
 
 impl Store {
-    pub fn create_process_session(
+    pub(crate) fn create_process_session(
         &self,
-        workspace_id: &str,
-        command_id: &str,
-        command_sha256: &str,
-        workspace_root: &str,
-        executable: &str,
-        cwd: &str,
-        args_sha256: &str,
+        start: ProcessSessionStart<'_>,
     ) -> Result<Value, StoreError> {
-        if !self.workspace_exists(workspace_id)? {
-            return Err(StoreError::NotFound(format!("workspace {workspace_id}")));
+        if !self.workspace_exists(start.workspace_id)? {
+            return Err(StoreError::NotFound(format!(
+                "workspace {}",
+                start.workspace_id
+            )));
         }
 
         let session_id = Uuid::new_v4().hyphenated().to_string();
@@ -103,11 +120,11 @@ impl Store {
             "contract_type": "session_projection",
             "schema_version": "1.0.0",
             "session_id": session_id,
-            "workspace_id": workspace_id,
-            "command_id": command_id,
+            "workspace_id": start.workspace_id,
+            "command_id": start.command_id,
             "capability_id": "origins.process.run",
             "kind": "process",
-            "workspace_root": workspace_root,
+            "workspace_root": start.workspace_root,
             "state": "starting",
             "pid": "",
             "started_at": now,
@@ -132,20 +149,23 @@ impl Store {
         let existing: Option<String> = transaction
             .query_row(
                 "SELECT command_sha256 FROM sessions WHERE command_id = ?1",
-                [command_id],
+                [start.command_id],
                 |row| row.get(0),
             )
             .optional()?;
         if let Some(existing_sha256) = existing {
-            let detail = if existing_sha256 == command_sha256 {
+            let detail = if existing_sha256 == start.command_sha256 {
                 "already has a process session"
             } else {
                 "is already bound to a different command envelope"
             };
-            return Err(StoreError::Conflict(format!("command {command_id} {detail}")));
+            return Err(StoreError::Conflict(format!(
+                "command {} {detail}",
+                start.command_id
+            )));
         }
 
-        attach_session_reference(&transaction, workspace_id, &session_id, &now)?;
+        attach_session_reference(&transaction, start.workspace_id, &session_id, &now)?;
         transaction.execute(
             "INSERT INTO sessions (
                 session_id, workspace_id, command_id, command_sha256,
@@ -153,9 +173,9 @@ impl Store {
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'starting', ?7, ?7)",
             params![
                 session_id,
-                workspace_id,
-                command_id,
-                command_sha256,
+                start.workspace_id,
+                start.command_id,
+                start.command_sha256,
                 canonical,
                 digest,
                 now
@@ -174,16 +194,16 @@ impl Store {
         )?;
         append_event(
             &transaction,
-            workspace_id,
+            start.workspace_id,
             "process.session.starting",
             json!({
                 "session_id": session_id,
-                "command_id": command_id,
-                "command_sha256": command_sha256,
+                "command_id": start.command_id,
+                "command_sha256": start.command_sha256,
                 "capability_id": "origins.process.run",
-                "executable": executable,
-                "cwd": cwd,
-                "args_sha256": args_sha256
+                "executable": start.executable,
+                "cwd": start.cwd,
+                "args_sha256": start.args_sha256
             }),
             Vec::new(),
         )?;
@@ -304,13 +324,15 @@ impl Store {
     pub fn mark_process_running(&self, session_id: &str, pid: u32) -> Result<Value, StoreError> {
         self.transition_process_session(
             session_id,
-            "running",
-            Some(pid.to_string()),
-            None,
-            false,
-            None,
-            "process.session.running",
-            json!({"pid": pid.to_string()}),
+            SessionTransition {
+                next_state: "running",
+                pid: Some(pid.to_string()),
+                exit_code: None,
+                timed_out: false,
+                output: None,
+                event_kind: "process.session.running",
+                event_extra: json!({"pid": pid.to_string()}),
+            },
         )
     }
 
@@ -323,7 +345,10 @@ impl Store {
         output: SessionOutputRecord,
         reason: &str,
     ) -> Result<Value, StoreError> {
-        if !matches!(state, "completed" | "failed" | "timed_out" | "interrupted") {
+        if !matches!(
+            state,
+            "completed" | "failed" | "timed_out" | "interrupted"
+        ) {
             return Err(StoreError::InvalidInput(format!(
                 "unsupported terminal process state {state}"
             )));
@@ -337,39 +362,37 @@ impl Store {
         };
         self.transition_process_session(
             session_id,
-            state,
-            None,
-            exit_code,
-            timed_out,
-            Some(output),
-            event_kind,
-            json!({"reason": reason}),
+            SessionTransition {
+                next_state: state,
+                pid: None,
+                exit_code,
+                timed_out,
+                output: Some(output),
+                event_kind,
+                event_extra: json!({"reason": reason}),
+            },
         )
     }
 
     pub fn interrupt_process_session(&self, session_id: &str) -> Result<Value, StoreError> {
         self.transition_process_session(
             session_id,
-            "interrupted",
-            None,
-            None,
-            false,
-            None,
-            "process.session.interrupted",
-            json!({"reason": "daemon_restart_without_reattach"}),
+            SessionTransition {
+                next_state: "interrupted",
+                pid: None,
+                exit_code: None,
+                timed_out: false,
+                output: None,
+                event_kind: "process.session.interrupted",
+                event_extra: json!({"reason": "daemon_restart_without_reattach"}),
+            },
         )
     }
 
     fn transition_process_session(
         &self,
         session_id: &str,
-        next_state: &str,
-        pid: Option<String>,
-        exit_code: Option<i32>,
-        timed_out: bool,
-        output: Option<SessionOutputRecord>,
-        event_kind: &str,
-        event_extra: Value,
+        transition: SessionTransition<'_>,
     ) -> Result<Value, StoreError> {
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -386,23 +409,23 @@ impl Store {
         let current_state = projection["state"]
             .as_str()
             .ok_or_else(|| StoreError::Corrupt("session state is invalid".to_owned()))?;
-        validate_transition(current_state, next_state)?;
+        validate_transition(current_state, transition.next_state)?;
 
         let now = now_rfc3339();
-        projection["state"] = Value::String(next_state.to_owned());
+        projection["state"] = Value::String(transition.next_state.to_owned());
         projection["updated_at"] = Value::String(now.clone());
-        if let Some(pid) = pid {
+        if let Some(pid) = transition.pid {
             projection["pid"] = Value::String(pid);
         }
         if matches!(
-            next_state,
+            transition.next_state,
             "completed" | "failed" | "timed_out" | "interrupted"
         ) {
             projection["ended_at"] = Value::String(now.clone());
-            projection["exit_code"] = exit_code.map_or(Value::Null, |code| json!(code));
-            projection["timed_out"] = Value::Bool(timed_out);
+            projection["exit_code"] = transition.exit_code.map_or(Value::Null, |code| json!(code));
+            projection["timed_out"] = Value::Bool(transition.timed_out);
         }
-        if let Some(output) = output.as_ref() {
+        if let Some(output) = transition.output.as_ref() {
             projection["stdout_bytes"] = json!(output.stdout_bytes);
             projection["stderr_bytes"] = json!(output.stderr_bytes);
             projection["stdout_sha256"] = Value::String(output.stdout_sha256.clone());
@@ -418,9 +441,15 @@ impl Store {
         transaction.execute(
             "UPDATE sessions SET projection_json = ?1, projection_sha256 = ?2,
              state = ?3, updated_at = ?4 WHERE session_id = ?5",
-            params![next_canonical, next_digest, next_state, now, session_id],
+            params![
+                next_canonical,
+                next_digest,
+                transition.next_state,
+                now,
+                session_id
+            ],
         )?;
-        if let Some(output) = output {
+        if let Some(output) = transition.output {
             let stdout_retained_sha256 = sha256_bytes(&output.stdout);
             let stderr_retained_sha256 = sha256_bytes(&output.stderr);
             transaction.execute(
@@ -446,9 +475,12 @@ impl Store {
         let mut event_payload = json!({
             "session_id": session_id,
             "command_id": command_id,
-            "state": next_state
+            "state": transition.next_state
         });
-        if let (Some(target), Some(extra)) = (event_payload.as_object_mut(), event_extra.as_object()) {
+        if let (Some(target), Some(extra)) = (
+            event_payload.as_object_mut(),
+            transition.event_extra.as_object(),
+        ) {
             for (key, value) in extra {
                 target.insert(key.clone(), value.clone());
             }
@@ -456,7 +488,7 @@ impl Store {
         append_event(
             &transaction,
             workspace_id,
-            event_kind,
+            transition.event_kind,
             event_payload,
             Vec::new(),
         )?;
@@ -583,15 +615,15 @@ mod tests {
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         let command_id = Uuid::new_v4().hyphenated().to_string();
         let session = store
-            .create_process_session(
+            .create_process_session(ProcessSessionStart {
                 workspace_id,
-                &command_id,
-                EMPTY_SHA256,
-                "/tmp",
-                "python3",
-                ".",
-                EMPTY_SHA256,
-            )
+                command_id: &command_id,
+                command_sha256: EMPTY_SHA256,
+                workspace_root: "/tmp",
+                executable: "python3",
+                cwd: ".",
+                args_sha256: EMPTY_SHA256,
+            })
             .unwrap();
         let session_id = session["session_id"].as_str().unwrap().to_owned();
         store.mark_process_running(&session_id, 1234).unwrap();
@@ -613,15 +645,15 @@ mod tests {
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         let command_id = Uuid::new_v4().hyphenated().to_string();
         store
-            .create_process_session(
+            .create_process_session(ProcessSessionStart {
                 workspace_id,
-                &command_id,
-                EMPTY_SHA256,
-                "/tmp",
-                "python3",
-                ".",
-                EMPTY_SHA256,
-            )
+                command_id: &command_id,
+                command_sha256: EMPTY_SHA256,
+                workspace_root: "/tmp",
+                executable: "python3",
+                cwd: ".",
+                args_sha256: EMPTY_SHA256,
+            })
             .unwrap();
         let error = store
             .get_session_for_command(
