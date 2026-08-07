@@ -5,7 +5,7 @@
     "capability_id": "origins.hunter.transport",
     "version": "1.0.0",
     "owner": "jaydumisuni/origins-factory",
-    "effects": ["observe", "execute", "verify"],
+    "effects": ["execute", "observe", "verify"],
     "permissions": ["origins.hunter.connect", "origins.workspace.read"],
     "node_os": ["linux", "macos", "windows"],
     "maturity": "experimental",
