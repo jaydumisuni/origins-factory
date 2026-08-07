@@ -3,11 +3,12 @@ from __future__ import annotations
 import inspect
 from dataclasses import dataclass
 from enum import Enum
+from types import SimpleNamespace
 
 import pytest
 
 from origins_integration import engineering
-from origins_integration.engineering import BridgeError, EngineeringAttemptRequest
+from origins_integration.engineering import BridgeError, EngineeringAttemptRequest, ExternalContracts
 
 
 def test_bridge_does_not_import_python_subprocess() -> None:
@@ -68,6 +69,42 @@ def test_sergeant_command_must_match_codeops_contract() -> None:
             files=("src/app.py", "tests/test_app.py"),
             review_mode="pull_request",
         )
+
+
+def test_production_loader_targets_current_owning_modules(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+
+    class ApprovalState:
+        def __init__(self, value: str) -> None:
+            self.value = value
+
+    class CodeOpsOperationPacket:
+        pass
+
+    def ingest(text: str):
+        return text
+
+    modules = {
+        "hunter_agentops.code_ops_switcher_runner": SimpleNamespace(
+            ApprovalState=ApprovalState,
+            CodeOpsOperationPacket=CodeOpsOperationPacket,
+        ),
+        "hunter_codeops.code_ops_sergeant_ingest": SimpleNamespace(
+            ingest_sergeant_result_text=ingest,
+        ),
+    }
+
+    def fake_import(name: str):
+        calls.append(name)
+        return modules[name]
+
+    monkeypatch.setattr(engineering.importlib, "import_module", fake_import)
+    loaded = ExternalContracts.load()
+    assert isinstance(loaded, ExternalContracts)
+    assert calls == [
+        "hunter_agentops.code_ops_switcher_runner",
+        "hunter_codeops.code_ops_sergeant_ingest",
+    ]
 
 
 class Verdict(Enum):
