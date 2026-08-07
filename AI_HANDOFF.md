@@ -70,15 +70,16 @@ Do not duplicate an owning engine inside Origins.
 
 ## Proven implementation checkpoint
 
-The following foundation is accepted implementation truth when present on `main` and supported by the current proof records:
+The accepted implementation sequence is:
 
 1. **Contract Spine v1** — Rust/Python/TypeScript canonical contracts and exact equivalence.
 2. **originsd persistence foundation** — local auth, SQLite durability, Workspace projections, capability projections, hash-chained journal, tamper detection, restart recovery.
-3. **Supervised Process Sessions v1** — typed bounded non-interactive process execution, durable Sessions, exact replay binding, evidence hashes, environment/root policy, and honest interrupted recovery.
+3. **Supervised Process Sessions v1** — bounded non-interactive process execution, durable Sessions, replay binding, evidence hashes, environment/root policy, and honest interrupted recovery.
+4. **Active Session Control v1** — asynchronous Session acceptance, exact active replay, cancellation of controlled running Sessions, and authenticated journal-cursor replay across disconnect/restart.
 
-Read `CURRENT_STATE.md` for the exact promoted state. If a listed item is still only on an open PR, treat it as a candidate until that PR is merged.
+Read `CURRENT_STATE.md` for the exact promoted state. If an item is only on an open PR, treat it as candidate until merged even if its branch proof is green.
 
-## Process Sessions boundary
+## Mechanical execution boundary
 
 Do not silently expand `origins.process.run` into a generic shell or unrestricted execution path.
 
@@ -88,10 +89,12 @@ Current design deliberately separates:
 - real non-zero process exits from infrastructure interruptions;
 - complete-stream evidence from bounded retained output;
 - command identity from replayed command content;
-- configured Workspace roots from a claim of complete OS isolation;
-- mechanical Session state from AgentOps semantic Operation state.
+- configured Workspace roots from complete OS isolation;
+- mechanical Session state from AgentOps semantic Operation state;
+- durable SQLite/event truth from ephemeral in-process cancellation handles;
+- pull-based event replay from future live push streaming.
 
-Interactive PTY, cancellation/live streaming, stronger containment, remote Node execution, and semantic AgentOps/CodeOps/Sergeant orchestration are separate future slices.
+V1 cancellation is proven only for `running` Sessions controlled by the current daemon generation. It uses the existing `interrupted` terminal state with an explicit cancellation reason rather than inventing a new contract state or exit code.
 
 ## Huawei acceptance story
 
@@ -110,12 +113,12 @@ The Huawei P30 Pro/VOG case remains the canonical evidence for Origins mission c
 
 ## Current next valid work
 
-After Supervised Process Sessions v1 is promoted, continue the mechanical substrate before broad UI work:
+Continue mechanical observability before broad UI work:
 
-1. asynchronous command acceptance with immediate durable Session identity;
-2. explicit cancellation semantics;
-3. authenticated live event/output streaming;
-4. honest restart behavior without claiming process reattachment;
+1. add reconnect-safe live event delivery as a projection over the proven journal cursor;
+2. add bounded incremental stdout/stderr persistence/observation without putting raw output in the permanent journal;
+3. prove disconnect/reconnect without duplication inside the retained-output boundary;
+4. preserve restart honesty — do not claim process reattachment;
 5. recover and freeze the native repository/Git Session boundary needed by CodeOps;
 6. mount AgentOps + CodeOps + Sergeant through their owning contracts;
 7. prove `NEEDS WORK → correction Attempt → fresh proof → PASS` through Origins;
