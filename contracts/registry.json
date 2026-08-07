@@ -6,6 +6,7 @@
     "insignificant_whitespace": false,
     "preserve_array_order": true,
     "allow_floats": false,
+    "max_safe_integer": 9007199254740991,
     "digest": "sha256"
   },
   "contract_types": {
