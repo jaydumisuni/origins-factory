@@ -47,9 +47,9 @@ pub struct RuntimeConfig {
 impl RuntimeConfig {
     pub fn from_env() -> Result<Self, RuntimeError> {
         let bind_text = env::var("ORIGINS_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_owned());
-        let bind: SocketAddr = bind_text
-            .parse()
-            .map_err(|error| RuntimeError::Config(format!("invalid ORIGINS_BIND {bind_text:?}: {error}")))?;
+        let bind: SocketAddr = bind_text.parse().map_err(|error| {
+            RuntimeError::Config(format!("invalid ORIGINS_BIND {bind_text:?}: {error}"))
+        })?;
         if !bind.ip().is_loopback() {
             return Err(RuntimeError::Config(
                 "originsd v1 refuses non-loopback bind addresses".to_owned(),
@@ -69,7 +69,8 @@ pub async fn run_from_env() -> Result<(), RuntimeError> {
 
 pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     fs::create_dir_all(&config.data_dir).map_err(|error| RuntimeError::Io(error.to_string()))?;
-    let token = load_or_create_token(&config.data_dir).map_err(|error| RuntimeError::Io(error.to_string()))?;
+    let token = load_or_create_token(&config.data_dir)
+        .map_err(|error| RuntimeError::Io(error.to_string()))?;
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     let state = AppState {
