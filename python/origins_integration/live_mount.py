@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
+
+from origins_contracts import canonical_json
 
 from .doctor import EngineeringMountDoctor, EngineeringMountDoctorResult
 from .engineering import (
@@ -44,7 +47,7 @@ class LiveEngineeringMountReceipt:
     project_verdict: str
     recommended_agentops_action: str
 
-    def as_dict(self) -> dict[str, Any]:
+    def body_dict(self) -> dict[str, Any]:
         return {
             "proof_scope": self.proof_scope,
             "mount_status": self.mount_status,
@@ -61,6 +64,16 @@ class LiveEngineeringMountReceipt:
             "project_verdict": self.project_verdict,
             "recommended_agentops_action": self.recommended_agentops_action,
         }
+
+    @property
+    def receipt_sha256(self) -> str:
+        body = canonical_json(self.body_dict()).encode("utf-8")
+        return hashlib.sha256(body).hexdigest()
+
+    def as_dict(self) -> dict[str, Any]:
+        payload = self.body_dict()
+        payload["receipt_sha256"] = self.receipt_sha256
+        return payload
 
 
 class LiveEngineeringMount:
