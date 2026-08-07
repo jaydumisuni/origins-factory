@@ -4,9 +4,10 @@ use origins_contracts::{contract_sha256, validate_contract};
 use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::HashSet;
+use std::env;
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::process::Command;
@@ -16,6 +17,112 @@ const MAX_TIMEOUT_SECONDS: u64 = 3_600;
 const MAX_OUTPUT_BYTES: u64 = 8 * 1024 * 1024;
 const MAX_ARGUMENTS: usize = 256;
 const MAX_ARGUMENT_CHARS: usize = 32_768;
+const SHELL_EXECUTABLES: &[&str] = &[
+    "bash",
+    "cmd",
+    "cmd.exe",
+    "fish",
+    "powershell",
+    "powershell.exe",
+    "pwsh",
+    "pwsh.exe",
+    "sh",
+    "zsh",
+];
+const ALLOWED_EXECUTABLES: &[&str] = &[
+    "cargo",
+    "cargo.exe",
+    "git",
+    "git.exe",
+    "hunter-codeops-code",
+    "hunter-codeops-code.exe",
+    "hunter-codeops-switcher",
+    "hunter-codeops-switcher.exe",
+    "node",
+    "node.exe",
+    "npm",
+    "npm.cmd",
+    "npx",
+    "npx.cmd",
+    "py",
+    "py.exe",
+    "pytest",
+    "pytest.exe",
+    "python",
+    "python.exe",
+    "python3",
+    "rustc",
+    "rustc.exe",
+    "sergeant",
+    "sergeant.exe",
+];
+const SAFE_ENV_KEYS: &[&str] = &[
+    "CARGO_HOME",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PATH",
+    "PATHEXT",
+    "RUSTUP_HOME",
+    "RUSTUP_TOOLCHAIN",
+    "SYSTEMROOT",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "USERPROFILE",
+    "WINDIR",
+];
+
+#[derive(Debug, Clone)]
+pub struct ProcessPolicy {
+    allowed_roots: Arc<[PathBuf]>,
+}
+
+impl ProcessPolicy {
+    pub fn from_env() -> Result<Self, String> {
+        let candidates = match env::var_os("ORIGINS_WORKSPACE_ROOTS") {
+            Some(raw) => env::split_paths(&raw).collect::<Vec<_>>(),
+            None => vec![env::current_dir().map_err(|error| {
+                format!("cannot determine default Origins workspace root: {error}")
+            })?],
+        };
+        if candidates.is_empty() {
+            return Err("ORIGINS_WORKSPACE_ROOTS must contain at least one path".to_owned());
+        }
+
+        let mut roots = Vec::new();
+        for candidate in candidates {
+            if candidate.as_os_str().is_empty() {
+                continue;
+            }
+            let canonical = std::fs::canonicalize(&candidate).map_err(|error| {
+                format!(
+                    "configured Origins workspace root {:?} cannot be resolved: {error}",
+                    candidate
+                )
+            })?;
+            if !canonical.is_dir() {
+                return Err(format!(
+                    "configured Origins workspace root {:?} is not a directory",
+                    canonical
+                ));
+            }
+            roots.push(canonical);
+        }
+        roots.sort();
+        roots.dedup();
+        if roots.is_empty() {
+            return Err("ORIGINS_WORKSPACE_ROOTS resolved to no usable directories".to_owned());
+        }
+        Ok(Self {
+            allowed_roots: Arc::from(roots),
+        })
+    }
+
+    fn allows(&self, path: &Path) -> bool {
+        self.allowed_roots.iter().any(|root| path.starts_with(root))
+    }
+}
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -35,7 +142,11 @@ pub struct ProcessExecutionResult {
     pub replayed: bool,
 }
 
-pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExecutionResult, StoreError> {
+pub async fn execute_command(
+    store: Store,
+    policy: ProcessPolicy,
+    envelope: Value,
+) -> Result<ProcessExecutionResult, StoreError> {
     validate_contract(&envelope).map_err(|error| StoreError::InvalidInput(error.to_string()))?;
     if envelope["contract_type"] != "command_envelope" {
         return Err(StoreError::InvalidInput(
@@ -49,7 +160,9 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
     }
 
     let command_id = required_string(&envelope, "command_id")?;
-    if let Some(session) = store.get_session_by_command(command_id)? {
+    let command_sha256 = contract_sha256(&envelope)
+        .map_err(|error| StoreError::InvalidInput(format!("command digest failed: {error}")))?;
+    if let Some(session) = store.get_session_for_command(command_id, &command_sha256)? {
         let session_id = required_string(&session, "session_id")?;
         let output = store.get_session_output(session_id)?;
         return Ok(ProcessExecutionResult {
@@ -65,29 +178,49 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
     }
     let payload: ProcessPayload = serde_json::from_value(envelope["payload"].clone())
         .map_err(|error| StoreError::InvalidInput(format!("invalid process payload: {error}")))?;
-    let prepared = prepare_process(payload)?;
+    let prepared = prepare_process(payload, &policy)?;
     let args_value = Value::Array(prepared.args.iter().cloned().map(Value::String).collect());
     let args_sha256 = contract_sha256(&args_value)
         .map_err(|error| StoreError::InvalidInput(format!("argument digest failed: {error}")))?;
 
-    let starting = store.create_process_session(
+    let starting = match store.create_process_session(
         workspace_id,
         command_id,
+        &command_sha256,
         &prepared.workspace_root,
         &prepared.executable,
         &prepared.cwd,
         &args_sha256,
-    )?;
+    ) {
+        Ok(session) => session,
+        Err(StoreError::Conflict(_)) => {
+            if let Some(session) = store.get_session_for_command(command_id, &command_sha256)? {
+                let session_id = required_string(&session, "session_id")?;
+                let output = store.get_session_output(session_id)?;
+                return Ok(ProcessExecutionResult {
+                    session,
+                    output,
+                    replayed: true,
+                });
+            }
+            return Err(StoreError::Conflict(format!(
+                "command {command_id} raced with another request"
+            )));
+        }
+        Err(error) => return Err(error),
+    };
     let session_id = required_string(&starting, "session_id")?.to_owned();
 
     let mut command = Command::new(&prepared.executable);
     command
         .args(&prepared.args)
         .current_dir(&prepared.cwd_path)
+        .env_clear()
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
+    apply_safe_environment(&mut command);
 
     let mut child = match command.spawn() {
         Ok(child) => child,
@@ -95,7 +228,7 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
             let output = output_from_error(&error.to_string(), prepared.max_output_bytes as usize);
             let session = store.finish_process_session(
                 &session_id,
-                "failed",
+                "interrupted",
                 None,
                 false,
                 output.clone(),
@@ -120,7 +253,7 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
             );
             let session = store.finish_process_session(
                 &session_id,
-                "failed",
+                "interrupted",
                 None,
                 false,
                 output.clone(),
@@ -153,9 +286,12 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
     )
     .await
     {
-        Ok(Ok(status)) if status.success() => ("completed", status.code(), false, "exit_zero"),
-        Ok(Ok(status)) => ("failed", status.code(), false, "nonzero_or_signal"),
-        Ok(Err(_)) => ("failed", None, false, "wait_failed"),
+        Ok(Ok(status)) if status.success() => ("completed", Some(0), false, "exit_zero"),
+        Ok(Ok(status)) => match status.code() {
+            Some(code) => ("failed", Some(code), false, "nonzero_exit"),
+            None => ("interrupted", None, false, "terminated_without_exit_code"),
+        },
+        Ok(Err(_)) => ("interrupted", None, false, "wait_failed"),
         Err(_) => {
             let _ = child.kill().await;
             let _ = child.wait().await;
@@ -183,7 +319,7 @@ pub async fn execute_command(store: Store, envelope: Value) -> Result<ProcessExe
     };
 
     let (state, exit_code, timed_out, reason) = if capture_failed {
-        ("failed", None, false, "output_capture_failed")
+        ("interrupted", None, false, "output_capture_failed")
     } else {
         wait_outcome
     };
@@ -212,13 +348,13 @@ struct PreparedProcess {
     max_output_bytes: u64,
 }
 
-fn prepare_process(payload: ProcessPayload) -> Result<PreparedProcess, StoreError> {
-    if payload.timeout_seconds == 0 || payload.timeout_seconds > MAX_TIMEOUT_SECONDS {
+fn prepare_process(payload: ProcessPayload, policy: &ProcessPolicy) -> Result<PreparedProcess, StoreError> {
+    if !(1..=MAX_TIMEOUT_SECONDS).contains(&payload.timeout_seconds) {
         return Err(StoreError::InvalidInput(format!(
             "timeout_seconds must be between 1 and {MAX_TIMEOUT_SECONDS}"
         )));
     }
-    if payload.max_output_bytes == 0 || payload.max_output_bytes > MAX_OUTPUT_BYTES {
+    if !(1..=MAX_OUTPUT_BYTES).contains(&payload.max_output_bytes) {
         return Err(StoreError::InvalidInput(format!(
             "max_output_bytes must be between 1 and {MAX_OUTPUT_BYTES}"
         )));
@@ -229,7 +365,11 @@ fn prepare_process(payload: ProcessPayload) -> Result<PreparedProcess, StoreErro
             "args cannot contain more than {MAX_ARGUMENTS} entries"
         )));
     }
-    if payload.args.iter().any(|arg| arg.chars().count() > MAX_ARGUMENT_CHARS) {
+    if payload
+        .args
+        .iter()
+        .any(|arg| arg.chars().count() > MAX_ARGUMENT_CHARS)
+    {
         return Err(StoreError::InvalidInput(format!(
             "each argument must be at most {MAX_ARGUMENT_CHARS} characters"
         )));
@@ -241,6 +381,11 @@ fn prepare_process(payload: ProcessPayload) -> Result<PreparedProcess, StoreErro
     if !root.is_dir() {
         return Err(StoreError::InvalidInput(
             "workspace_root must resolve to a directory".to_owned(),
+        ));
+    }
+    if !policy.allows(&root) {
+        return Err(StoreError::InvalidInput(
+            "workspace_root is outside the configured Origins workspace roots".to_owned(),
         ));
     }
     let relative_cwd = validate_relative_cwd(&payload.cwd)?;
@@ -287,56 +432,12 @@ fn validate_executable(executable: &str) -> Result<(), StoreError> {
         ));
     }
     let normalized = executable.to_ascii_lowercase();
-    let shells: HashSet<&str> = [
-        "bash",
-        "cmd",
-        "cmd.exe",
-        "fish",
-        "powershell",
-        "powershell.exe",
-        "pwsh",
-        "pwsh.exe",
-        "sh",
-        "zsh",
-    ]
-    .into_iter()
-    .collect();
-    if shells.contains(normalized.as_str()) {
+    if SHELL_EXECUTABLES.contains(&normalized.as_str()) {
         return Err(StoreError::InvalidInput(
             "generic process capability does not execute shell interpreters".to_owned(),
         ));
     }
-
-    let allowed: HashSet<&str> = [
-        "cargo",
-        "cargo.exe",
-        "git",
-        "git.exe",
-        "hunter-codeops-code",
-        "hunter-codeops-code.exe",
-        "hunter-codeops-switcher",
-        "hunter-codeops-switcher.exe",
-        "node",
-        "node.exe",
-        "npm",
-        "npm.cmd",
-        "npx",
-        "npx.cmd",
-        "py",
-        "py.exe",
-        "pytest",
-        "pytest.exe",
-        "python",
-        "python.exe",
-        "python3",
-        "rustc",
-        "rustc.exe",
-        "sergeant",
-        "sergeant.exe",
-    ]
-    .into_iter()
-    .collect();
-    if !allowed.contains(normalized.as_str()) {
+    if !ALLOWED_EXECUTABLES.contains(&normalized.as_str()) {
         return Err(StoreError::InvalidInput(format!(
             "executable {executable:?} is not registered for origins.process.run"
         )));
@@ -345,7 +446,11 @@ fn validate_executable(executable: &str) -> Result<(), StoreError> {
 }
 
 fn validate_relative_cwd(cwd: &str) -> Result<PathBuf, StoreError> {
-    let path = if cwd.is_empty() { Path::new(".") } else { Path::new(cwd) };
+    let path = if cwd.is_empty() {
+        Path::new(".")
+    } else {
+        Path::new(cwd)
+    };
     for component in path.components() {
         if !matches!(component, Component::Normal(_) | Component::CurDir) {
             return Err(StoreError::InvalidInput(
@@ -354,6 +459,14 @@ fn validate_relative_cwd(cwd: &str) -> Result<PathBuf, StoreError> {
         }
     }
     Ok(path.to_path_buf())
+}
+
+fn apply_safe_environment(command: &mut Command) {
+    for key in SAFE_ENV_KEYS {
+        if let Some(value) = env::var_os(key) {
+            command.env(key, value);
+        }
+    }
 }
 
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, StoreError> {
