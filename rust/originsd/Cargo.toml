@@ -16,4 +16,5 @@ serde_json = "=1.0.134"
 sha2 = "=0.10.8"
 tokio = { version = "=1.42.0", features = ["io-util", "macros", "net", "process", "rt-multi-thread", "signal", "sync", "time"] }
 tokio-stream = "=0.1.17"
+url = "=2.5.0"
 uuid = { version = "=1.11.0", features = ["v4"] }
