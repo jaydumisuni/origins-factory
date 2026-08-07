@@ -1,0 +1,34 @@
+{
+  "registry_version": "1.0.0",
+  "canonicalization": {
+    "encoding": "utf-8",
+    "sort_object_keys": true,
+    "insignificant_whitespace": false,
+    "preserve_array_order": true,
+    "allow_floats": false,
+    "max_safe_integer": 9007199254740991,
+    "digest": "sha256"
+  },
+  "contract_types": {
+    "authority_ref": {
+      "schema_version": "1.0.0",
+      "authority": "origins.integration.reference"
+    },
+    "workspace_projection": {
+      "schema_version": "1.0.0",
+      "authority": "origins.workspace.projection"
+    },
+    "capability_descriptor": {
+      "schema_version": "1.0.0",
+      "authority": "origins.capability.projection"
+    },
+    "command_envelope": {
+      "schema_version": "1.0.0",
+      "authority": "origins.local.command"
+    },
+    "event_envelope": {
+      "schema_version": "1.0.0",
+      "authority": "origins.local.event"
+    }
+  }
+}

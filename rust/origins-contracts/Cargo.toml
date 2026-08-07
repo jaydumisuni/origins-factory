@@ -1,0 +1,12 @@
+[package]
+name = "origins-contracts"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+chrono = { version = "=0.4.39", default-features = false, features = ["std"] }
+hex = "=0.4.3"
+serde_json = "=1.0.134"
+sha2 = "=0.10.8"
+uuid = "=1.11.0"
