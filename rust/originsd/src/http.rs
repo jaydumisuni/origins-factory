@@ -1,3 +1,4 @@
+use crate::live::{journal_stream, output_stream, LiveStream};
 use crate::process::{accept_command as accept_process_command, ProcessPolicy, ProcessSupervisor};
 use crate::sessions::SessionOutputRecord;
 use crate::store::{Store, StoreError};
@@ -36,8 +37,36 @@ pub struct EventQuery {
     pub limit: u64,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct LiveEventQuery {
+    #[serde(default)]
+    pub after_sequence: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OutputDeltaQuery {
+    #[serde(default)]
+    pub stdout_after: u64,
+    #[serde(default)]
+    pub stderr_after: u64,
+    #[serde(default = "default_output_delta_limit")]
+    pub limit: u64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct OutputLiveQuery {
+    #[serde(default)]
+    pub stdout_after: u64,
+    #[serde(default)]
+    pub stderr_after: u64,
+}
+
 fn default_event_limit() -> u64 {
     100
+}
+
+fn default_output_delta_limit() -> u64 {
+    64 * 1024
 }
 
 pub fn router(state: AppState) -> Router {
@@ -48,9 +77,18 @@ pub fn router(state: AppState) -> Router {
         .route("/v1/workspaces/:workspace_id", get(get_workspace))
         .route("/v1/commands", post(run_command))
         .route("/v1/events", get(list_events))
+        .route("/v1/events/live", get(live_events))
         .route("/v1/sessions", get(list_sessions))
         .route("/v1/sessions/:session_id", get(get_session))
         .route("/v1/sessions/:session_id/output", get(get_session_output))
+        .route(
+            "/v1/sessions/:session_id/output/delta",
+            get(get_session_output_delta),
+        )
+        .route(
+            "/v1/sessions/:session_id/output/live",
+            get(live_session_output),
+        )
         .route("/v1/sessions/:session_id/cancel", post(cancel_session))
         .with_state(state)
 }
@@ -153,6 +191,19 @@ async fn list_events(
     })))
 }
 
+async fn live_events(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<LiveEventQuery>,
+) -> Result<LiveStream, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    state
+        .store
+        .list_events_after(query.after_sequence, 1)
+        .map_err(ApiError::from_store)?;
+    Ok(journal_stream(state.store, query.after_sequence))
+}
+
 async fn list_sessions(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -186,6 +237,44 @@ async fn get_session_output(
         .get_session_output(&session_id)
         .map_err(ApiError::from_store)?;
     Ok(Json(output_json(&session_id, output)))
+}
+
+async fn get_session_output_delta(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Query(query): Query<OutputDeltaQuery>,
+) -> Result<Json<Value>, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    let delta = state
+        .store
+        .read_output_delta(
+            &session_id,
+            query.stdout_after,
+            query.stderr_after,
+            query.limit,
+        )
+        .map_err(ApiError::from_store)?;
+    Ok(Json(delta))
+}
+
+async fn live_session_output(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(session_id): Path<String>,
+    Query(query): Query<OutputLiveQuery>,
+) -> Result<LiveStream, ApiError> {
+    require_auth(&headers, &state.local_token)?;
+    state
+        .store
+        .read_output_delta(&session_id, query.stdout_after, query.stderr_after, 1)
+        .map_err(ApiError::from_store)?;
+    Ok(output_stream(
+        state.store,
+        session_id,
+        query.stdout_after,
+        query.stderr_after,
+    ))
 }
 
 async fn cancel_session(

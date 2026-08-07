@@ -76,10 +76,11 @@ The accepted implementation sequence is:
 2. **originsd persistence foundation** — local auth, SQLite durability, Workspace projections, capability projections, hash-chained journal, tamper detection, restart recovery.
 3. **Supervised Process Sessions v1** — bounded non-interactive process execution, durable Sessions, replay binding, evidence hashes, environment/root policy, and honest interrupted recovery.
 4. **Active Session Control v1** — asynchronous Session acceptance, exact active replay, cancellation of controlled running Sessions, and authenticated journal-cursor replay across disconnect/restart.
+5. **Live Session Observation v1** — one-copy incremental retained output, stdout/stderr byte cursors, authenticated live journal SSE, authenticated live output SSE, and cursor-based reconnect without socket-owned truth.
 
-Read `CURRENT_STATE.md` for the exact promoted state. If an item is only on an open PR, treat it as candidate until merged even if its branch proof is green.
+Read `CURRENT_STATE.md` for exact promoted state. An item on an open PR remains a candidate until merged even if its branch proof is green.
 
-## Mechanical execution boundary
+## Mechanical execution and observation boundary
 
 Do not silently expand `origins.process.run` into a generic shell or unrestricted execution path.
 
@@ -91,10 +92,15 @@ Current design deliberately separates:
 - command identity from replayed command content;
 - configured Workspace roots from complete OS isolation;
 - mechanical Session state from AgentOps semantic Operation state;
-- durable SQLite/event truth from ephemeral in-process cancellation handles;
-- pull-based event replay from future live push streaming.
+- durable SQLite/event truth from ephemeral cancellation handles;
+- raw retained output from permanent journal metadata;
+- durable journal/byte cursors from SSE connection state.
 
-V1 cancellation is proven only for `running` Sessions controlled by the current daemon generation. It uses the existing `interrupted` terminal state with an explicit cancellation reason rather than inventing a new contract state or exit code.
+V1 cancellation is proven only for `running` Sessions controlled by the current daemon generation. It uses `interrupted` with explicit cancellation reason and no invented exit code.
+
+Live output has exactly one retained raw-output path: the existing `session_outputs` record. Do not add a second chunk/output database merely for streaming. Incremental observation must continue to project this bounded durable copy.
+
+SSE is transport only. Reconnect starts from durable event sequence or stdout/stderr byte cursors. A socket/UI buffer cannot become recovery authority.
 
 ## Huawei acceptance story
 
@@ -107,19 +113,19 @@ The Huawei P30 Pro/VOG case remains the canonical evidence for Origins mission c
 - Keep implementation status in `CURRENT_STATE.md`.
 - Recover repository evidence before proposing technologies or rewrites.
 - Failed and partial Attempts remain visible.
-- Do not convert a model claim, command exit, or UI acknowledgement into proof of completion.
+- Do not convert a model claim, command exit, stream frame, or UI acknowledgement into proof of completion.
 - Do not let a capability approve or activate its own upgrade.
 - Do not revive `build/initial-workspace` as the implementation base.
 
 ## Current next valid work
 
-Continue mechanical observability before broad UI work:
+Mechanical process observation is now sufficient to move to the **native repository/Git Session boundary needed by CodeOps** before broad UI work:
 
-1. add reconnect-safe live event delivery as a projection over the proven journal cursor;
-2. add bounded incremental stdout/stderr persistence/observation without putting raw output in the permanent journal;
-3. prove disconnect/reconnect without duplication inside the retained-output boundary;
-4. preserve restart honesty — do not claim process reattachment;
-5. recover and freeze the native repository/Git Session boundary needed by CodeOps;
+1. recover current CodeOps repository/open/status/diff/proof interfaces from its owning repository;
+2. define Origins-owned repository Session/revision projections that reference canonical Git truth rather than copy CodeOps state;
+3. implement deterministic read-first repository discovery/status/diff;
+4. preserve branch/worktree/revision identity across reconnect;
+5. keep mutations behind explicit typed capabilities instead of generic process execution;
 6. mount AgentOps + CodeOps + Sergeant through their owning contracts;
 7. prove `NEEDS WORK → correction Attempt → fresh proof → PASS` through Origins;
 8. only then begin broad React Workspace construction.

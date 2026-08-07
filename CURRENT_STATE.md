@@ -2,13 +2,13 @@
 
 **Recorded:** 2026-08-07
 **Architecture version:** 1.0.0 — accepted product and architecture authority
-**Implementation status:** Contract Spine + persistent originsd + supervised Process Sessions + Active Session Control implemented and mechanically proven
+**Implementation status:** Contract Spine + persistent originsd + Process Sessions + Active Control + Live Session Observation implemented and mechanically proven
 
 ## Contribution status
 
 Current work contributes **New implementation + Correction + Verification**.
 
-Origins Factory is not yet the complete workspace. Its accepted implementation foundation now has cross-language contracts, persistent Rust state, bounded local process execution, asynchronous Session control, cancellation, and reconnectable durable event replay.
+Origins Factory is not yet the complete workspace. Its accepted mechanical foundation now provides cross-language contracts, persistent Rust state, bounded local process execution, asynchronous control, cancellation, durable event replay, live authenticated event projection, and reconnectable one-copy retained process output.
 
 ## Proven foundation
 
@@ -60,16 +60,26 @@ The Rust 1.75 daemon provides:
 
 ### Active Session Control v1
 
-Active work is no longer hidden behind a long command HTTP request:
-
-- `POST /v1/commands` returns HTTP 202 with a durable Session identity before child completion;
-- the Session is immediately readable while work continues in the daemon;
-- exact replay while active returns the same Session without duplicate execution;
-- `POST /v1/sessions/{session_id}/cancel` cancels a currently controlled `running` Session;
+- `POST /v1/commands` returns HTTP 202 with durable Session identity before child completion;
+- active exact replay returns the same Session without duplicate execution;
+- controlled `running` Sessions can be cancelled explicitly;
 - cancellation intent is journaled before the process-control signal;
-- cancelled work resolves through existing truthful `interrupted` state with null exit code and `timed_out=false`;
-- `GET /v1/events?after_sequence=&limit=` provides authenticated, validated, ordered journal replay with cursor/head metadata;
-- event cursors survive client disconnect and daemon restart.
+- cancelled work resolves through truthful `interrupted` state with null exit code;
+- durable event history is readable by `after_sequence` cursor across disconnect/restart.
+
+### Live Session Observation v1
+
+Live transport is now a projection over durable state rather than a new source of truth:
+
+- incremental retained stdout/stderr bytes are written into the existing `session_outputs` row while a process runs;
+- there is no second raw-output/chunk store;
+- each retained append verifies and updates its retained-byte SHA-256 transactionally;
+- final Session evidence still describes the complete observed stream even when retention truncates it;
+- authenticated output delta reads use independent stdout/stderr retained-byte cursors;
+- authenticated SSE journal delivery starts after a supplied durable event sequence;
+- authenticated SSE output delivery resumes from retained byte cursors;
+- output SSE drains remaining retained bytes, emits terminal metadata, and closes when the Session becomes terminal;
+- raw process output remains absent from the permanent hash-chained journal.
 
 Current routes:
 
@@ -80,29 +90,33 @@ POST /v1/workspaces
 GET  /v1/workspaces/{workspace_id}
 POST /v1/commands
 GET  /v1/events
+GET  /v1/events/live
 GET  /v1/sessions
 GET  /v1/sessions/{session_id}
 GET  /v1/sessions/{session_id}/output
+GET  /v1/sessions/{session_id}/output/delta
+GET  /v1/sessions/{session_id}/output/live
 POST /v1/sessions/{session_id}/cancel
 ```
 
 ## Proof state
 
-The current exact-head challenge has passed:
+The Live Observation challenge has passed on normalized source:
 
 - Python contract proof;
 - TypeScript contract proof;
 - Rust contract proof;
 - exact Rust/Python/TypeScript equivalence;
 - Clippy with warnings denied;
-- all Rust daemon/session/event/integrity tests;
+- all Rust daemon/session/event/output/integrity tests;
 - originsd build under Rust 1.75;
-- existing daemon auth/persistence/journal/restart hosted proof;
-- ADR-0003 process proof adapted to asynchronous acceptance;
-- hosted active-control proof demonstrating early HTTP return, immediate Session readability, active exact replay, running-process cancellation, terminal re-cancel rejection, authenticated ordered event pagination, cancel-event ordering, and event replay after daemon restart;
+- existing daemon auth/persistence/journal/restart proof;
+- ADR-0003 supervised process proof;
+- ADR-0004 asynchronous control/cancellation/event-cursor proof;
+- hosted ADR-0005 proof demonstrating output-before-completion, non-duplicating byte cursors, output disconnect/reconnect, live journal cursor reconnect, live output reconnect, terminal drain, authentication, exact final retained output, one-copy SQLite raw-output storage, and permanent-journal output hygiene;
 - repository sanitation and rustfmt.
 
-Challenge corrections remain visible in the ADR/source history. In particular, v1 cancellation was narrowed to `running` Sessions rather than claiming unproved cancel-before-spawn behavior.
+The proof-gated normalizer produced exact dependency/format state, and an owner-authored evidence commit triggered a fresh full runtime + Contract Spine proof on the normalized source before this state record was advanced.
 
 ## Canonical repository authority
 
@@ -119,7 +133,8 @@ Implementation ADRs:
 - `docs/ADR-0001-CONTRACT-SPINE.md`;
 - `docs/ADR-0002-ORIGINSD-FOUNDATION.md`;
 - `docs/ADR-0003-PROCESS-SESSIONS.md`;
-- `docs/ADR-0004-ACTIVE-SESSION-CONTROL.md`.
+- `docs/ADR-0004-ACTIVE-SESSION-CONTROL.md`;
+- `docs/ADR-0005-LIVE-SESSION-OBSERVATION.md`.
 
 The exploratory `build/initial-workspace` branch remains non-authoritative.
 
@@ -127,13 +142,11 @@ The exploratory `build/initial-workspace` branch remains non-authoritative.
 
 Not implemented or proven yet:
 
-- push/live event streaming;
-- incremental live stdout/stderr persistence/streaming;
-- cancellation while a Session is only `starting`;
 - PTY/interactive terminal Sessions;
+- stdin and terminal resize;
 - process reattachment after daemon restart;
 - stronger OS-level process/resource isolation;
-- native Git/repository Session model beyond invoking registered Git tooling;
+- native repository/Git Session model beyond invoking registered Git tooling;
 - accepted Python Origins integration runtime;
 - production Hunter mount;
 - AgentOps lifecycle/approval mount;
@@ -149,16 +162,16 @@ Not implemented or proven yet:
 
 ## Next valid implementation slice
 
-Continue mechanical observability before broad UI work:
+Mechanical process observation is now sufficient to begin the **native repository/Git Session boundary required by CodeOps**, still before broad UI work:
 
-1. define reconnect-safe live event delivery as a projection over the proven journal cursor;
-2. add bounded incremental process-output persistence/observation without putting raw output into the permanent journal;
-3. prove disconnect/reconnect without output duplication or loss inside the retained-output boundary;
-4. preserve restart honesty — do not claim process reattachment;
-5. then recover and freeze the native repository/Git Session boundary needed by CodeOps;
-6. mount AgentOps + CodeOps + Sergeant through their owning contracts;
+1. recover current CodeOps repository/open/diff/status/proof interfaces from its owning repository;
+2. define an Origins-owned repository Session projection that references canonical Git repository/revision truth rather than copying CodeOps state;
+3. implement read-first repository discovery/status/diff through registered deterministic Git capability boundaries;
+4. preserve branch/worktree identity and exact revisions across reconnect;
+5. keep mutations behind explicit typed capabilities rather than generic process execution;
+6. then mount AgentOps + CodeOps + Sergeant through their owning contracts;
 7. prove `NEEDS WORK → correction Attempt → fresh proof → PASS` through Origins;
-8. begin broad React Workspace construction only after those mechanical/assurance truths exist.
+8. begin broad React Workspace construction only after those mechanical and assurance truths exist.
 
 ## Blocking rule
 

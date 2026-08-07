@@ -2,6 +2,8 @@ pub mod auth;
 pub mod control;
 pub mod events;
 pub mod http;
+pub mod live;
+pub mod output_live;
 pub mod process;
 pub mod sessions;
 pub mod store;

@@ -348,8 +348,20 @@ async fn run_process(
         .take()
         .ok_or_else(|| StoreError::Corrupt("spawned process stderr pipe missing".to_owned()))?;
     let output_limit = prepared.max_output_bytes as usize;
-    let stdout_task = tokio::spawn(capture_stream(stdout, output_limit));
-    let stderr_task = tokio::spawn(capture_stream(stderr, output_limit));
+    let stdout_task = tokio::spawn(capture_stream(
+        stdout,
+        output_limit,
+        store.clone(),
+        session_id.to_owned(),
+        "stdout",
+    ));
+    let stderr_task = tokio::spawn(capture_stream(
+        stderr,
+        output_limit,
+        store.clone(),
+        session_id.to_owned(),
+        "stderr",
+    ));
     let timeout_sleep = sleep(Duration::from_secs(prepared.timeout_seconds));
     tokio::pin!(timeout_sleep);
 
@@ -567,7 +579,13 @@ impl CapturedStream {
     }
 }
 
-async fn capture_stream<R>(mut reader: R, limit: usize) -> std::io::Result<CapturedStream>
+async fn capture_stream<R>(
+    mut reader: R,
+    limit: usize,
+    store: Store,
+    session_id: String,
+    stream: &'static str,
+) -> std::io::Result<CapturedStream>
 where
     R: AsyncRead + Unpin,
 {
@@ -584,7 +602,14 @@ where
         hasher.update(&buffer[..read]);
         let remaining = limit.saturating_sub(retained.len());
         if remaining > 0 {
-            retained.extend_from_slice(&buffer[..read.min(remaining)]);
+            let retain_count = read.min(remaining);
+            let chunk = &buffer[..retain_count];
+            store
+                .append_retained_output(&session_id, stream, chunk)
+                .map_err(|error| {
+                    std::io::Error::new(std::io::ErrorKind::Other, error.to_string())
+                })?;
+            retained.extend_from_slice(chunk);
         }
     }
     Ok(CapturedStream {
