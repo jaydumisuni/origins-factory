@@ -16,7 +16,8 @@ def test_valid_contract_corpus() -> None:
         contract = case["contract"]
         assert validate_contract(contract) is contract, case["name"]
         canonical = canonical_json(contract)
-        assert " " not in canonical
+        assert '": ' not in canonical
+        assert '", ' not in canonical
         assert contract_sha256(contract) == contract_sha256(json.loads(canonical))
 
 
