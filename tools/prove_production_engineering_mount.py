@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -99,8 +100,14 @@ def main() -> int:
             first_stdout, first_stderr = stop(first)
 
         # Restart against the same durable Origins state with Sergeant intentionally absent from PATH.
-        # The doctor may observe/report the gap; it must not repair PATH or create the executable.
-        second_env = {**common_env, "PATH": str(codeops_only_bin)}
+        # Git must remain available because the doctor now refreshes Repository truth before probing owners.
+        system_git = shutil.which("git")
+        if not system_git:
+            raise AssertionError("system Git is required for the Repository refresh proof")
+        second_path = os.pathsep.join([str(codeops_only_bin), str(Path(system_git).parent)])
+        if shutil.which("sergeant", path=second_path) is not None:
+            raise AssertionError("Sergeant unexpectedly exists in the missing-owner proof PATH")
+        second_env = {**common_env, "PATH": second_path}
         second = start(args.binary, second_env)
         try:
             wait_for_health(base_url, second)
