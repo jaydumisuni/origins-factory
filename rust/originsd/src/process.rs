@@ -1,8 +1,8 @@
-use crate::sessions::SessionOutputRecord;
+use crate::sessions::{ProcessSessionStart, SessionOutputRecord};
 use crate::store::{Store, StoreError};
 use origins_contracts::{contract_sha256, validate_contract};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::env;
 use std::path::{Component, Path, PathBuf};
@@ -183,15 +183,15 @@ pub async fn execute_command(
     let args_sha256 = contract_sha256(&args_value)
         .map_err(|error| StoreError::InvalidInput(format!("argument digest failed: {error}")))?;
 
-    let starting = match store.create_process_session(
+    let starting = match store.create_process_session(ProcessSessionStart {
         workspace_id,
         command_id,
-        &command_sha256,
-        &prepared.workspace_root,
-        &prepared.executable,
-        &prepared.cwd,
-        &args_sha256,
-    ) {
+        command_sha256: &command_sha256,
+        workspace_root: &prepared.workspace_root,
+        executable: &prepared.executable,
+        cwd: &prepared.cwd,
+        args_sha256: &args_sha256,
+    }) {
         Ok(session) => session,
         Err(StoreError::Conflict(_)) => {
             if let Some(session) = store.get_session_for_command(command_id, &command_sha256)? {
@@ -348,7 +348,10 @@ struct PreparedProcess {
     max_output_bytes: u64,
 }
 
-fn prepare_process(payload: ProcessPayload, policy: &ProcessPolicy) -> Result<PreparedProcess, StoreError> {
+fn prepare_process(
+    payload: ProcessPayload,
+    policy: &ProcessPolicy,
+) -> Result<PreparedProcess, StoreError> {
     if !(1..=MAX_TIMEOUT_SECONDS).contains(&payload.timeout_seconds) {
         return Err(StoreError::InvalidInput(format!(
             "timeout_seconds must be between 1 and {MAX_TIMEOUT_SECONDS}"
