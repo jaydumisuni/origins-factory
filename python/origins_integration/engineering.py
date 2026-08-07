@@ -195,6 +195,13 @@ class OriginsClient:
     def get_repository(self, repository_id: str) -> dict[str, Any]:
         return self._json("GET", f"/v1/repositories/{urllib.parse.quote(repository_id)}")
 
+    def inspect_repository(self, workspace_id: str, path: str) -> dict[str, Any]:
+        return self._json(
+            "POST",
+            "/v1/repositories/inspect",
+            {"workspace_id": workspace_id, "path": path},
+        )
+
     def submit_process(
         self,
         *,
@@ -282,9 +289,12 @@ class EngineeringBridge:
         self.contracts = contracts or ExternalContracts.load()
 
     def run_attempt(self, request: EngineeringAttemptRequest) -> EngineeringAttemptResult:
-        repository = self.client.get_repository(request.repository_id)
-        workspace_id = _required_string(repository, "workspace_id")
-        workspace_root = _required_string(repository, "worktree_root")
+        stored_repository = self.client.get_repository(request.repository_id)
+        workspace_id = _required_string(stored_repository, "workspace_id")
+        workspace_root = _required_string(stored_repository, "worktree_root")
+        repository = self.client.inspect_repository(workspace_id, workspace_root)
+        if _required_string(repository, "repository_id") != request.repository_id:
+            raise BridgeError("Repository refresh changed Repository identity")
         repository_revision = _required_int(repository, "revision")
         repository_head_oid = _required_string(repository, "head_oid", allow_empty=True)
 
