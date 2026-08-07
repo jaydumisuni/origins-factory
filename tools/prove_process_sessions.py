@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import copy
+import hashlib
 import json
 import os
 import socket
@@ -28,7 +30,9 @@ def main() -> int:
         root = Path(temp_dir)
         data_dir = root / "state"
         workspace_root = root / "repo"
+        outside_root = root / "outside"
         workspace_root.mkdir()
+        outside_root.mkdir()
         (workspace_root / "nested").mkdir()
         port = reserve_port()
         base_url = f"http://127.0.0.1:{port}"
@@ -38,12 +42,17 @@ def main() -> int:
                 "ORIGINS_BIND": f"127.0.0.1:{port}",
                 "ORIGINS_DATA_DIR": str(data_dir),
                 "ORIGINS_LOCAL_TOKEN": TOKEN,
+                "ORIGINS_WORKSPACE_ROOTS": str(workspace_root),
             }
         )
 
         daemon = start(args.binary, env)
         try:
-            wait_for_health(base_url, daemon)
+            health = wait_for_health(base_url, daemon)
+            assert health["database_schema_version"] == 2
+            assert health["sessions"] == 0
+            assert health["capabilities"] == 3
+
             workspace = request_json(
                 f"{base_url}/v1/workspaces",
                 token=TOKEN,
@@ -70,7 +79,12 @@ def main() -> int:
                 executable="python3",
                 args=[
                     "-c",
-                    "import sys; print('VISIBLE_OUT'); print('VISIBLE_ERR', file=sys.stderr)",
+                    (
+                        "import os,sys; "
+                        "print('VISIBLE_OUT'); "
+                        "print('TOKEN_PRESENT' if 'ORIGINS_LOCAL_TOKEN' in os.environ else 'TOKEN_ABSENT'); "
+                        "print('VISIBLE_ERR', file=sys.stderr)"
+                    ),
                     SECRET_ARG,
                 ],
                 cwd="nested",
@@ -85,8 +99,16 @@ def main() -> int:
             assert success["session"]["state"] == "completed"
             assert success["session"]["exit_code"] == 0
             assert "VISIBLE_OUT" in success["output"]["stdout"]
+            assert "TOKEN_ABSENT" in success["output"]["stdout"]
+            assert "TOKEN_PRESENT" not in success["output"]["stdout"]
             assert "VISIBLE_ERR" in success["output"]["stderr"]
             success_session_id = success["session"]["session_id"]
+            stdout_bytes = bytes.fromhex(success["output"]["stdout_hex"])
+            stderr_bytes = bytes.fromhex(success["output"]["stderr_hex"])
+            assert hashlib.sha256(stdout_bytes).hexdigest() == success["session"]["stdout_sha256"]
+            assert hashlib.sha256(stderr_bytes).hexdigest() == success["session"]["stderr_sha256"]
+            assert len(stdout_bytes) == success["session"]["stdout_bytes"]
+            assert len(stderr_bytes) == success["session"]["stderr_bytes"]
 
             replay = request_json(
                 f"{base_url}/v1/commands",
@@ -96,6 +118,16 @@ def main() -> int:
             )
             assert replay["replayed"] is True
             assert replay["session"]["session_id"] == success_session_id
+
+            conflicting_replay = copy.deepcopy(success_command)
+            conflicting_replay["payload"]["args"] = ["-c", "print('different command')"]
+            assert_http_status(
+                f"{base_url}/v1/commands",
+                409,
+                token=TOKEN,
+                method="POST",
+                payload=conflicting_replay,
+            )
 
             failed = request_json(
                 f"{base_url}/v1/commands",
@@ -110,6 +142,21 @@ def main() -> int:
             )
             assert failed["session"]["state"] == "failed"
             assert failed["session"]["exit_code"] == 7
+
+            interrupted = request_json(
+                f"{base_url}/v1/commands",
+                token=TOKEN,
+                method="POST",
+                payload=command_envelope(
+                    workspace_id,
+                    workspace_root,
+                    executable="hunter-codeops-switcher",
+                    args=[],
+                ),
+            )
+            assert interrupted["session"]["state"] == "interrupted"
+            assert interrupted["session"]["exit_code"] is None
+            assert interrupted["session"]["timed_out"] is False
 
             timed_out = request_json(
                 f"{base_url}/v1/commands",
@@ -143,7 +190,8 @@ def main() -> int:
             assert truncated["session"]["state"] == "completed"
             assert truncated["output"]["output_truncated"] is True
             assert truncated["output"]["stdout_bytes"] > 64
-            assert len(truncated["output"]["stdout"].encode("utf-8")) <= 64
+            assert truncated["output"]["stdout_retained_bytes"] == 64
+            assert len(bytes.fromhex(truncated["output"]["stdout_hex"])) == 64
 
             shell_command = command_envelope(
                 workspace_id,
@@ -174,26 +222,42 @@ def main() -> int:
                 payload=escape_command,
             )
 
+            unregistered_root = command_envelope(
+                workspace_id,
+                outside_root,
+                executable="python3",
+                args=["-c", "print('outside root')"],
+            )
+            assert_http_status(
+                f"{base_url}/v1/commands",
+                400,
+                token=TOKEN,
+                method="POST",
+                payload=unregistered_root,
+            )
+
             sessions = request_json(f"{base_url}/v1/sessions", token=TOKEN)["sessions"]
-            assert len(sessions) == 4
+            assert len(sessions) == 5
             output = request_json(
                 f"{base_url}/v1/sessions/{success_session_id}/output", token=TOKEN
             )
             assert "VISIBLE_OUT" in output["stdout"]
+            assert output["stdout_hex"] == success["output"]["stdout_hex"]
 
             updated_workspace = request_json(
                 f"{base_url}/v1/workspaces/{workspace_id}", token=TOKEN
             )
-            assert updated_workspace["revision"] == 5
-            assert len(updated_workspace["session_refs"]) == 4
+            assert updated_workspace["revision"] == 6
+            assert len(updated_workspace["session_refs"]) == 5
 
             health = request_json(f"{base_url}/v1/health")
             assert health["database_schema_version"] == 2
-            assert health["journal"]["entries"] == 13
+            assert health["sessions"] == 5
+            assert health["journal"]["entries"] == 15
         finally:
-            stdout, stderr = stop(daemon)
+            first_stdout, first_stderr = stop(daemon)
 
-        combined = f"{stdout}\n{stderr}"
+        combined = f"{first_stdout}\n{first_stderr}"
         assert TOKEN not in combined
         assert SECRET_ARG not in combined
 
@@ -206,9 +270,33 @@ def main() -> int:
             assert "VISIBLE_OUT" not in journal_text
             assert "VISIBLE_ERR" not in journal_text
             assert "args_sha256" in journal_text
-            assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 4
+            assert "command_sha256" in journal_text
+            assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 5
+            connection.execute(
+                "UPDATE session_outputs SET stdout = ?1 WHERE session_id = ?2",
+                (b"TAMPERED", success_session_id),
+            )
+            connection.commit()
 
-    print("PASS: supervised process sessions, bounds, replay, output evidence and journal hygiene")
+        second = start(args.binary, env)
+        try:
+            wait_for_health(base_url, second)
+            assert_http_status(
+                f"{base_url}/v1/sessions/{success_session_id}/output",
+                503,
+                token=TOKEN,
+            )
+        finally:
+            second_stdout, second_stderr = stop(second)
+
+        combined = f"{combined}\n{second_stdout}\n{second_stderr}"
+        assert TOKEN not in combined
+        assert SECRET_ARG not in combined
+
+    print(
+        "PASS: supervised process sessions, replay binding, environment hygiene, "
+        "root policy, output integrity and journal hygiene"
+    )
     return 0
 
 
