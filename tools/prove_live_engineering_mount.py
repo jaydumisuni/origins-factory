@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -100,9 +101,12 @@ def main() -> int:
             assert receipt.sergeant_command_session_id
             assert receipt.sergeant_review_session_id
             assert receipt.review_sha256
+            assert receipt.receipt_sha256
+            assert len(receipt.receipt_sha256) == 64
             assert str(config).startswith(str(integration))
             assert not str(config).startswith(str(repo))
             payload = receipt.as_dict()
+            assert payload["receipt_sha256"] == receipt.receipt_sha256
             assert "config" not in payload
             assert "summary" not in payload
             assert "stdout" not in json.dumps(payload)
@@ -121,7 +125,13 @@ def main() -> int:
         finally:
             first_stdout, first_stderr = stop(first)
 
-        second_env = {**common_env, "PATH": str(codeops_only_bin)}
+        system_git = shutil.which("git")
+        if not system_git:
+            raise AssertionError("system Git is required for the Repository refresh proof")
+        second_path = os.pathsep.join([str(codeops_only_bin), str(Path(system_git).parent)])
+        if shutil.which("sergeant", path=second_path) is not None:
+            raise AssertionError("Sergeant unexpectedly exists in the missing-owner proof PATH")
+        second_env = {**common_env, "PATH": second_path}
         second = start(args.binary, second_env)
         try:
             wait_for_health(base_url, second)
@@ -151,7 +161,7 @@ def main() -> int:
 
     print(
         "PASS: doctor-gated fixture smoke used absolute external CodeOps config, real originsd Sessions, "
-        "canonical review, fixture non-promotion, and missing-owner block before bridge work"
+        "canonical review, fixture non-promotion, receipt integrity, and missing-owner block before bridge work"
     )
     return 0
 
