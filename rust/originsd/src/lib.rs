@@ -50,17 +50,22 @@ impl RuntimeConfig {
         let bind: SocketAddr = bind_text.parse().map_err(|error| {
             RuntimeError::Config(format!("invalid ORIGINS_BIND {bind_text:?}: {error}"))
         })?;
-        if !bind.ip().is_loopback() {
-            return Err(RuntimeError::Config(
-                "originsd v1 refuses non-loopback bind addresses".to_owned(),
-            ));
-        }
+        let bind = require_loopback(bind)?;
 
         let data_dir = env::var_os("ORIGINS_DATA_DIR")
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(".origins"));
         Ok(Self { bind, data_dir })
     }
+}
+
+fn require_loopback(bind: SocketAddr) -> Result<SocketAddr, RuntimeError> {
+    if !bind.ip().is_loopback() {
+        return Err(RuntimeError::Config(
+            "originsd v1 refuses non-loopback bind addresses".to_owned(),
+        ));
+    }
+    Ok(bind)
 }
 
 pub async fn run_from_env() -> Result<(), RuntimeError> {
@@ -119,11 +124,15 @@ mod tests {
     use super::*;
 
     #[test]
+    fn loopback_bind_is_accepted() {
+        let bind: SocketAddr = "127.0.0.1:48700".parse().unwrap();
+        assert_eq!(require_loopback(bind).unwrap(), bind);
+    }
+
+    #[test]
     fn non_loopback_bind_is_refused() {
-        let config = RuntimeConfig {
-            bind: "0.0.0.0:48700".parse().unwrap(),
-            data_dir: PathBuf::from("unused"),
-        };
-        assert!(!config.bind.ip().is_loopback());
+        let bind: SocketAddr = "0.0.0.0:48700".parse().unwrap();
+        let error = require_loopback(bind).expect_err("non-loopback bind must fail");
+        assert!(matches!(error, RuntimeError::Config(_)));
     }
 }
