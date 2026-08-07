@@ -106,9 +106,7 @@ impl Display for HunterError {
             Self::Config(message) => write!(formatter, "Hunter configuration error: {message}"),
             Self::InvalidInput(message) => write!(formatter, "Hunter request error: {message}"),
             Self::NotConfigured => write!(formatter, "Hunter transport is not configured"),
-            Self::Unavailable(message) => {
-                write!(formatter, "Hunter transport unavailable: {message}")
-            }
+            Self::Unavailable(message) => write!(formatter, "Hunter transport unavailable: {message}"),
             Self::InvalidResponse(message) => write!(formatter, "Hunter response error: {message}"),
             Self::Store(error) => write!(formatter, "Hunter evidence store error: {error}"),
         }
@@ -260,10 +258,51 @@ impl HunterTransport {
             )));
         }
 
-        let body_bytes = read_bounded_body(remote).await?;
+        let body_bytes = match read_bounded_body(remote).await {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                let failure_class = match error {
+                    HunterError::InvalidResponse(_) => "response_too_large",
+                    _ => "response_read_failed",
+                };
+                record_transport_event(
+                    store,
+                    &request.workspace_id,
+                    "hunter.transport.failed",
+                    json!({
+                        "request_id": request_id,
+                        "operation": operation.name(),
+                        "request_sha256": request_sha256,
+                        "http_status": status,
+                        "failure_class": failure_class
+                    }),
+                )?;
+                return Err(error);
+            }
+        };
         let response_sha256 = sha256_bytes(&body_bytes);
-        let response_body: Value = serde_json::from_slice(&body_bytes)
-            .map_err(|error| HunterError::InvalidResponse(format!("non-JSON body: {error}")))?;
+        let response_body: Value = match serde_json::from_slice(&body_bytes) {
+            Ok(body) => body,
+            Err(error) => {
+                record_transport_event(
+                    store,
+                    &request.workspace_id,
+                    "hunter.transport.failed",
+                    json!({
+                        "request_id": request_id,
+                        "operation": operation.name(),
+                        "request_sha256": request_sha256,
+                        "http_status": status,
+                        "response_bytes": body_bytes.len(),
+                        "response_sha256": response_sha256,
+                        "failure_class": "invalid_json"
+                    }),
+                )?;
+                return Err(HunterError::InvalidResponse(format!(
+                    "non-JSON body: {error}"
+                )));
+            }
+        };
         let completed_at = now_rfc3339();
 
         record_transport_event(
