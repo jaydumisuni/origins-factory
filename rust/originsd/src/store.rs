@@ -113,8 +113,10 @@ impl Store {
             "updated_at": now,
         });
         validate_contract(&projection).map_err(|error| StoreError::Contract(error.to_string()))?;
-        let canonical = canonical_json(&projection).map_err(|error| StoreError::Contract(error.to_string()))?;
-        let digest = contract_sha256(&projection).map_err(|error| StoreError::Contract(error.to_string()))?;
+        let canonical =
+            canonical_json(&projection).map_err(|error| StoreError::Contract(error.to_string()))?;
+        let digest = contract_sha256(&projection)
+            .map_err(|error| StoreError::Contract(error.to_string()))?;
 
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -126,7 +128,9 @@ impl Store {
         )?;
         append_event(
             &transaction,
-            projection["workspace_id"].as_str().expect("validated workspace id"),
+            projection["workspace_id"]
+                .as_str()
+                .expect("validated workspace id"),
             "workspace.created",
             json!({"revision": 1}),
             Vec::new(),
@@ -144,8 +148,8 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()?;
-        let (canonical, expected_digest) = stored
-            .ok_or_else(|| StoreError::NotFound(format!("workspace {workspace_id}")))?;
+        let (canonical, expected_digest) =
+            stored.ok_or_else(|| StoreError::NotFound(format!("workspace {workspace_id}")))?;
         let value: Value = serde_json::from_str(&canonical)
             .map_err(|error| StoreError::Corrupt(format!("workspace JSON: {error}")))?;
         validate_contract(&value)
@@ -192,14 +196,17 @@ impl Store {
 
     pub fn workspace_count(&self) -> Result<u64, StoreError> {
         let connection = self.connection()?;
-        let count: i64 = connection.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row.get(0))?;
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM workspaces", [], |row| row.get(0))?;
         u64::try_from(count).map_err(|_| StoreError::Corrupt("negative workspace count".to_owned()))
     }
 
     pub fn capability_count(&self) -> Result<u64, StoreError> {
         let connection = self.connection()?;
-        let count: i64 = connection.query_row("SELECT COUNT(*) FROM capabilities", [], |row| row.get(0))?;
-        u64::try_from(count).map_err(|_| StoreError::Corrupt("negative capability count".to_owned()))
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM capabilities", [], |row| row.get(0))?;
+        u64::try_from(count)
+            .map_err(|_| StoreError::Corrupt("negative capability count".to_owned()))
     }
 
     pub fn verify_journal(&self) -> Result<JournalVerification, StoreError> {
@@ -222,7 +229,8 @@ impl Store {
         let mut previous_hash = String::new();
         let mut entries = 0_u64;
         for row in rows {
-            let (sequence, event_json, expected_event_digest, stored_prev_hash, stored_entry_hash) = row?;
+            let (sequence, event_json, expected_event_digest, stored_prev_hash, stored_entry_hash) =
+                row?;
             if sequence != expected_sequence {
                 return Err(StoreError::Corrupt(format!(
                     "journal sequence gap: expected {expected_sequence}, got {sequence}"
@@ -375,14 +383,16 @@ fn seed_capabilities(connection: &Connection) -> Result<(), StoreError> {
                 "builtin capability entry is not capability_descriptor".to_owned(),
             ));
         }
-        let canonical = canonical_json(descriptor).map_err(|error| StoreError::Contract(error.to_string()))?;
-        let digest = contract_sha256(descriptor).map_err(|error| StoreError::Contract(error.to_string()))?;
-        let capability_id = descriptor["capability_id"]
-            .as_str()
-            .ok_or_else(|| StoreError::Contract("capability_id missing after validation".to_owned()))?;
-        let version = descriptor["version"]
-            .as_str()
-            .ok_or_else(|| StoreError::Contract("capability version missing after validation".to_owned()))?;
+        let canonical =
+            canonical_json(descriptor).map_err(|error| StoreError::Contract(error.to_string()))?;
+        let digest =
+            contract_sha256(descriptor).map_err(|error| StoreError::Contract(error.to_string()))?;
+        let capability_id = descriptor["capability_id"].as_str().ok_or_else(|| {
+            StoreError::Contract("capability_id missing after validation".to_owned())
+        })?;
+        let version = descriptor["version"].as_str().ok_or_else(|| {
+            StoreError::Contract("capability version missing after validation".to_owned())
+        })?;
         connection.execute(
             "INSERT INTO capabilities (
                 capability_id, version, descriptor_json, descriptor_sha256, updated_at
@@ -442,8 +452,10 @@ fn append_event(
         "created_at": now,
     });
     validate_contract(&event).map_err(|error| StoreError::Contract(error.to_string()))?;
-    let canonical = canonical_json(&event).map_err(|error| StoreError::Contract(error.to_string()))?;
-    let event_digest = contract_sha256(&event).map_err(|error| StoreError::Contract(error.to_string()))?;
+    let canonical =
+        canonical_json(&event).map_err(|error| StoreError::Contract(error.to_string()))?;
+    let event_digest =
+        contract_sha256(&event).map_err(|error| StoreError::Contract(error.to_string()))?;
     let entry_hash = journal_hash(&previous_hash, &event_digest);
     transaction.execute(
         "INSERT INTO journal_entries (
@@ -497,7 +509,9 @@ mod tests {
         drop(store);
 
         let reopened = Store::open(&path).expect("store reopens");
-        let recovered = reopened.get_workspace(&workspace_id).expect("workspace recovers");
+        let recovered = reopened
+            .get_workspace(&workspace_id)
+            .expect("workspace recovers");
         assert_eq!(recovered, workspace);
         let journal = reopened.verify_journal().expect("journal verifies");
         assert_eq!(journal.entries, 1);
