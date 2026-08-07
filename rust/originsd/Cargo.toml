@@ -8,6 +8,7 @@ rust-version = "1.75"
 axum = { version = "=0.7.9", features = ["json", "ws"] }
 chrono = { version = "=0.4.39", default-features = false, features = ["clock", "std"] }
 hex = "=0.4.3"
+indexmap = "=2.7.1"
 origins-contracts = { path = "../origins-contracts" }
 reqwest = { version = "=0.11.27", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "=0.31.0", features = ["bundled"] }
