@@ -17,7 +17,7 @@ def test_bridge_does_not_import_python_subprocess() -> None:
     assert "subprocess." not in source
 
 
-def test_plan_and_config_paths_are_repository_relative() -> None:
+def test_plan_paths_remain_repository_relative() -> None:
     EngineeringAttemptRequest(operation_id="op-1", repository_id="repo-1", task="task")
     for unsafe in ("../plan.json", "/tmp/plan.json", "C:\\plan.json", "\\\\server\\plan.json"):
         with pytest.raises(BridgeError):
@@ -26,6 +26,31 @@ def test_plan_and_config_paths_are_repository_relative() -> None:
                 repository_id="repo-1",
                 task="task",
                 plan=unsafe,
+            )
+
+
+def test_codeops_config_is_an_integration_reference_not_repository_artifact() -> None:
+    for config in (
+        "config/code_ops_switcher.example.json",
+        "/opt/hunter/codeops/config.json",
+        "C:\\Hunter\\CodeOps\\config.json",
+        "../integration/codeops.json",
+    ):
+        request = EngineeringAttemptRequest(
+            operation_id="op-1",
+            repository_id="repo-1",
+            task="task",
+            config=config,
+        )
+        assert request.config == config
+
+    for invalid in ("", "   ", "config/unsafe\x00value.json"):
+        with pytest.raises(BridgeError):
+            EngineeringAttemptRequest(
+                operation_id="op-1",
+                repository_id="repo-1",
+                task="task",
+                config=invalid,
             )
 
 

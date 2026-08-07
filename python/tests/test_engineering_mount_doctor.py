@@ -57,6 +57,7 @@ class FakeClient:
             doctor.SERGEANT_EXECUTABLE: ("completed", 0, False),
         }
         self.submitted: list[tuple[str, tuple[str, ...]]] = []
+        self.inspections: list[tuple[str, str]] = []
 
     def get_repository(self, repository_id: str):
         return {
@@ -65,6 +66,16 @@ class FakeClient:
             "revision": 7,
             "head_oid": "a" * 40,
             "worktree_root": "/repo",
+        }
+
+    def inspect_repository(self, workspace_id: str, path: str):
+        self.inspections.append((workspace_id, path))
+        return {
+            "repository_id": "repo-1",
+            "workspace_id": workspace_id,
+            "revision": 8,
+            "head_oid": "b" * 40,
+            "worktree_root": path,
         }
 
     def submit_process(self, *, executable: str, args: list[str], **_kwargs):
@@ -121,6 +132,9 @@ def test_owner_contract_names_are_exact() -> None:
 def test_all_compatible_never_becomes_proven() -> None:
     client = FakeClient()
     result = EngineeringMountDoctor(client, importer=importer, version_reader=versions).run("repo-1")
+    assert result.repository_revision == 8
+    assert result.repository_head_oid == "b" * 40
+    assert client.inspections == [("11111111-1111-4111-8111-111111111111", "/repo")]
     assert result.overall_status == "compatible"
     assert result.live_engineering_proven is False
     assert result.blockers == ()

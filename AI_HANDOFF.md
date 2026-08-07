@@ -47,7 +47,7 @@ Models amplify the system. They do not manufacture mechanical completion or inde
 ## Runtime planes
 
 - **React + TypeScript:** visible Workspace and projections.
-- **Rust:** persistent native control plane, mechanical Sessions, repositories/Git, processes, later PTYs/filesystem/Nodes/events/recovery.
+- **Rust:** persistent native control plane, Sessions, repositories/Git, processes, later PTYs/filesystem/Nodes/events/recovery.
 - **Python:** Hunter, AgentOps, CodeOps, provider/model integration, context compilation, reconciliation, and governed capability evolution.
 
 The UI must not own durable runtime truth.
@@ -76,12 +76,13 @@ Do not duplicate an owning engine inside Origins.
 4. Active Session Control v1.
 5. Live Session Observation v1.
 6. Repository/Git Sessions v1.
-7. Engineering Assurance Bridge v1 — protocol-proven against real originsd; private owner-package live mount still separate.
-8. Production Engineering Mount v1 doctor — compatibility doctor proven; actual target-host owner stack still separate.
+7. Engineering Assurance Bridge v1 — protocol-proven through real originsd.
+8. Production Engineering Mount v1 doctor — compatibility behavior proven.
+9. Live Engineering Mount v1 — doctor-gated read-only smoke mechanism, internal proof scopes, fresh Repository truth, and integrity-addressed receipt proven with controlled fixtures.
 
-Read `CURRENT_STATE.md` for exact promotion/proof state. An item on an open PR remains a candidate until merged even when exact-head proof is green.
+Read `CURRENT_STATE.md` for exact merge/proof state. An item on an open PR remains a candidate until merged even when its pre-freeze head is green.
 
-## Engineering Assurance Bridge lock
+## Engineering mount lock
 
 Production dynamic imports remain pinned to:
 
@@ -94,7 +95,7 @@ Mechanical path remains:
 
 ```text
 AgentOps packet/approval
-→ Origins Repository ID
+→ fresh Origins Repository identity
 → CodeOps command
 → originsd Session
 → CodeOps Sergeant-command
@@ -114,9 +115,30 @@ UNKNOWN    → unresolved
 
 `complete_candidate` is not AgentOps completion. Do not create a shadow AgentOps operation database while its owning production lifecycle backend remains pending.
 
+### Fresh Repository truth
+
+Doctor and bridge must re-inspect the Repository through the dedicated originsd Git authority before a new engineering attempt. A previously stored projection is not sufficient proof of current HEAD/revision.
+
+### CodeOps config authority
+
+Do not reintroduce the old assumption that CodeOps config belongs inside every project Repository.
+
+```text
+CodeOps config
+→ integration-stack reference
+→ absolute or relative
+→ non-empty and NUL-free
+
+project files / edit plan
+→ Repository-scoped
+→ plan must remain relative and escape-resistant
+```
+
+Origins does not copy, persist, or rewrite config contents merely because the bridge references the path.
+
 ## Production Engineering Mount doctor lock
 
-The current recovered owner identities are observations:
+Observed owner identities are compatibility observations, not eternal version requirements:
 
 ```text
 hunter-agentops       0.3.0
@@ -141,14 +163,33 @@ Status meanings are strict:
 missing    → cannot be found/started
 available  → present but required contract behavior is not compatible
 compatible → non-mutating compatibility probes pass
-proven     → separate live actual-owner engineering receipt exists
+proven     → separate actual live-owner receipt exists
 ```
 
-The doctor itself must never output `proven` merely because imports or `--help` work. Overall status is the weakest required surface.
+The doctor itself never emits `proven` because imports or `--help` work. It never auto-installs packages, repairs PATH, clones/pulls owners, rewrites APIs, or substitutes fixtures for missing production systems.
 
-Python compatibility probes use the owner contracts. CLI compatibility probes execute only through originsd Sessions. The doctor does not use Python subprocess and must not auto-install packages, change PATH, clone/pull owner repos, rewrite owner APIs, or substitute fixtures for missing production systems.
+## Live Engineering Mount proof lock
 
-ADR-0008 CI uses exact-name fixtures with real originsd/Repository/Sessions to prove the doctor, including a restart where Sergeant is intentionally missing. **Do not rewrite fixture compatibility as proof of the user's actual host.**
+Two proof scopes exist:
+
+```text
+fixture
+→ CI/controlled owner fixtures
+→ proves Origins routing/protocol behavior
+→ can never set live_engineering_proven=true
+
+live_owner
+→ production constructor + actual installed owners
+→ may produce live_engineering_proven=true after a canonical end-to-end smoke
+```
+
+Canonical project verdicts `PASS`, `NEEDS WORK`, and `BLOCK` may prove owner-stack communication. `UNKNOWN` never proves the mount.
+
+The compact receipt contains IDs/status/digests plus canonical receipt SHA-256. It excludes raw CodeOps config, credentials, raw review text, and process bodies.
+
+The hosted live smoke now runs in the existing Daemon Foundation workflow. Do not claim the smoke is proven merely because its source file exists.
+
+CI fixture proof is **not** actual target-host proof.
 
 ## Mechanical execution boundary
 
@@ -165,9 +206,9 @@ Keep separate:
 - raw retained output from permanent journal metadata;
 - durable cursors from SSE connection state;
 - Repository mechanical truth from CodeOps semantic engineering truth;
-- protocol/fixture compatibility from actual installed-owner proof.
+- fixture/protocol proof from actual installed-owner proof.
 
-Repository/Git v1 remains read-only. CodeOps owns engineering mutation and proof. Any future mutation capability requires a separate authority/proof slice.
+Repository/Git v1 remains read-only. CodeOps owns engineering mutation and proof.
 
 ## Huawei acceptance story
 
@@ -186,14 +227,14 @@ The Huawei P30 Pro/VOG case remains the canonical evidence for Origins mission c
 
 ## Current next valid work
 
-Before broad React UI, close the **live proof** gap without self-installing external owners:
+The Live Engineering Mount mechanism is implemented. Do **not** rebuild it in the next chat.
 
-1. define a controlled live Engineering Mount smoke that first requires every doctor surface to be `compatible`;
-2. execute that smoke only when the actual AgentOps/CodeOps/Sergeant packages/binaries are installed on a controlled Origins host;
-3. produce a bounded live receipt that can promote the mount to `proven` while preserving AgentOps as completion owner;
-4. keep all CLI work through originsd and all Sergeant normalization through CodeOps;
-5. recover the current production Hunter client/API contract in parallel;
-6. after actual owner-stack proof, choose the next major slice from evidence: Hunter mount or broad React Workspace.
+1. check whether PR #10 / ADR-0009 is already merged before doing anything else;
+2. when a controlled host with the actual AgentOps/CodeOps/Sergeant stack is available, run the production live-mount smoke and retain the actual `live_owner` receipt;
+3. do not fake that host verification from fixtures;
+4. meanwhile recover Hunter's current production client/API/session/auth contracts from its owning repository;
+5. define and implement the thinnest model-optional Hunter intelligence mount over the existing Origins/AgentOps foundation;
+6. broad React Workspace work remains downstream of durable runtime projections, not a substitute for them.
 
 ## Session close rule
 
@@ -201,7 +242,7 @@ After substantial Origins work:
 
 1. preserve code and proof checkpoints;
 2. update `CURRENT_STATE.md`;
-3. update this handoff when the recovery path or next valid action changes;
+3. update this handoff when recovery order or next valid action changes;
 4. update the product plan only for an owner-accepted architecture change;
 5. preserve unresolved limitations explicitly;
 6. leave one clean continuation point for the next chat or machine.
