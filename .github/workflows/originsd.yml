@@ -63,15 +63,12 @@ jobs:
       - name: Repository whitespace gate
         run: git diff --check origin/main...HEAD
 
-      - name: Check Rust formatting
-        run: cargo fmt --manifest-path rust/Cargo.toml --all -- --check
-
-  freeze-lock:
+  normalize-runtime:
     if: >-
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/heads/impl/') &&
       github.actor == 'jaydumisuni' &&
-      !startsWith(github.event.head_commit.message, 'Freeze Rust dependency lock')
+      !startsWith(github.event.head_commit.message, 'Normalize Origins runtime')
     needs: runtime-proof
     runs-on: ubuntu-latest
     permissions:
@@ -88,24 +85,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install 1.75.0 --profile minimal
+          rustup toolchain install 1.75.0 --profile minimal --component rustfmt
           rustup override set 1.75.0
 
-      - name: Generate proven lockfile
-        run: cargo generate-lockfile --manifest-path rust/Cargo.toml
+      - name: Normalize proven dependency graph and Rust sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo generate-lockfile --manifest-path rust/Cargo.toml
+          cargo fmt --manifest-path rust/Cargo.toml --all
 
-      - name: Freeze dependency lock on implementation branch
+      - name: Freeze normalized runtime on implementation branch
         shell: bash
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          if [[ -z "$(git status --porcelain -- rust/Cargo.lock)" ]]; then
-            echo "Dependency lock is already frozen."
+          if [[ -z "$(git status --porcelain -- rust)" ]]; then
+            echo "Rust runtime is already normalized."
             exit 0
           fi
           git config user.name "THETECHGUY Origins Freezer"
           git config user.email "actions@users.noreply.github.com"
-          git add rust/Cargo.lock
-          git commit -m "Freeze Rust dependency lock"
+          git add rust
+          git commit -m "Normalize Origins runtime"
           git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "HEAD:${GITHUB_REF_NAME}"
