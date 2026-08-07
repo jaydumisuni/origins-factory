@@ -1,3 +1,8 @@
+from .doctor import (
+    EngineeringMountDoctor,
+    EngineeringMountDoctorResult,
+    MountSurfaceResult,
+)
 from .engineering import (
     BridgeError,
     EngineeringAttemptRequest,
@@ -13,7 +18,10 @@ __all__ = [
     "EngineeringAttemptRequest",
     "EngineeringAttemptResult",
     "EngineeringBridge",
+    "EngineeringMountDoctor",
+    "EngineeringMountDoctorResult",
     "ExternalContracts",
     "IntegrationUnavailable",
+    "MountSurfaceResult",
     "OriginsClient",
 ]
