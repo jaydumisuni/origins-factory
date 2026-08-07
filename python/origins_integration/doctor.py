@@ -79,11 +79,14 @@ class EngineeringMountDoctor:
         self._version_reader = version_reader
 
     def run(self, repository_id: str) -> EngineeringMountDoctorResult:
-        repository = self.client.get_repository(repository_id)
-        worktree = _required_string(repository, "worktree_root")
+        stored_repository = self.client.get_repository(repository_id)
+        workspace_id = _required_string(stored_repository, "workspace_id")
+        worktree = _required_string(stored_repository, "worktree_root")
+        repository = self.client.inspect_repository(workspace_id, worktree)
+        if _required_string(repository, "repository_id") != repository_id:
+            raise BridgeError("Repository refresh changed Repository identity")
         revision = _required_int(repository, "revision")
         head_oid = _required_string(repository, "head_oid", allow_empty=True)
-        workspace_id = _required_string(repository, "workspace_id")
 
         surfaces = (
             self._probe_agentops(worktree),
