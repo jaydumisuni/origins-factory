@@ -185,12 +185,7 @@ impl Store {
             "INSERT INTO session_outputs (
                 session_id, stdout, stderr, stdout_retained_sha256, stderr_retained_sha256
              ) VALUES (?1, ?2, ?3, ?4, ?4)",
-            params![
-                session_id,
-                Vec::<u8>::new(),
-                Vec::<u8>::new(),
-                EMPTY_SHA256
-            ],
+            params![session_id, Vec::<u8>::new(), Vec::<u8>::new(), EMPTY_SHA256],
         )?;
         append_event(
             &transaction,
@@ -281,8 +276,7 @@ impl Store {
         let connection = self.connection()?;
         let count: i64 =
             connection.query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))?;
-        u64::try_from(count)
-            .map_err(|_| StoreError::Corrupt("negative session count".to_owned()))
+        u64::try_from(count).map_err(|_| StoreError::Corrupt("negative session count".to_owned()))
     }
 
     pub fn get_session_output(&self, session_id: &str) -> Result<SessionOutputRecord, StoreError> {
@@ -296,8 +290,10 @@ impl Store {
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
             )
             .optional()?;
-        let (stdout, stderr, stdout_retained_sha256, stderr_retained_sha256) = stored
-            .ok_or_else(|| StoreError::Corrupt(format!("session {session_id} has no output row")))?;
+        let (stdout, stderr, stdout_retained_sha256, stderr_retained_sha256) =
+            stored.ok_or_else(|| {
+                StoreError::Corrupt(format!("session {session_id} has no output row"))
+            })?;
         if sha256_bytes(&stdout) != stdout_retained_sha256 {
             return Err(StoreError::Corrupt(format!(
                 "session {session_id} retained stdout digest mismatch"
@@ -345,10 +341,7 @@ impl Store {
         output: SessionOutputRecord,
         reason: &str,
     ) -> Result<Value, StoreError> {
-        if !matches!(
-            state,
-            "completed" | "failed" | "timed_out" | "interrupted"
-        ) {
+        if !matches!(state, "completed" | "failed" | "timed_out" | "interrupted") {
             return Err(StoreError::InvalidInput(format!(
                 "unsupported terminal process state {state}"
             )));
@@ -611,7 +604,9 @@ mod tests {
     fn active_session_becomes_interrupted_after_reopen() {
         let path = temp_database();
         let store = Store::open(&path).unwrap();
-        let workspace = store.create_workspace("Session proof", vec![], vec![]).unwrap();
+        let workspace = store
+            .create_workspace("Session proof", vec![], vec![])
+            .unwrap();
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         let command_id = Uuid::new_v4().hyphenated().to_string();
         let session = store
@@ -641,7 +636,9 @@ mod tests {
     fn command_id_cannot_be_rebound_to_different_digest() {
         let path = temp_database();
         let store = Store::open(&path).unwrap();
-        let workspace = store.create_workspace("Replay proof", vec![], vec![]).unwrap();
+        let workspace = store
+            .create_workspace("Replay proof", vec![], vec![])
+            .unwrap();
         let workspace_id = workspace["workspace_id"].as_str().unwrap();
         let command_id = Uuid::new_v4().hyphenated().to_string();
         store

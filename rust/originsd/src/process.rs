@@ -280,24 +280,20 @@ pub async fn execute_command(
     let stdout_task = tokio::spawn(capture_stream(stdout, output_limit));
     let stderr_task = tokio::spawn(capture_stream(stderr, output_limit));
 
-    let wait_outcome = match timeout(
-        Duration::from_secs(prepared.timeout_seconds),
-        child.wait(),
-    )
-    .await
-    {
-        Ok(Ok(status)) if status.success() => ("completed", Some(0), false, "exit_zero"),
-        Ok(Ok(status)) => match status.code() {
-            Some(code) => ("failed", Some(code), false, "nonzero_exit"),
-            None => ("interrupted", None, false, "terminated_without_exit_code"),
-        },
-        Ok(Err(_)) => ("interrupted", None, false, "wait_failed"),
-        Err(_) => {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-            ("timed_out", None, true, "timeout")
-        }
-    };
+    let wait_outcome =
+        match timeout(Duration::from_secs(prepared.timeout_seconds), child.wait()).await {
+            Ok(Ok(status)) if status.success() => ("completed", Some(0), false, "exit_zero"),
+            Ok(Ok(status)) => match status.code() {
+                Some(code) => ("failed", Some(code), false, "nonzero_exit"),
+                None => ("interrupted", None, false, "terminated_without_exit_code"),
+            },
+            Ok(Err(_)) => ("interrupted", None, false, "wait_failed"),
+            Err(_) => {
+                let _ = child.kill().await;
+                let _ = child.wait().await;
+                ("timed_out", None, true, "timeout")
+            }
+        };
 
     let stdout_capture = match stdout_task.await {
         Ok(Ok(capture)) => capture,

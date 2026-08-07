@@ -226,9 +226,7 @@ impl ApiError {
                 Self::new(StatusCode::BAD_REQUEST, "INVALID_REQUEST", message)
             }
             StoreError::NotFound(message) => Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message),
-            StoreError::Conflict(message) => {
-                Self::new(StatusCode::CONFLICT, "CONFLICT", message)
-            }
+            StoreError::Conflict(message) => Self::new(StatusCode::CONFLICT, "CONFLICT", message),
             StoreError::Corrupt(message) => {
                 Self::new(StatusCode::SERVICE_UNAVAILABLE, "CORRUPT_STATE", message)
             }
