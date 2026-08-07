@@ -17,6 +17,7 @@ SESSION_KINDS = ("process",)
 SESSION_STATES = ("completed", "failed", "interrupted", "running", "starting", "timed_out")
 SEMVER_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+OID_RE = re.compile(r"^[0-9a-f]{40}$")
 
 
 class ContractError(ValueError):
@@ -56,6 +57,7 @@ def validate_contract(value: Any) -> dict[str, Any]:
         "command_envelope": _validate_command_envelope,
         "event_envelope": _validate_event_envelope,
         "session_projection": _validate_session_projection,
+        "repository_projection": _validate_repository_projection,
     }
     validator = validators.get(contract_type)
     if validator is None:
@@ -231,7 +233,7 @@ def _validate_session_projection(value: dict[str, Any]) -> None:
     _nonempty_string(value, "workspace_root")
     state = _enum(value, "state", SESSION_STATES)
     pid = _string(value, "pid")
-    if pid and not pid.isascii() or (pid and not pid.isdigit()):
+    if pid and (not pid.isascii() or not pid.isdigit()):
         raise ContractError("INVALID_PID", "pid must be empty or ASCII decimal digits")
     started = _timestamp(value, "started_at")
     updated = _timestamp(value, "updated_at")
@@ -265,6 +267,64 @@ def _validate_session_projection(value: dict[str, Any]) -> None:
         raise ContractError("INVALID_SESSION_STATE", "failed session requires a non-zero exit_code")
     if state in {"timed_out", "interrupted"} and exit_code is not None:
         raise ContractError("INVALID_SESSION_STATE", f"{state} session must not claim exit_code")
+
+
+def _validate_repository_projection(value: dict[str, Any]) -> None:
+    _exact_fields(
+        value,
+        {
+            "contract_type",
+            "schema_version",
+            "repository_id",
+            "workspace_id",
+            "revision",
+            "worktree_root",
+            "git_dir",
+            "common_dir",
+            "head_oid",
+            "head_ref",
+            "branch",
+            "detached",
+            "unborn",
+            "staged_count",
+            "unstaged_count",
+            "untracked_count",
+            "status_sha256",
+            "observed_at",
+        },
+    )
+    _uuid(value, "repository_id")
+    _uuid(value, "workspace_id")
+    revision = _nonnegative_integer(value, "revision", "INVALID_REVISION")
+    if revision < 1:
+        raise ContractError("INVALID_REVISION", "repository revision must be at least 1")
+    _nonempty_string(value, "worktree_root")
+    _nonempty_string(value, "git_dir")
+    _nonempty_string(value, "common_dir")
+    head_oid = _string(value, "head_oid")
+    if head_oid and not OID_RE.fullmatch(head_oid):
+        raise ContractError("INVALID_GIT_OID", "head_oid must be empty or lowercase 40-hex Git OID")
+    head_ref = _string(value, "head_ref")
+    branch = _string(value, "branch")
+    detached = _bool(value, "detached")
+    unborn = _bool(value, "unborn")
+    _nonnegative_integer(value, "staged_count", "INVALID_STATUS_COUNT")
+    _nonnegative_integer(value, "unstaged_count", "INVALID_STATUS_COUNT")
+    _nonnegative_integer(value, "untracked_count", "INVALID_STATUS_COUNT")
+    _digest(value, "status_sha256", allow_empty=False)
+    _timestamp(value, "observed_at")
+
+    if unborn:
+        if head_oid or detached or not head_ref or not branch:
+            raise ContractError("INVALID_REPOSITORY_STATE", "unborn repository requires symbolic branch and no OID")
+    elif detached:
+        if not head_oid or head_ref or branch:
+            raise ContractError("INVALID_REPOSITORY_STATE", "detached repository requires OID and no symbolic branch")
+    else:
+        if not head_oid or not head_ref or not branch:
+            raise ContractError("INVALID_REPOSITORY_STATE", "attached repository requires OID and symbolic branch")
+    if head_ref and branch and head_ref != f"refs/heads/{branch}":
+        raise ContractError("INVALID_REPOSITORY_STATE", "head_ref and branch disagree")
 
 
 def _validate_numbers(value: Any, path: str = "$") -> None:
