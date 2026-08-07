@@ -1,0 +1,16 @@
+[package]
+name = "originsd"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+
+[dependencies]
+axum = { version = "=0.7.9", features = ["json", "ws"] }
+chrono = { version = "=0.4.39", default-features = false, features = ["clock", "std"] }
+origins-contracts = { path = "../origins-contracts" }
+rusqlite = { version = "=0.32.1", features = ["bundled"] }
+serde = { version = "=1.0.229", features = ["derive"] }
+serde_json = "=1.0.134"
+sha2 = "=0.10.8"
+tokio = { version = "=1.42.0", features = ["macros", "net", "rt-multi-thread", "signal"] }
+uuid = { version = "=1.11.0", features = ["v4"] }
