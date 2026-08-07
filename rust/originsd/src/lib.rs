@@ -1,9 +1,12 @@
 pub mod auth;
 pub mod http;
+pub mod process;
+pub mod sessions;
 pub mod store;
 
 use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
+use crate::process::ProcessPolicy;
 use crate::store::Store;
 use chrono::{SecondsFormat, Utc};
 use std::env;
@@ -76,10 +79,12 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     fs::create_dir_all(&config.data_dir).map_err(|error| RuntimeError::Io(error.to_string()))?;
     let token = load_or_create_token(&config.data_dir)
         .map_err(|error| RuntimeError::Io(error.to_string()))?;
+    let process_policy = ProcessPolicy::from_env().map_err(RuntimeError::Config)?;
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     let state = AppState {
         store,
+        process_policy,
         local_token: Arc::<str>::from(token),
         started_at: Arc::<str>::from(now_rfc3339()),
     };
