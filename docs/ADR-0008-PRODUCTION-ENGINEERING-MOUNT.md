@@ -1,6 +1,6 @@
 # ADR-0008 — Production Engineering Mount v1
 
-**Status:** ACCEPTED for implementation and challenge
+**Status:** FROZEN — compatibility doctor mechanically proven; live target-host proof pending
 **Date:** 2026-08-07
 **Depends on:** ADR-0001 through ADR-0007
 **Owning systems:** `jaydumisuni/Hunter-AgentOps`, `jaydumisuni/hunter-codeops`, `jaydumisuni/Sergeant`
@@ -9,7 +9,7 @@
 
 Close the gap between ADR-0007's protocol-proven bridge and an actual host capable of mounting the current AgentOps, CodeOps, and Sergeant owners.
 
-This generation begins with a **read-only integration doctor**. It does not install, upgrade, modify, vendor, or repair external repositories automatically.
+This generation adds a **read-only integration doctor**. It does not install, upgrade, modify, vendor, or repair external repositories automatically.
 
 ## Status vocabulary
 
@@ -26,10 +26,10 @@ compatible
 → current required contract behavior passes non-mutating compatibility probes
 
 proven
-→ a later controlled live Engineering Assurance attempt using the actual owner stack has passed
+→ a separate controlled live Engineering Assurance attempt using the actual owner stack has passed
 ```
 
-The doctor itself can promote only as far as `compatible`. `proven` requires a separate live smoke/attempt receipt; presence or `--help` output is not proof of an engineering loop.
+The doctor itself promotes only as far as `compatible`. Presence or `--help` output never becomes `proven` engineering integration.
 
 Overall doctor status is the weakest required owner surface. No average/majority logic may hide one missing authority.
 
@@ -69,15 +69,7 @@ ApprovalState
 CodeOpsOperationPacket
 ```
 
-Compatibility probe constructs a harmless packet bound to the current Origins Repository worktree with:
-
-- non-empty operation ID/task;
-- no files;
-- no plan;
-- `apply_plan=false`;
-- `ApprovalState.NOT_REQUIRED`.
-
-The packet must preserve the supplied operation ID, task, and canonical Repository worktree. This checks the actual current constructor/validation behavior rather than symbol presence alone.
+Compatibility constructs a harmless packet bound to the current Origins Repository worktree with no files, no plan, `apply_plan=false`, and `ApprovalState.NOT_REQUIRED`. The packet must preserve operation ID, task, Repository worktree, and non-apply intent.
 
 ### CodeOps semantic ingest
 
@@ -93,15 +85,15 @@ Required symbol:
 ingest_sergeant_result_text
 ```
 
-Compatibility probe submits canonical JSON verdicts without executing project work:
+Compatibility delegates canonical JSON verdicts to the owner and requires:
 
 ```text
-PASS
-NEEDS WORK
-BLOCK
+PASS       → needs_loop=false, blocked=false
+NEEDS WORK → needs_loop=true,  blocked=false
+BLOCK      → needs_loop=true,  blocked=true
 ```
 
-The owning function must preserve the expected verdict/loop/block semantics. Origins does not parse or repair the result itself.
+Origins does not parse or repair those semantics itself.
 
 ## CLI probes
 
@@ -116,11 +108,11 @@ The doctor never uses Python `subprocess`.
 
 Classification:
 
-- spawn/interruption because executable cannot start → `missing`;
-- executable starts but returns non-zero/times out/truncates required probe output → `available`;
+- interrupted/no-code start failure → `missing`;
+- executable starts but exits non-zero, times out, or truncates required probe output → `available`;
 - completed exit 0 with non-truncated output → `compatible`.
 
-A successful help probe proves command availability/shape only. It does not become `proven` engineering integration.
+CLI Session ID and stdout SHA-256 are retained in the doctor result. Raw help output remains under the existing mechanical Session evidence model rather than being duplicated into a new doctor log store.
 
 ## Package metadata
 
@@ -132,31 +124,17 @@ hunter-codeops
 sergeant-reviewer
 ```
 
-Missing metadata does not by itself override a successful imported contract probe, but it is reported explicitly. Compatibility comes from behavior, not merely version strings.
+Missing metadata does not by itself override successful behavioral compatibility. Compatibility comes from behavior, not merely version strings.
 
 ## Mechanical authority
 
-The doctor receives an Origins `repository_id` and obtains:
+The doctor receives an Origins `repository_id` and obtains Workspace ID, canonical Repository worktree, Repository revision, and HEAD from originsd.
 
-- Workspace ID;
-- canonical Repository worktree;
-- Repository revision/HEAD;
-
-from originsd.
-
-All CLI probes therefore inherit the same mechanical controls as ADR-0007:
-
-- loopback authenticated originsd;
-- authorized Workspace root;
-- typed process command envelope;
-- durable Session identity;
-- bounded output;
-- no Python subprocess;
-- no generic Git path.
+All CLI probes inherit loopback authentication, authorized Workspace roots, typed command envelopes, durable Sessions, bounded output, and the no-generic-Git rule.
 
 ## No automatic repair
 
-A failed doctor may recommend exact next actions but does not:
+A failed doctor may report blockers but does not:
 
 - pip-install packages;
 - alter PATH;
@@ -165,50 +143,51 @@ A failed doctor may recommend exact next actions but does not:
 - rewrite AgentOps/CodeOps/Sergeant APIs;
 - silently substitute fixtures for missing production owners.
 
-Capability installation or owner-repository upgrades are separate approved engineering operations.
+Capability installation or owner upgrades are separate approved engineering operations.
 
 ## Doctor result
 
-The result records:
+`EngineeringMountDoctorResult` records:
 
 - Repository ID/revision/HEAD used for the probe;
-- each Python owner module status/version/detail;
-- each CLI status/version/detail + mechanical Session ID;
-- overall status;
-- whether live engineering proof exists (false in doctor-only generation);
-- blockers/recommendations.
-
-No raw CLI output is copied into the permanent Origins journal by the doctor. Mechanical Session output remains under the existing Session evidence model.
+- `agentops_python` status/version/detail;
+- `codeops_python` status/version/detail;
+- `codeops_cli` status/version/detail/Session/digest;
+- `sergeant_cli` status/version/detail/Session/digest;
+- weakest-link overall status;
+- `live_engineering_proven=false` in this doctor-only generation;
+- blockers for any surface below compatible.
 
 ## Live proof boundary
 
-ADR-0008 doctor proof uses controlled fixtures in CI to prove doctor classification logic and Origins mechanical routing.
+ADR-0008 CI proof uses controlled owner fixtures with the exact recovered module/distribution/executable identities while using **real originsd, a real durable Repository, and real durable process Sessions**.
 
-That fixture proof does not claim a user's machine currently has the private owner packages installed.
+That fixture proof does not claim the user's target host currently has the private owner packages installed.
 
-A later controlled host smoke using the actual installed owners is required before any doctor result may be labeled `proven`.
+A separate controlled host smoke using the actual installed owners is required before the engineering mount may be labeled `proven`.
 
-## Proof requirements
+## Challenge evidence
 
-Before promotion the exact head must prove:
+The challenged candidate passed:
 
-1. doctor code contains no Python subprocess use;
-2. Repository/worktree identity comes from originsd;
-3. exact production module/distribution/executable names are pinned by tests;
-4. missing AgentOps import → `missing` without fallback schema creation;
-5. present AgentOps symbols with incompatible packet behavior → `available`, not `compatible`;
-6. compatible AgentOps packet behavior → `compatible`;
-7. CodeOps ingest compatibility delegates to the owning function and checks PASS/NEEDS WORK/BLOCK semantics;
-8. missing CodeOps ingest module → `missing`;
-9. missing CLI spawn through originsd → `missing`;
-10. non-zero CLI probe → `available`;
-11. successful non-truncated CLI probe → `compatible`;
-12. doctor overall status is the weakest required surface;
-13. doctor never outputs `proven` without a separate live proof receipt;
-14. fixture host proves all-compatible classification using real originsd durable Sessions;
-15. a second fixture scenario proves one missing owner keeps overall status `missing` even when others are compatible;
-16. all ADR-0002 through ADR-0007 proofs remain green;
-17. documentation never upgrades fixture compatibility to live production proof.
+1. doctor source contains no Python `subprocess` import/use;
+2. exact AgentOps/CodeOps module, distribution, and executable names are pinned by tests;
+3. all-compatible Python/CLI fixtures produce overall `compatible`, never `proven`;
+4. missing AgentOps import keeps overall status `missing` without fallback schema creation;
+5. incompatible AgentOps packet behavior is classified `available`, not compatible;
+6. changed CodeOps Sergeant-ingest semantics are classified `available`;
+7. CLI interruption is classified `missing`;
+8. CLI non-zero and truncated-help probes are classified `available`;
+9. compatible CLI probes are submitted only through originsd Sessions;
+10. hosted fixture packages report recovered observations `hunter-agentops 0.3.0`, `hunter-codeops 0.3.0`, and `sergeant-reviewer 0.4.1`;
+11. hosted all-compatible fixture proves two CLI probe Sessions are durable `origins.process.run` Sessions;
+12. hosted restart with Sergeant deliberately absent from PATH keeps AgentOps, CodeOps Python, and CodeOps CLI compatible while `sergeant_cli=missing` forces overall `missing`;
+13. the doctor does not recreate the missing Sergeant executable or alter the fixture PATH directory;
+14. `live_engineering_proven` remains false in both compatible and missing scenarios;
+15. all ADR-0002 through ADR-0007 hosted runtime proofs remain green;
+16. Python/TypeScript/Rust Contract Spine proofs, exact three-runtime equivalence, Clippy, all Rust tests/build, whitespace, and rustfmt remain green.
+
+Both proof suites passed on candidate head `46f31faf9ca3df3b26f7199ec0c5a77ba2e251e8` before this documentation freeze. Final promotion still requires a fresh exact-head proof after the documentation updates.
 
 ## Explicit non-claims
 
@@ -216,6 +195,7 @@ This generation does not provide or claim:
 
 - automatic installation or repair of owner packages;
 - actual live private-package proof on the user's target host;
+- a `proven` engineering mount result from the doctor alone;
 - AgentOps persistent lifecycle backend;
 - provider/model execution;
 - Hunter production mount;
