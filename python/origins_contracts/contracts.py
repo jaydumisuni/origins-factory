@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 SCHEMA_VERSION = "1.0.0"
+MAX_SAFE_INTEGER = 9_007_199_254_740_991
 EFFECTS = ("draft", "execute", "mutate", "observe", "publish", "verify")
 NODE_OS = ("any", "linux", "macos", "windows")
 MATURITY = ("experimental", "frozen", "planned", "proven")
@@ -23,7 +24,7 @@ class ContractError(ValueError):
 
 
 def canonical_json(value: Any) -> str:
-    _reject_floats(value)
+    _validate_numbers(value)
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
 
@@ -38,7 +39,7 @@ def contract_sha256(value: Any) -> str:
 def validate_contract(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ContractError("INVALID_ROOT", "contract root must be an object")
-    _reject_floats(value)
+    _validate_numbers(value)
 
     contract_type = value.get("contract_type")
     if not isinstance(contract_type, str) or not contract_type:
@@ -200,17 +201,21 @@ def _validate_event_envelope(value: dict[str, Any]) -> None:
     _timestamp(value, "created_at")
 
 
-def _reject_floats(value: Any, path: str = "$") -> None:
+def _validate_numbers(value: Any, path: str = "$") -> None:
     if isinstance(value, float):
         raise ContractError("FLOAT_FORBIDDEN", f"floating-point value forbidden at {path}")
+    if isinstance(value, int) and not isinstance(value, bool) and abs(value) > MAX_SAFE_INTEGER:
+        raise ContractError(
+            "INTEGER_OUT_OF_RANGE", f"integer outside cross-language safe range at {path}"
+        )
     if isinstance(value, dict):
         for key, child in value.items():
             if not isinstance(key, str):
                 raise ContractError("INVALID_OBJECT_KEY", f"object key at {path} must be a string")
-            _reject_floats(child, f"{path}.{key}")
+            _validate_numbers(child, f"{path}.{key}")
     elif isinstance(value, list):
         for index, child in enumerate(value):
-            _reject_floats(child, f"{path}[{index}]")
+            _validate_numbers(child, f"{path}[{index}]")
 
 
 def _exact_fields(value: dict[str, Any], expected: set[str]) -> None:
