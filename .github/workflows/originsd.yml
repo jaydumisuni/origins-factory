@@ -7,6 +7,7 @@ on:
       - impl/process-sessions-v1
       - impl/active-session-control-v1
       - impl/live-session-observation-v1
+      - impl/repository-git-sessions-v1
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -51,6 +52,7 @@ jobs:
           tools/prove_process_sessions.py
           tools/prove_active_session_control.py
           tools/prove_live_session_observation.py
+          tools/prove_repository_git_sessions.py
 
       - name: Reject Rust warnings
         run: cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
@@ -72,6 +74,9 @@ jobs:
 
       - name: Prove live Session observation and cursor reconnect
         run: python tools/prove_live_session_observation.py --binary rust/target/debug/originsd
+
+      - name: Prove repository Git sessions
+        run: python tools/prove_repository_git_sessions.py --binary rust/target/debug/originsd
 
       - name: Repository whitespace gate
         run: git diff --check origin/main...HEAD
