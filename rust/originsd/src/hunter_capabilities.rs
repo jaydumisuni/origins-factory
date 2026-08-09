@@ -80,15 +80,15 @@ mod tests {
 
         synchronize(&store, true).unwrap();
         let configured = store.list_capabilities().unwrap();
-        assert!(configured.iter().any(|item| {
-            item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID)
-        }));
+        assert!(configured
+            .iter()
+            .any(|item| { item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID) }));
 
         synchronize(&store, false).unwrap();
         let disabled = store.list_capabilities().unwrap();
-        assert!(!disabled.iter().any(|item| {
-            item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID)
-        }));
+        assert!(!disabled
+            .iter()
+            .any(|item| { item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID) }));
 
         fs::remove_dir_all(root).unwrap();
     }
