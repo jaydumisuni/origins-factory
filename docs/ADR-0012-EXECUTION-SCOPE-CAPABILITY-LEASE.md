@@ -2,6 +2,19 @@
 
 Status: security-review candidate on draft PR #11. **Not an accepted authority model and not a runtime activation path.**
 
+## Current proof state
+
+The candidate authority model now has executable validators in three runtimes without being registered as an active Origins Contract Spine authority type:
+
+- Python: `python/origins_contracts/authority.py`;
+- TypeScript: `typescript/authority.ts`;
+- Rust: isolated `rust/origins-authority-contracts` crate;
+- shared corpus: `contracts/authority-fixtures.json`.
+
+The three implementations use the frozen Contract Spine canonical JSON/SHA-256 rules. The shared valid scope and lease fixtures are pinned to the same expected hashes in all three test lanes. Shared invalid fixtures require the same error classes. Python/TypeScript/Rust also challenge monotonic child-scope and lease-within-scope rules.
+
+This is **candidate semantic proof only**. It does not prove OS filesystem/network isolation, approval durability, production lease issuance, revocation, process-tree containment, or Sec-Ops acceptance.
+
 ## Purpose
 
 Origins already has proven mechanical controls: loopback-only `originsd`, Workspace root ceilings, executable allowlists, cleared process environments, bounded process Sessions, cancellation, restart recovery, read-first Git identity, and hash-chained evidence.
@@ -102,6 +115,7 @@ A `capability_lease` contains:
 - SHA-256 of the approval record;
 - SHA-256 of the exact CapabilityProposal that was approved;
 - state: `active | suspended | revoked | expired`;
+- monotonically increasing `fence`;
 - issue/expiry timestamps;
 - monotonic revision.
 
