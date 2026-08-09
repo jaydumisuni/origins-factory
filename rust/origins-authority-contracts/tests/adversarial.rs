@@ -8,7 +8,10 @@ fn fixtures() -> Value {
 }
 
 fn attacks() -> Value {
-    serde_json::from_str(include_str!("../../../contracts/authority-adversarial-fixtures.json")).unwrap()
+    serde_json::from_str(include_str!(
+        "../../../contracts/authority-adversarial-fixtures.json"
+    ))
+    .unwrap()
 }
 
 fn base(name: &str) -> Value {
@@ -40,10 +43,7 @@ fn child_scope() -> Value {
         "parent_scope_id".into(),
         Value::String("22222222-2222-4222-8222-222222222222".into()),
     );
-    object.insert(
-        "effects".into(),
-        serde_json::json!(["execute", "observe"]),
-    );
+    object.insert("effects".into(), serde_json::json!(["execute", "observe"]));
     object.insert(
         "resource_reads".into(),
         serde_json::json!([{
@@ -79,7 +79,12 @@ fn shared_invalid_contract_attack_corpus() {
         let mut value = base(attack["base"].as_str().unwrap());
         apply_set(&mut value, &attack["set"]);
         let error = validate_authority_contract(&value).unwrap_err();
-        assert_eq!(error.code, attack["expected_error"].as_str().unwrap(), "{}", attack["name"]);
+        assert_eq!(
+            error.code,
+            attack["expected_error"].as_str().unwrap(),
+            "{}",
+            attack["name"]
+        );
     }
 }
 
