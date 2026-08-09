@@ -4,8 +4,18 @@ use rusqlite::params;
 use serde_json::Value;
 
 const HUNTER_CAPABILITIES: &str = include_str!("../../../capabilities/hunter.json");
+const HUNTER_CAPABILITY_ID: &str = "origins.hunter.transport";
 
-pub fn initialize(store: &Store) -> Result<(), StoreError> {
+pub fn synchronize(store: &Store, configured: bool) -> Result<(), StoreError> {
+    if !configured {
+        let connection = store.connection()?;
+        connection.execute(
+            "DELETE FROM capabilities WHERE capability_id = ?1",
+            [HUNTER_CAPABILITY_ID],
+        )?;
+        return Ok(());
+    }
+
     let value: Value = serde_json::from_str(HUNTER_CAPABILITIES)
         .map_err(|error| StoreError::Contract(format!("Hunter capabilities JSON: {error}")))?;
     let descriptors = value
@@ -27,9 +37,18 @@ pub fn initialize(store: &Store) -> Result<(), StoreError> {
         let capability_id = descriptor["capability_id"].as_str().ok_or_else(|| {
             StoreError::Contract("Hunter capability_id missing after validation".to_owned())
         })?;
+        if capability_id != HUNTER_CAPABILITY_ID {
+            return Err(StoreError::Contract(format!(
+                "unexpected Hunter capability id {capability_id}"
+            )));
+        }
         let version = descriptor["version"].as_str().ok_or_else(|| {
             StoreError::Contract("Hunter capability version missing after validation".to_owned())
         })?;
+        connection.execute(
+            "DELETE FROM capabilities WHERE capability_id = ?1 AND version <> ?2",
+            params![capability_id, version],
+        )?;
         connection.execute(
             "INSERT INTO capabilities (
                 capability_id, version, descriptor_json, descriptor_sha256, updated_at
