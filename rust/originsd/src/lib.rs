@@ -16,7 +16,7 @@ pub mod workspace_roots;
 use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
 use crate::hunter::{HunterState, HunterTransport};
-use crate::hunter_capabilities::initialize as initialize_hunter_capabilities;
+use crate::hunter_capabilities::synchronize as synchronize_hunter_capabilities;
 use crate::process::{ProcessPolicy, ProcessSupervisor};
 use crate::repository::initialize as initialize_repository_store;
 use crate::repository_capabilities::initialize as initialize_repository_capabilities;
@@ -104,10 +104,8 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_capabilities(&store)
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
-    if hunter_configured {
-        initialize_hunter_capabilities(&store)
-            .map_err(|error| RuntimeError::Store(error.to_string()))?;
-    }
+    synchronize_hunter_capabilities(&store, hunter_configured)
+        .map_err(|error| RuntimeError::Store(error.to_string()))?;
 
     let base_state = AppState {
         store: store.clone(),
