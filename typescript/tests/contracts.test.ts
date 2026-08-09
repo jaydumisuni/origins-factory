@@ -21,6 +21,16 @@ const fixtures = JSON.parse(
   valid: Array<{ name: string; contract: JsonValue }>;
   invalid: Array<{ name: string; expected_error: string; contract: JsonValue }>;
 };
+const authorityFixtures = JSON.parse(
+  await readFile(new URL("../../contracts/authority-fixtures.json", import.meta.url), "utf8"),
+) as {
+  valid: Array<{ name: string; contract: JsonValue }>;
+  invalid: Array<{ name: string; expected_error: string; contract: JsonValue }>;
+};
+const authorityHashes: Record<string, string> = {
+  workspace_candidate_scope: "69acd382b43d3aaee19c57e735ae735bc9c7c770cd4003cae6aec198ab647d9d",
+  bounded_process_lease: "c44ba1680fb24b92b1391260daa59adf02a799cbdb3e54c0f30c5a0fb24e1fe0",
+};
 
 const workspaceId = "11111111-1111-4111-8111-111111111111";
 const scopeId = "22222222-2222-4222-8222-222222222222";
@@ -139,8 +149,22 @@ test("candidate authority scope and lease validate and hash", async () => {
   assert.equal(validateAuthorityContract(scope()).contract_type, "execution_scope");
   assert.equal(validateAuthorityContract(lease()).contract_type, "capability_lease");
   validateLeaseWithinScope(lease(), scope());
-  assert.equal((await authoritySha256(scope())).length, 64);
-  assert.equal((await authoritySha256(lease())).length, 64);
+  assert.equal(await authoritySha256(scope()), authorityHashes.workspace_candidate_scope);
+  assert.equal(await authoritySha256(lease()), authorityHashes.bounded_process_lease);
+});
+
+test("shared authority fixture corpus", async () => {
+  for (const item of authorityFixtures.valid) {
+    validateAuthorityContract(item.contract);
+    assert.equal(await authoritySha256(item.contract), authorityHashes[item.name], item.name);
+  }
+  for (const item of authorityFixtures.invalid) {
+    assert.throws(
+      () => validateAuthorityContract(item.contract),
+      (error: unknown) => error instanceof ContractError && error.code === item.expected_error,
+      item.name,
+    );
+  }
 });
 
 test("child authority can narrow but cannot drop a parent deny", () => {
