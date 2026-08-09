@@ -27,6 +27,25 @@ const authorityFixtures = JSON.parse(
   valid: Array<{ name: string; contract: JsonValue }>;
   invalid: Array<{ name: string; expected_error: string; contract: JsonValue }>;
 };
+const adversarialFixtures = JSON.parse(
+  await readFile(new URL("../../contracts/authority-adversarial-fixtures.json", import.meta.url), "utf8"),
+) as {
+  invalid_contracts: Array<{
+    name: string;
+    base: "scope" | "lease";
+    set: Record<string, JsonValue>;
+    expected_error: string;
+  }>;
+  relations: Array<{
+    name: string;
+    relation: "child_scope" | "lease_scope";
+    parent_set?: Record<string, JsonValue>;
+    child_set?: Record<string, JsonValue>;
+    scope_set?: Record<string, JsonValue>;
+    lease_set?: Record<string, JsonValue>;
+    expected_error: string;
+  }>;
+};
 const authorityHashes: Record<string, string> = {
   workspace_candidate_scope: "69acd382b43d3aaee19c57e735ae735bc9c7c770cd4003cae6aec198ab647d9d",
   bounded_process_lease: "c44ba1680fb24b92b1391260daa59adf02a799cbdb3e54c0f30c5a0fb24e1fe0",
@@ -39,6 +58,7 @@ const leaseId = "44444444-4444-4444-8444-444444444444";
 const resourceId = `worktree:${childScopeId}`;
 
 const grant = (prefix = "") => ({ resource_id: resourceId, prefix });
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 function scope(): JsonValue {
   return {
@@ -164,6 +184,44 @@ test("shared authority fixture corpus", async () => {
       (error: unknown) => error instanceof ContractError && error.code === item.expected_error,
       item.name,
     );
+  }
+});
+
+test("shared authority invalid-contract attack corpus", () => {
+  for (const attack of adversarialFixtures.invalid_contracts) {
+    const value = clone(attack.base === "scope" ? scope() : lease()) as Record<string, JsonValue>;
+    Object.assign(value, clone(attack.set));
+    assert.throws(
+      () => validateAuthorityContract(value),
+      (error: unknown) => error instanceof ContractError && error.code === attack.expected_error,
+      attack.name,
+    );
+  }
+});
+
+test("shared authority relation attack corpus", () => {
+  for (const attack of adversarialFixtures.relations) {
+    if (attack.relation === "child_scope") {
+      const parent = clone(scope()) as Record<string, JsonValue>;
+      const child = clone(childScope()) as Record<string, JsonValue>;
+      Object.assign(parent, clone(attack.parent_set ?? {}));
+      Object.assign(child, clone(attack.child_set ?? {}));
+      assert.throws(
+        () => validateChildScope(child, parent),
+        (error: unknown) => error instanceof ContractError && error.code === attack.expected_error,
+        attack.name,
+      );
+    } else {
+      const parentScope = clone(scope()) as Record<string, JsonValue>;
+      const candidateLease = clone(lease()) as Record<string, JsonValue>;
+      Object.assign(parentScope, clone(attack.scope_set ?? {}));
+      Object.assign(candidateLease, clone(attack.lease_set ?? {}));
+      assert.throws(
+        () => validateLeaseWithinScope(candidateLease, parentScope),
+        (error: unknown) => error instanceof ContractError && error.code === attack.expected_error,
+        attack.name,
+      );
+    }
   }
 });
 
