@@ -43,13 +43,14 @@ struct Grant {
 
 pub fn authority_sha256(value: &Value) -> Result<String, AuthorityError> {
     validate_authority_contract(value)?;
-    contract_sha256(value).map_err(|error| AuthorityError::new("CANONICALIZATION_ERROR", error.to_string()))
+    contract_sha256(value)
+        .map_err(|error| AuthorityError::new("CANONICALIZATION_ERROR", error.to_string()))
 }
 
 pub fn validate_authority_contract(value: &Value) -> Result<(), AuthorityError> {
-    let object = value
-        .as_object()
-        .ok_or_else(|| AuthorityError::new("INVALID_ROOT", "authority contract root must be an object"))?;
+    let object = value.as_object().ok_or_else(|| {
+        AuthorityError::new("INVALID_ROOT", "authority contract root must be an object")
+    })?;
     validate_numbers(value, "$")?;
     if string(object, "schema_version")? != SCHEMA_VERSION {
         return Err(AuthorityError::new(
@@ -147,10 +148,7 @@ pub fn validate_child_scope(child: &Value, parent: &Value) -> Result<(), Authori
             "child cannot enable delegated remote authority",
         ));
     }
-    require_expiry_not_extended(
-        string(child, "expires_at")?,
-        string(parent, "expires_at")?,
-    )
+    require_expiry_not_extended(string(child, "expires_at")?, string(parent, "expires_at")?)
 }
 
 pub fn validate_lease_within_scope(lease: &Value, scope: &Value) -> Result<(), AuthorityError> {
@@ -215,7 +213,9 @@ pub fn validate_lease_within_scope(lease: &Value, scope: &Value) -> Result<(), A
             "lease cannot enable delegated remote authority",
         ));
     }
-    if string_list(lease, "effects")?.iter().any(|effect| effect == "execute")
+    if string_list(lease, "effects")?
+        .iter()
+        .any(|effect| effect == "execute")
         && !boolean(scope, "process_execution_allowed")?
     {
         return Err(AuthorityError::new(
@@ -223,10 +223,7 @@ pub fn validate_lease_within_scope(lease: &Value, scope: &Value) -> Result<(), A
             "scope forbids process execution",
         ));
     }
-    require_expiry_not_extended(
-        string(lease, "expires_at")?,
-        string(scope, "expires_at")?,
-    )
+    require_expiry_not_extended(string(lease, "expires_at")?, string(scope, "expires_at")?)
 }
 
 fn validate_execution_scope(object: &Map<String, Value>) -> Result<(), AuthorityError> {
@@ -372,7 +369,10 @@ fn validate_capability_lease(object: &Map<String, Value>) -> Result<(), Authorit
     digest_field(object, "proposal_digest")?;
     let state = enum_string(object, "state", LEASE_STATES)?;
     if nonnegative_integer(object, "fence", "INVALID_FENCE")? < 1 {
-        return Err(AuthorityError::new("INVALID_FENCE", "fence must be at least 1"));
+        return Err(AuthorityError::new(
+            "INVALID_FENCE",
+            "fence must be at least 1",
+        ));
     }
     let issued = timestamp(object, "issued_at")?;
     let updated = timestamp(object, "updated_at")?;
@@ -407,15 +407,17 @@ fn validate_capability_lease(object: &Map<String, Value>) -> Result<(), Authorit
 }
 
 fn resource_grants(object: &Map<String, Value>, field: &str) -> Result<Vec<Grant>, AuthorityError> {
-    let items = object
-        .get(field)
-        .and_then(Value::as_array)
-        .ok_or_else(|| AuthorityError::new("INVALID_RESOURCE_GRANTS", format!("{field} must be a list")))?;
+    let items = object.get(field).and_then(Value::as_array).ok_or_else(|| {
+        AuthorityError::new("INVALID_RESOURCE_GRANTS", format!("{field} must be a list"))
+    })?;
     let mut result = Vec::with_capacity(items.len());
     let mut keys = Vec::with_capacity(items.len());
     for item in items {
         let item = item.as_object().ok_or_else(|| {
-            AuthorityError::new("INVALID_RESOURCE_GRANT", format!("{field} entries must be objects"))
+            AuthorityError::new(
+                "INVALID_RESOURCE_GRANT",
+                format!("{field} entries must be objects"),
+            )
         })?;
         exact_fields(item, &["resource_id", "prefix"])?;
         let resource_id = string(item, "resource_id")?;
@@ -457,7 +459,11 @@ fn validate_prefix(prefix: &str, field: &str) -> Result<(), AuthorityError> {
             format!("unsafe resource prefix in {field}"),
         ));
     }
-    if !prefix.is_empty() && prefix.split('/').any(|part| part.is_empty() || part == "." || part == "..") {
+    if !prefix.is_empty()
+        && prefix
+            .split('/')
+            .any(|part| part.is_empty() || part == "." || part == "..")
+    {
         return Err(AuthorityError::new(
             "INVALID_RESOURCE_PREFIX",
             format!("resource prefix in {field} must be normalized"),
@@ -473,7 +479,11 @@ fn grant_within(child: &Grant, parent: &Grant) -> bool {
             || child.prefix.starts_with(&(parent.prefix.clone() + "/")))
 }
 
-fn require_grants_within(children: &[Grant], parents: &[Grant], field: &str) -> Result<(), AuthorityError> {
+fn require_grants_within(
+    children: &[Grant],
+    parents: &[Grant],
+    field: &str,
+) -> Result<(), AuthorityError> {
     for child in children {
         if !parents.iter().any(|parent| grant_within(child, parent)) {
             return Err(AuthorityError::new(
@@ -497,7 +507,11 @@ fn require_parent_denies(children: &[Grant], parents: &[Grant]) -> Result<(), Au
     Ok(())
 }
 
-fn reject_fully_denied_grants(grants: &[Grant], denies: &[Grant], field: &str) -> Result<(), AuthorityError> {
+fn reject_fully_denied_grants(
+    grants: &[Grant],
+    denies: &[Grant],
+    field: &str,
+) -> Result<(), AuthorityError> {
     for grant in grants {
         if denies.iter().any(|deny| grant_within(grant, deny)) {
             return Err(AuthorityError::new(
@@ -553,7 +567,10 @@ fn validate_network_remote_flag(object: &Map<String, Value>) -> Result<(), Autho
     Ok(())
 }
 
-fn require_network_narrowing(child: &Map<String, Value>, parent: &Map<String, Value>) -> Result<(), AuthorityError> {
+fn require_network_narrowing(
+    child: &Map<String, Value>,
+    parent: &Map<String, Value>,
+) -> Result<(), AuthorityError> {
     let child_mode = string(child, "network_mode")?;
     let parent_mode = string(parent, "network_mode")?;
     if child_mode == "deny" {
@@ -572,7 +589,10 @@ fn require_network_narrowing(child: &Map<String, Value>, parent: &Map<String, Va
     )
 }
 
-fn environment_names(object: &Map<String, Value>, field: &str) -> Result<Vec<String>, AuthorityError> {
+fn environment_names(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Vec<String>, AuthorityError> {
     let names = sorted_unique_string_list(object, field)?;
     for name in &names {
         if !valid_env_name(name) {
@@ -585,7 +605,11 @@ fn environment_names(object: &Map<String, Value>, field: &str) -> Result<Vec<Str
     Ok(names)
 }
 
-fn require_subset(children: &[String], parents: &[String], field: &str) -> Result<(), AuthorityError> {
+fn require_subset(
+    children: &[String],
+    parents: &[String],
+    field: &str,
+) -> Result<(), AuthorityError> {
     let parent: BTreeSet<&str> = parents.iter().map(String::as_str).collect();
     if children.iter().any(|item| !parent.contains(item.as_str())) {
         return Err(AuthorityError::new(
@@ -680,10 +704,16 @@ fn string<'a>(object: &'a Map<String, Value>, field: &str) -> Result<&'a str, Au
         .ok_or_else(|| AuthorityError::new("INVALID_STRING", format!("{field} must be a string")))
 }
 
-fn nonempty_string<'a>(object: &'a Map<String, Value>, field: &str) -> Result<&'a str, AuthorityError> {
+fn nonempty_string<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+) -> Result<&'a str, AuthorityError> {
     let value = string(object, field)?;
     if value.trim().is_empty() {
-        return Err(AuthorityError::new("EMPTY_STRING", format!("{field} cannot be empty")));
+        return Err(AuthorityError::new(
+            "EMPTY_STRING",
+            format!("{field} cannot be empty"),
+        ));
     }
     Ok(value)
 }
@@ -716,7 +746,11 @@ fn optional_uuid(object: &Map<String, Value>, field: &str) -> Result<(), Authori
     canonical_uuid(object, field)
 }
 
-fn enum_string<'a>(object: &'a Map<String, Value>, field: &str, allowed: &[&str]) -> Result<&'a str, AuthorityError> {
+fn enum_string<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+    allowed: &[&str],
+) -> Result<&'a str, AuthorityError> {
     let value = nonempty_string(object, field)?;
     if !allowed.contains(&value) {
         return Err(AuthorityError::new(
@@ -735,14 +769,17 @@ fn string_list(object: &Map<String, Value>, field: &str) -> Result<Vec<String>, 
     items
         .iter()
         .map(|item| {
-            item.as_str()
-                .map(str::to_owned)
-                .ok_or_else(|| AuthorityError::new("INVALID_LIST", format!("{field} must be a list of strings")))
+            item.as_str().map(str::to_owned).ok_or_else(|| {
+                AuthorityError::new("INVALID_LIST", format!("{field} must be a list of strings"))
+            })
         })
         .collect()
 }
 
-fn sorted_unique_string_list(object: &Map<String, Value>, field: &str) -> Result<Vec<String>, AuthorityError> {
+fn sorted_unique_string_list(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Vec<String>, AuthorityError> {
     let values = string_list(object, field)?;
     if values.iter().any(|value| value.is_empty()) {
         return Err(AuthorityError::new(
@@ -770,7 +807,10 @@ fn sorted_unique_enum_list(
 ) -> Result<Vec<String>, AuthorityError> {
     let values = sorted_unique_string_list(object, field)?;
     if !allow_empty && values.is_empty() {
-        return Err(AuthorityError::new("EMPTY_LIST", format!("{field} cannot be empty")));
+        return Err(AuthorityError::new(
+            "EMPTY_LIST",
+            format!("{field} cannot be empty"),
+        ));
     }
     let invalid: Vec<&str> = values
         .iter()
@@ -780,29 +820,44 @@ fn sorted_unique_enum_list(
     if !invalid.is_empty() {
         return Err(AuthorityError::new(
             "INVALID_ENUM",
-            format!("{field} contains unsupported values: {}", invalid.join(", ")),
+            format!(
+                "{field} contains unsupported values: {}",
+                invalid.join(", ")
+            ),
         ));
     }
     Ok(values)
 }
 
-fn nonnegative_integer(object: &Map<String, Value>, field: &str, code: &'static str) -> Result<u64, AuthorityError> {
+fn nonnegative_integer(
+    object: &Map<String, Value>,
+    field: &str,
+    code: &'static str,
+) -> Result<u64, AuthorityError> {
     object
         .get(field)
         .and_then(Value::as_u64)
         .filter(|value| *value <= MAX_SAFE_INTEGER)
-        .ok_or_else(|| AuthorityError::new(code, format!("{field} must be a non-negative safe integer")))
+        .ok_or_else(|| {
+            AuthorityError::new(code, format!("{field} must be a non-negative safe integer"))
+        })
 }
 
 fn timestamp(object: &Map<String, Value>, field: &str) -> Result<DateTime<Utc>, AuthorityError> {
     parse_timestamp(nonempty_string(object, field)?, field)
 }
 
-fn optional_timestamp(object: &Map<String, Value>, field: &str) -> Result<Option<DateTime<Utc>>, AuthorityError> {
+fn optional_timestamp(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<DateTime<Utc>>, AuthorityError> {
     parse_optional_timestamp(string(object, field)?, field)
 }
 
-fn parse_optional_timestamp(text: &str, field: &str) -> Result<Option<DateTime<Utc>>, AuthorityError> {
+fn parse_optional_timestamp(
+    text: &str,
+    field: &str,
+) -> Result<Option<DateTime<Utc>>, AuthorityError> {
     if text.is_empty() {
         Ok(None)
     } else {
@@ -819,7 +874,9 @@ fn parse_timestamp(text: &str, field: &str) -> Result<DateTime<Utc>, AuthorityEr
     }
     DateTime::parse_from_rfc3339(text)
         .map(|value| value.with_timezone(&Utc))
-        .map_err(|_| AuthorityError::new("INVALID_TIMESTAMP", format!("{field} is not valid RFC3339")))
+        .map_err(|_| {
+            AuthorityError::new("INVALID_TIMESTAMP", format!("{field} is not valid RFC3339"))
+        })
 }
 
 fn digest_field(object: &Map<String, Value>, field: &str) -> Result<(), AuthorityError> {
@@ -843,15 +900,18 @@ fn valid_resource_id(value: &str) -> bool {
     };
     !kind.is_empty()
         && kind.len() <= 64
-        && kind.bytes().next().is_some_and(|byte| byte.is_ascii_lowercase())
         && kind
             .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'.' | b'-'))
+            .next()
+            .is_some_and(|byte| byte.is_ascii_lowercase())
+        && kind.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'_' | b'.' | b'-')
+        })
         && !id.is_empty()
         && id.len() <= 160
-        && id.bytes().all(|byte| {
-            byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-')
-        })
+        && id
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'.' | b':' | b'-'))
 }
 
 fn valid_env_name(value: &str) -> bool {
@@ -876,15 +936,17 @@ fn valid_host(value: &str) -> bool {
         return false;
     }
     let (host, port) = match value.rsplit_once(':') {
-        Some((host, port)) if !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit()) => {
+        Some((host, port))
+            if !port.is_empty() && port.bytes().all(|byte| byte.is_ascii_digit()) =>
+        {
             (host, Some(port))
         }
         _ => (value, None),
     };
     if host.is_empty()
-        || !host
-            .bytes()
-            .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-'))
+        || !host.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'-')
+        })
     {
         return false;
     }

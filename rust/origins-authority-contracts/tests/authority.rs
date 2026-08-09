@@ -1,5 +1,6 @@
 use origins_authority_contracts::{
-    authority_sha256, validate_authority_contract, validate_child_scope, validate_lease_within_scope,
+    authority_sha256, validate_authority_contract, validate_child_scope,
+    validate_lease_within_scope,
 };
 use serde_json::{json, Value};
 
@@ -104,7 +105,10 @@ fn scope_and_lease_validate_and_hash() {
 #[test]
 fn shared_authority_fixture_corpus() {
     let corpus: Value = serde_json::from_str(AUTHORITY_FIXTURES).unwrap();
-    let expected = [("workspace_candidate_scope", SCOPE_SHA256), ("bounded_process_lease", LEASE_SHA256)];
+    let expected = [
+        ("workspace_candidate_scope", SCOPE_SHA256),
+        ("bounded_process_lease", LEASE_SHA256),
+    ];
     for item in corpus["valid"].as_array().unwrap() {
         let name = item["name"].as_str().unwrap();
         let contract = &item["contract"];
@@ -127,7 +131,10 @@ fn shared_authority_fixture_corpus() {
 fn child_can_narrow_but_cannot_drop_parent_deny() {
     validate_child_scope(&child_scope(), &scope()).unwrap();
     let mut child = child_scope();
-    child.as_object_mut().unwrap().insert("resource_denies".into(), json!([]));
+    child
+        .as_object_mut()
+        .unwrap()
+        .insert("resource_denies".into(), json!([]));
     let error = validate_child_scope(&child, &scope()).unwrap_err();
     assert_eq!(error.code, "SCOPE_ESCALATION");
 }
@@ -156,7 +163,14 @@ fn lease_cannot_switch_network_authority_class() {
 
 #[test]
 fn relative_resource_prefixes_fail_closed() {
-    for prefix in ["/etc", "../escape", "src/../secret", "src\\secret", "src//secret", "src/"] {
+    for prefix in [
+        "/etc",
+        "../escape",
+        "src/../secret",
+        "src\\secret",
+        "src//secret",
+        "src/",
+    ] {
         let mut value = scope();
         let object = value.as_object_mut().unwrap();
         object.insert("resource_reads".into(), json!([grant(prefix)]));
@@ -168,10 +182,22 @@ fn relative_resource_prefixes_fail_closed() {
 #[test]
 fn approval_and_proposal_digests_are_required() {
     let mut value = lease();
-    value.as_object_mut().unwrap().insert("approval_digest".into(), json!(""));
-    assert_eq!(validate_authority_contract(&value).unwrap_err().code, "EMPTY_STRING");
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("approval_digest".into(), json!(""));
+    assert_eq!(
+        validate_authority_contract(&value).unwrap_err().code,
+        "EMPTY_STRING"
+    );
 
     let mut value = lease();
-    value.as_object_mut().unwrap().insert("proposal_digest".into(), json!("abc"));
-    assert_eq!(validate_authority_contract(&value).unwrap_err().code, "INVALID_DIGEST");
+    value
+        .as_object_mut()
+        .unwrap()
+        .insert("proposal_digest".into(), json!("abc"));
+    assert_eq!(
+        validate_authority_contract(&value).unwrap_err().code,
+        "INVALID_DIGEST"
+    );
 }
