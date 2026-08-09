@@ -14,6 +14,14 @@ Executable candidate semantics:
 - `typescript/authority.ts`
 - `rust/origins-authority-contracts/`
 - `contracts/authority-fixtures.json`
+- `contracts/authority-adversarial-fixtures.json`
+
+Review-completeness artifacts:
+
+- `docs/SECOPS_ENFORCEMENT_POINT_MATRIX_PR11.md` — exact current/future enforcement hooks and implementation status;
+- `docs/SECOPS_AUTHORITY_THREAT_MODEL_PR11.md` — issuance/invocation TOCTOU, resource/path/network/restart/confused-deputy threat model;
+- `docs/SECOPS_VERDICT_TEMPLATE_PR11.md` — structured PASS / NEEDS_WORK / BLOCK response format;
+- `python/tests/test_authority_inactive.py` — mechanical proof that candidate authority cannot activate `originsd` before review.
 
 Related proposal/context boundary:
 
@@ -28,6 +36,26 @@ Existing mechanical enforcement donors that are **not being replaced**:
 - `rust/originsd/src/sessions.rs`
 - `rust/originsd/src/repository.rs`
 - hash-chained Origins journal/store
+
+## Pre-review mechanical proof state
+
+The candidate authority semantics are deliberately separated from active runtime authority.
+
+Required pre-review proof:
+
+```text
+Python authority validator                         PASS
+TypeScript authority validator                     PASS
+Rust origins-authority-contracts validator         PASS
+shared valid/invalid authority corpus              PASS
+shared adversarial relation/contract corpus        PASS in all three runtimes
+canonical SHA-256 agreement                        PASS
+originsd has no authority-crate dependency         PASS
+originsd has no scope/lease/mint activation route  PASS
+all inherited Origins runtime proofs               PASS
+```
+
+If any of those become false, PR #11 is not ready for Sec-Ops reconciliation.
 
 ## Trust model
 
@@ -128,10 +156,12 @@ Challenge:
 
 ## Required response
 
+Use `docs/SECOPS_VERDICT_TEMPLATE_PR11.md`.
+
 Return exactly one overall verdict:
 
 - `PASS`
-- `NEEDS WORK`
+- `NEEDS_WORK`
 - `BLOCK`
 
 Then provide:
