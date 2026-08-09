@@ -354,7 +354,12 @@ function enumField<T extends string>(value: JsonObject, field: string, allowed: 
 }
 
 function sortedUniqueStringList(value: JsonObject, field: string): string[] {
-  return strings(value[field], field, true);
+  const items = strings(value[field], field, true);
+  const sorted = [...new Set(items)].sort(compareUtf8);
+  if (items.length !== sorted.length || items.some((item, index) => item !== sorted[index])) {
+    throw new ContractError("UNSORTED_OR_DUPLICATE_LIST", `${field} must be sorted and unique`);
+  }
+  return items;
 }
 
 function strings(value: JsonValue | undefined, field = "value", requireNonempty = false): string[] {
