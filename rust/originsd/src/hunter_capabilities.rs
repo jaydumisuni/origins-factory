@@ -62,3 +62,34 @@ pub fn synchronize(store: &Store, configured: bool) -> Result<(), StoreError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use uuid::Uuid;
+
+    #[test]
+    fn hunter_capability_is_removed_when_transport_becomes_disabled() {
+        let root = std::env::temp_dir().join(format!(
+            "origins-hunter-capability-test-{}",
+            Uuid::new_v4().hyphenated()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let store = Store::open(root.join("origins.sqlite3")).unwrap();
+
+        synchronize(&store, true).unwrap();
+        let configured = store.list_capabilities().unwrap();
+        assert!(configured.iter().any(|item| {
+            item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID)
+        }));
+
+        synchronize(&store, false).unwrap();
+        let disabled = store.list_capabilities().unwrap();
+        assert!(!disabled.iter().any(|item| {
+            item["capability_id"].as_str() == Some(HUNTER_CAPABILITY_ID)
+        }));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+}
