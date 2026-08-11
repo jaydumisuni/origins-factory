@@ -3,7 +3,7 @@
 **Status:** Mandatory recovery entry point
 **Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 **Current implementation truth:** `CURRENT_STATE.md`
-**Active candidate:** draft PR #11
+**Current authority checkpoint:** PR #12 merged; continue from `main` at/after `7454f581d9bdde84e030a9b22f9b2f1f41e06a93`
 
 ## Recover before acting
 
@@ -14,8 +14,9 @@ Read in this order:
 3. `docs/SECOPS_STAGE1_RECONCILIATION_PR11.md`;
 4. historical `docs/SECOPS_STAGE1_VERDICT_PR11.md`;
 5. `docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md`;
-6. current PR/source/proof;
-7. owning external repositories for any mounted capability being changed.
+6. `docs/ADR-0013-LEASE-ISSUER-PREFLIGHT.md`;
+7. current `main` source/proof;
+8. owning external repositories for any mounted capability being changed.
 
 Do not ask the owner to repeat recoverable evidence.
 
@@ -32,7 +33,7 @@ Three truths remain separate:
 Ownership remains:
 
 - Hunter / Pete — mission intelligence and optional outside reasoning;
-- AgentOps — semantic lifecycle/approval/completion;
+- AgentOps — semantic lifecycle/approval/completion and durable approval evidence;
 - CodeOps — repository engineering and provider/model/client routing;
 - Sergeant — independent engineering review;
 - Origins — persistent workspace, mechanical integration and capability enforcement;
@@ -40,148 +41,177 @@ Ownership remains:
 
 Do not duplicate an owning engine inside Origins.
 
-## Merged proven implementation
+## Merged proven authority chain
 
-`main` contains:
+### Origins Stage-1 foundation
 
-1. Contract Spine v1.2;
-2. persistent `originsd` foundation;
-3. Supervised Process Sessions;
-4. Active Session Control;
-5. Live Session Observation;
-6. Repository/Git Sessions;
-7. Engineering Assurance Bridge protocol;
-8. Production Engineering Mount doctor;
-9. Live Engineering Mount v1.
+PR #11 merged at:
 
-## Draft PR #11
+```text
+5a7f3cd6e73eed9326b4c6deedbf4e9658271233
+```
 
-PR #11 remains **draft and unmerged** until the normal post-verdict review/promotion gate completes.
-
-It contains:
+It established:
 
 - Hunter Intelligence Mount v1;
-- `@chat` reference semantics through Hunter;
-- dormant `@memory` semantics without shadow storage;
-- model `CapabilityProposal` with `approval_required=true` and `self_approvable=false`;
-- corrected authority-contract v1.1 semantics in Python/TypeScript/Rust;
-- shared canonical/adversarial authority corpus;
-- CI guard proving no runtime authority activation exists yet.
+- `@chat` through Hunter and dormant `@memory` without shadow storage;
+- model `CapabilityProposal` with mandatory owner approval/no self-approval;
+- `ExecutionScope + CapabilityLease` v1.1 in Python/TypeScript/Rust;
+- shared canonical/adversarial authority proof;
+- no-activation guard.
 
-## Sec-Ops stage-1 state
+Sec-Ops Stage-1 verdict after reconciliation: **PASS**.
 
-Historical first verdict:
+Stage-1 PASS approves the contract model only.
 
-```text
-NEEDS_WORK
-```
+### AgentOps durable approval prerequisite
 
-Historical findings:
+Owning repo: `jaydumisuni/Hunter-AgentOps`
 
-```text
-docs/SECOPS_STAGE1_VERDICT_PR11.md
-```
-
-SEC-001 through SEC-005 were corrected and re-proven.
-
-Focused reconciliation verdict:
+PR #16 merged at:
 
 ```text
-PASS
+721be17f1afbdf73cbc4302d89c733596d5160b6
 ```
 
-Canonical reconciliation:
+Exact tested PR head:
 
 ```text
-docs/SECOPS_STAGE1_RECONCILIATION_PR11.md
+e2d6282fbcce03d6bf0bdf2b7923f5da24a71dff
 ```
 
-### Closed findings
+Ubuntu Oracle proof:
 
-1. **SEC-001:** `parent_lease_id` removed; lease-to-lease delegation unsupported in v1.1.
-2. **SEC-002:** operation identity immutable; candidate identity bind-once and non-switchable/non-clearable after binding.
-3. **SEC-003:** lease binds exact `provider_id + provider_manifest_digest + provider_generation`.
-4. **SEC-004:** ExecutionScope now has state/fence/revision and exact current-generation stale-scope validation.
-5. **SEC-005:** network authority now uses exact `protocol + host + port` endpoints and explicit `deny_outside_endpoints` redirect policy.
+```text
+oracle_control/results/0000-agentops-pr16-exact-proof-20260812-0128.json
+```
 
-Additional hardening accepted:
+PASS evidence:
 
-- holder UUID + holder generation;
-- child/lease issuance chronology relative to current parent/scope generation.
+- 89 AgentOps pytest tests;
+- AgentOps self-proof;
+- durable approval restart recovery/tamper rejection;
+- Origins issuance Auth/replay tests 6/6;
+- repository contract.
 
-## Stage-1 PASS semantics
+AgentOps remains the sole owner of approval/Auth evidence. Origins must not create a shadow approval database or infer owner identity from a digest alone.
 
-Stage-1 PASS approves only the **authority contract model as a foundation for implementation**.
+### Origins Lease Issuer Preflight v1
 
-It does not approve or activate:
+PR #12 merged at:
 
-- production lease issuance/persistence;
-- filesystem/network sandboxing;
-- process-tree revocation;
-- browser control;
-- MCP execution;
+```text
+7454f581d9bdde84e030a9b22f9b2f1f41e06a93
+```
+
+Exact tested PR head:
+
+```text
+3e4a8e8b3a6c0126f350e0226f948185a2b0db79
+```
+
+Hosted exact-head proof:
+
+- Contract Spine run `31543617488`: PASS;
+- Daemon Foundation run `31543617471`: PASS.
+
+Combined Ubuntu proof against merged AgentOps:
+
+```text
+oracle_control/results/0001-origins-pr12-crossrepo-proof-20260812-0136.json
+```
+
+Receipt SHA-256:
+
+```text
+cddaa85246077bdf5df926ebbcfb7d820f886881512240e3902f74786f36f61c
+```
+
+The combined proof establishes:
+
+- durable AgentOps approval evidence;
+- restart digest continuity;
+- exact one-time TTG Auth binding to the issuance context;
+- Auth replay rejection;
+- Origins preflight eligibility;
+- no production authority activation.
+
+Hard preflight outputs remain:
+
+```text
+issuer_enabled = false
+lease_created = false
+runtime_authority_activated = false
+```
+
+## Current security boundary
+
+Still not implemented/activated:
+
+- production lease issuer;
+- durable Origins lease persistence;
+- invocation-time scope/lease enforcement;
+- filesystem/network sandbox;
+- process-tree containment/revocation;
+- browser/MCP authority;
 - candidate-worktree mutation;
 - generalized agent terminal authority.
 
+Do not cite Stage-1 PASS, AgentOps durable approval, or preflight eligibility as permission to activate these surfaces.
+
 ## Stage-2 security rule
 
-After real issuer/persistence/invocation enforcement/revocation/OS-provider containment exists, a separate **Stage-2 Sec-Ops implementation red-team is mandatory** before powerful model-controlled authority can be enabled.
+A separate **Stage-2 Sec-Ops implementation red-team is mandatory** after the real issuance/persistence/enforcement/revocation/OS containment boundary exists and before powerful model-controlled authority can be enabled.
 
 Stage 2 must attack at minimum:
 
-- durable AgentOps approval authenticity/replay resistance;
-- trusted root/child scope issuance;
-- atomic lease issuance transaction;
-- scope/lease current-state/fence persistence;
+- atomic lease issuance and TOCTOU substitution;
+- durable scope/lease state, revision and fence recovery;
+- invocation-time current-authority evaluation;
 - provider manifest/generation revalidation;
-- current resource/path generation;
+- resource-generation/path revalidation;
 - symlink/junction/reparse/mount/hard-link/special-file escape;
 - candidate/sibling/main worktree mutation isolation;
-- Windows/Linux process-tree revocation;
+- Linux/Windows process-tree revocation;
 - DNS/proxy/redirect/network behavior;
 - persistent local MCP lifetime confinement;
 - remote delegated-authority propagation;
-- holder UUID/generation binding to real durable subjects;
-- confused-deputy paths;
+- holder identity/generation binding;
+- confused-deputy paths through Hunter/CodeOps/Oracle/providers;
 - model self-disable attempts against policy/security storage.
 
 Stage-1 PASS must never be cited as implementation-level approval.
 
-## Current stop rule
-
-Do not jump directly into powerful capability activation merely because Stage 1 passed.
-
-Still forbidden until their own later design/implementation gates:
-
-- converting volatile AgentOps approval into durable lease authority;
-- browser/MCP/candidate-worktree/general agent authority that bypasses accepted runtime enforcement;
-- direct UI/model/Python execution bypassing `originsd` or specialist authority.
-
 ## Next valid work
 
-Complete PR #11 promotion, not another architecture redesign:
+Do not reopen PR #11, SEC-001..005, AgentOps PR #16, or Origins PR #12 as active implementation.
+
+Start a new Stage-2 slice from the merged checkpoints:
 
 ```text
-Sec-Ops Stage-1 PASS
-→ freeze reconciliation/current state/handoff
-→ exact-head Contract Spine + Daemon Foundation proof
-→ independent Sergeant/repository review
-→ promote/merge PR #11 if clean
+recover AgentOps >= 721be17f...
+recover Origins >= 7454f581...
+→ design exact production lease issuance from the proven preflight evidence
+→ implement lease persistence/current-generation recovery
+→ bind originsd invocation to host ceiling ∩ current scope ∩ current lease ∩ provider/resource generations
+→ implement revocation/fencing and OS containment
+→ prove mechanically
+→ independent review
+→ Stage-2 Sec-Ops red-team
+→ only after PASS consider activation
 ```
 
-After PR #11 merge, begin a **separate authority-runtime phase** starting with durable AgentOps approval evidence and production issuer/enforcement design under the accepted v1.1 model.
-
-Do not re-plan Origins.
+Do not re-plan Origins from scratch.
 
 ## Anti-drift rules
 
-- Preserve the historical NEEDS_WORK verdict and the later PASS reconciliation; do not rewrite history.
-- Do not call stage-1 contract semantics a sandbox implementation.
-- Do not create a shadow AgentOps approval database.
-- Do not create a shadow Hunter chat/memory database.
+- Preserve the historical Stage-1 NEEDS_WORK verdict and later PASS reconciliation.
+- Do not call Stage-1 contract semantics a sandbox implementation.
+- Do not create shadow AgentOps or Hunter storage.
 - Do not let a capability approve, mint or enlarge its own authority.
 - Do not bypass `originsd`/specialist authority for convenience.
 - Failed/partial attempts remain visible.
+- Keep powerful authority inactive until Stage-2 implementation review passes.
 
 ## Session close rule
 
@@ -191,5 +221,6 @@ After substantial Origins work:
 2. update `CURRENT_STATE.md`;
 3. update this handoff when the next valid action changes;
 4. update the product plan only for owner-accepted architecture changes;
-5. preserve unresolved limitations explicitly;
-6. leave one clean continuation point.
+5. update central `TTG-progress`/`TTG-ecosystem` recovery when ecosystem status changes;
+6. preserve unresolved limitations explicitly;
+7. leave one clean continuation point.
