@@ -1,8 +1,22 @@
 # PR #11 — Sec-Ops Review-Ready Checkpoint
 
-Status: **review package complete; PR remains draft; runtime authority remains inactive.**
+Status: **stage-1 review package complete; PR remains draft; runtime authority remains inactive.**
 
-This checkpoint exists to prevent future work from adding lease/runtime authority while the security model is awaiting adversarial review.
+This checkpoint exists to prevent future work from adding lease/runtime authority while the contract model is awaiting adversarial review, and to prevent a future stage-1 PASS from being misrepresented as implementation approval.
+
+## Review stages
+
+Origins authority security review is explicitly two-stage:
+
+```text
+Stage 1 — Contract-model review (PR #11)
+  Can ExecutionScope + CapabilityLease safely describe bounded authority?
+
+Stage 2 — Implementation red-team (future activation gate)
+  Does the actual issuer/enforcement/revocation/containment code enforce that authority under attack?
+```
+
+A stage-1 `PASS` may allow PR #11 to merge after reconciliation and exact-head proof. It does **not** permit powerful model-controlled capabilities to be enabled.
 
 ## Review package
 
@@ -30,7 +44,7 @@ No-activation guard:
 
 - `python/tests/test_authority_inactive.py`
 
-## What is proven before review
+## What is proven before stage-1 review
 
 - candidate `execution_scope` validates consistently in Python, TypeScript and Rust;
 - candidate `capability_lease` validates consistently in Python, TypeScript and Rust;
@@ -43,6 +57,18 @@ No-activation guard:
 - proposal and approval digests are mandatory candidate lease fields;
 - Hunter optional capability synchronization does not leave a configured→disabled stale capability;
 - all inherited Origins daemon/runtime proofs remain required.
+
+## What stage-1 Sec-Ops must distinguish
+
+For filesystem/resource/worktree/network findings, Sec-Ops must classify whether an attack is:
+
+- `CLOSED_BY_CONTRACT`;
+- `REQUIRES_RUNTIME_RECHECK`;
+- `REQUIRES_OS_PROVIDER_ENFORCEMENT`;
+- `REQUIRES_PROVIDER_ENFORCEMENT`;
+- `OPEN_DESIGN_GAP`.
+
+This prevents a flat theoretical threat list from obscuring which attacks the contract already removes by construction and which remain live at runtime.
 
 ## What is deliberately impossible in this PR
 
@@ -58,7 +84,7 @@ The branch must fail proof if any of these appear before Sec-Ops reconciliation:
 
 No more authority implementation is valid merely from design reasoning.
 
-Next evidence must be a Sec-Ops verdict using:
+Next evidence must be a **stage-1 Sec-Ops verdict** using:
 
 `docs/SECOPS_VERDICT_TEMPLATE_PR11.md`
 
@@ -69,6 +95,9 @@ PASS
 → reconcile any non-blocking requirements
 → final exact-head proof
 → Sergeant / merge review as required
+→ PR #11 may merge
+→ implementation work may begin under accepted constraints
+→ stage-2 Sec-Ops remains mandatory before activation
 
 NEEDS_WORK
 → make only finding-backed contract/review corrections
@@ -80,9 +109,29 @@ BLOCK
 → do not activate runtime authority
 ```
 
+## Mandatory future stage-2 gate
+
+After the actual lease issuer, persistence, invocation-time enforcement, revocation/fencing and OS/provider containment are implemented, Sec-Ops must perform a new adversarial review against the real code and proofs.
+
+Stage 2 must cover at minimum:
+
+- approval-to-lease TOCTOU/substitution;
+- resource rebinding and path races;
+- symlink/junction/reparse/mount escape;
+- stale handles and fence replay;
+- restart during issuance/invocation/revocation;
+- process-tree survival after revocation;
+- DNS/proxy/redirect behavior;
+- persistent local MCP lifetime confinement;
+- remote delegated authority propagation;
+- confused-deputy paths;
+- self-disable attempts.
+
+Until stage 2 is reconciled, powerful model-controlled capabilities remain activation-blocked.
+
 ## Explicit stop rule
 
-Until Sec-Ops is reconciled, do not implement:
+Until stage-1 Sec-Ops is reconciled, do not implement:
 
 - production lease persistence/issuance;
 - AgentOps approval-to-lease activation;
