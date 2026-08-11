@@ -58,6 +58,13 @@ No-activation guard:
 - Hunter optional capability synchronization does not leave a configured→disabled stale capability;
 - all inherited Origins daemon/runtime proofs remain required.
 
+The refined review package that adds mitigation classification and the mandatory stage-2 implementation gate passed both full proof suites on exact head:
+
+`66abf6fc8da49ef498c2e89a2f6b82215ca5104a`
+
+- Origins Contract Spine: PASS
+- Origins Daemon Foundation: PASS
+
 ## What stage-1 Sec-Ops must distinguish
 
 For filesystem/resource/worktree/network findings, Sec-Ops must classify whether an attack is:
