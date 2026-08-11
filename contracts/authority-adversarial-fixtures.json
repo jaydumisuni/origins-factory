@@ -31,6 +31,12 @@
       "expected_error": "INVALID_FENCE"
     },
     {
+      "name": "scope_zero_fence",
+      "base": "scope",
+      "set": {"fence": 0},
+      "expected_error": "INVALID_FENCE"
+    },
+    {
       "name": "lease_invalid_approval_digest",
       "base": "lease",
       "set": {"approval_digest": "abc"},
@@ -39,11 +45,44 @@
     {
       "name": "lease_persistent_without_execute",
       "base": "lease",
-      "set": {
-        "effects": ["observe"],
-        "persistent_process_allowed": true
-      },
+      "set": {"effects": ["observe"], "persistent_process_allowed": true},
       "expected_error": "INVALID_LEASE"
+    },
+    {
+      "name": "legacy_parent_lease_id_rejected",
+      "base": "lease",
+      "set": {"parent_lease_id": "66666666-6666-4666-8666-666666666666"},
+      "expected_error": "UNKNOWN_FIELD"
+    },
+    {
+      "name": "provider_generation_zero",
+      "base": "lease",
+      "set": {"provider_generation": 0},
+      "expected_error": "INVALID_PROVIDER_GENERATION"
+    },
+    {
+      "name": "holder_generation_zero",
+      "base": "lease",
+      "set": {"holder_generation": 0},
+      "expected_error": "INVALID_HOLDER_GENERATION"
+    },
+    {
+      "name": "holder_noncanonical_identity",
+      "base": "lease",
+      "set": {"holder_id": "candidate-a-build"},
+      "expected_error": "INVALID_UUID"
+    },
+    {
+      "name": "network_protocol_unknown",
+      "base": "scope",
+      "set": {"network_endpoints": [{"protocol": "ssh", "host": "support.example.com", "port": 22}]},
+      "expected_error": "INVALID_NETWORK_PROTOCOL"
+    },
+    {
+      "name": "network_port_zero",
+      "base": "scope",
+      "set": {"network_endpoints": [{"protocol": "https", "host": "support.example.com", "port": 0}]},
+      "expected_error": "INVALID_NETWORK_PORT"
     }
   ],
   "relations": [
@@ -66,9 +105,15 @@
       "expected_error": "SCOPE_ESCALATION"
     },
     {
-      "name": "child_network_host_widening",
+      "name": "child_network_endpoint_widening",
       "relation": "child_scope",
-      "child_set": {"network_hosts": ["api.example.com", "evil.example.com"]},
+      "child_set": {"network_endpoints": [{"protocol": "https", "host": "evil.example.com", "port": 443}]},
+      "expected_error": "SCOPE_ESCALATION"
+    },
+    {
+      "name": "child_network_protocol_switch",
+      "relation": "child_scope",
+      "child_set": {"network_endpoints": [{"protocol": "http", "host": "support.example.com", "port": 443}]},
       "expected_error": "SCOPE_ESCALATION"
     },
     {
@@ -76,7 +121,7 @@
       "relation": "child_scope",
       "child_set": {
         "network_mode": "delegated_remote",
-        "network_hosts": ["support.example.com"],
+        "network_endpoints": [{"protocol": "https", "host": "support.example.com", "port": 443}],
         "delegated_remote_authority": true
       },
       "expected_error": "SCOPE_ESCALATION"
@@ -85,7 +130,7 @@
       "name": "child_resource_substitution",
       "relation": "child_scope",
       "child_set": {
-        "resource_reads": [{"resource_id": "worktree:55555555-5555-4555-8555-555555555555", "prefix": "src"}],
+        "resource_reads": [{"resource_id": "worktree:99999999-9999-4999-8999-999999999999", "prefix": "src"}],
         "resource_writes": []
       },
       "expected_error": "SCOPE_ESCALATION"
@@ -97,9 +142,36 @@
       "expected_error": "SCOPE_ESCALATION"
     },
     {
+      "name": "child_operation_substitution",
+      "relation": "child_scope",
+      "child_set": {"operation_id": "agentops:other"},
+      "expected_error": "SCOPE_ESCALATION"
+    },
+    {
+      "name": "child_candidate_switch_after_binding",
+      "relation": "child_scope",
+      "parent_set": {"candidate_id": "candidate-a"},
+      "child_set": {"candidate_id": "candidate-b"},
+      "expected_error": "SCOPE_ESCALATION"
+    },
+    {
+      "name": "child_candidate_clear_after_binding",
+      "relation": "child_scope",
+      "parent_set": {"candidate_id": "candidate-a"},
+      "child_set": {"candidate_id": ""},
+      "expected_error": "SCOPE_ESCALATION"
+    },
+    {
+      "name": "child_issued_before_parent_generation",
+      "relation": "child_scope",
+      "parent_set": {"updated_at": "2026-08-09T12:30:00Z"},
+      "child_set": {"issued_at": "2026-08-09T12:10:00Z", "updated_at": "2026-08-09T12:10:00Z"},
+      "expected_error": "INVALID_ISSUANCE_CHRONOLOGY"
+    },
+    {
       "name": "lease_scope_identity_substitution",
       "relation": "lease_scope",
-      "lease_set": {"scope_id": "55555555-5555-4555-8555-555555555555"},
+      "lease_set": {"scope_id": "99999999-9999-4999-8999-999999999999"},
       "expected_error": "LEASE_ESCALATION"
     },
     {
@@ -125,10 +197,54 @@
       "relation": "lease_scope",
       "lease_set": {
         "network_mode": "delegated_remote",
-        "network_hosts": ["support.example.com"],
+        "network_endpoints": [{"protocol": "https", "host": "support.example.com", "port": 443}],
         "delegated_remote_authority": true
       },
       "expected_error": "SCOPE_ESCALATION"
+    },
+    {
+      "name": "lease_issued_before_scope_generation",
+      "relation": "lease_scope",
+      "scope_set": {"updated_at": "2026-08-09T12:30:00Z"},
+      "lease_set": {"issued_at": "2026-08-09T12:05:00Z", "updated_at": "2026-08-09T12:05:00Z"},
+      "expected_error": "INVALID_ISSUANCE_CHRONOLOGY"
+    },
+    {
+      "name": "stale_scope_lower_fence",
+      "relation": "scope_current",
+      "current_set": {"fence": 2, "revision": 2, "updated_at": "2026-08-09T12:01:00Z"},
+      "expected_error": "STALE_SCOPE"
+    },
+    {
+      "name": "revoked_scope_is_unusable",
+      "relation": "scope_current",
+      "presented_set": {"state": "revoked"},
+      "current_set": {"state": "revoked"},
+      "expected_error": "SCOPE_UNUSABLE"
+    },
+    {
+      "name": "provider_identity_substitution",
+      "relation": "provider_binding",
+      "provider_id": "origins.process.other",
+      "provider_manifest_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "provider_generation": 1,
+      "expected_error": "PROVIDER_SUBSTITUTION"
+    },
+    {
+      "name": "provider_manifest_substitution",
+      "relation": "provider_binding",
+      "provider_id": "origins.process.local",
+      "provider_manifest_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+      "provider_generation": 1,
+      "expected_error": "PROVIDER_SUBSTITUTION"
+    },
+    {
+      "name": "provider_generation_replay",
+      "relation": "provider_binding",
+      "provider_id": "origins.process.local",
+      "provider_manifest_digest": "2222222222222222222222222222222222222222222222222222222222222222",
+      "provider_generation": 2,
+      "expected_error": "PROVIDER_SUBSTITUTION"
     }
   ]
 }
