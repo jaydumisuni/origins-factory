@@ -11,44 +11,38 @@ Read in this order:
 
 1. this file;
 2. `CURRENT_STATE.md`;
-3. `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`;
-4. current ADRs, especially ADR-0010 through ADR-0012;
-5. current PR/source/proof;
-6. the owning repository for every external capability being changed.
+3. `docs/SECOPS_STAGE1_VERDICT_PR11.md`;
+4. `docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md`;
+5. `docs/SECOPS_REVIEW_PACKET_PR11.md`;
+6. current PR/source/proof;
+7. owning external repositories for any mounted capability being changed.
 
 Do not ask the owner to repeat recoverable evidence.
 
 ## Product identity lock
 
-Origins Factory is a **model-optional, evidence-native mission operating environment** combining durable work ownership, full-stack engineering, cyber-physical control, independent verification, cross-machine continuity and controlled capability synthesis.
+Origins Factory is a model-optional, evidence-native mission operating environment. It is not an OS, IDE clone, AI sidebar, dashboard, model router or replacement for its specialist systems.
 
-Origins is not an OS, IDE clone, AI sidebar, dashboard, thin desktop wrapper, model router, or replacement for specialist systems.
-
-## Three truths
+Three truths remain separate:
 
 - **Semantic:** Hunter + AgentOps.
 - **Mechanical:** `originsd`, specialist Gateways, Nodes, later authorized Ptah integration.
 - **Assurance:** Sergeant, X-Ray, deterministic proof, specialist governors and human acceptance.
 
-Models amplify the system. They do not manufacture mechanical success or independent assurance.
-
-## Ownership lock
+Ownership remains:
 
 - Hunter / Pete — mission intelligence and optional outside reasoning;
-- AgentOps — semantic operation lifecycle, approvals and completion;
-- CodeOps — repository-aware engineering and provider/model/client routing;
+- AgentOps — semantic lifecycle/approval/completion;
+- CodeOps — repository engineering and provider/model/client routing;
 - Sergeant — independent engineering review;
-- X-Ray — read-first/post-operation evidence;
-- Oracle — authorized browser/OS perception and control;
-- Lumi — downloads/transfers;
-- specialist Gateways — domain/device state and bounded execution;
-- Origins — persistent workspace, mechanical integration, capability compilation/enforcement and user surfaces.
+- Origins — persistent workspace, mechanical integration and capability enforcement;
+- Oracle/Lumi/X-Ray/specialist Gateways — their existing specialist boundaries.
 
 Do not duplicate an owning engine inside Origins.
 
 ## Merged proven implementation
 
-`main` currently contains:
+`main` contains:
 
 1. Contract Spine v1.2;
 2. persistent `originsd` foundation;
@@ -60,143 +54,91 @@ Do not duplicate an owning engine inside Origins.
 8. Production Engineering Mount doctor;
 9. Live Engineering Mount v1.
 
-Read `CURRENT_STATE.md` for exact proof/limitations.
+## Draft PR #11
 
-## Draft PR #11 lock
-
-PR #11 is **not merged** and must remain draft until the security boundary is reviewed/reconciled.
+PR #11 remains **draft and unmerged**.
 
 It contains:
 
-### Hunter Intelligence Mount v1
+- Hunter Intelligence Mount v1;
+- `@chat` reference semantics through Hunter;
+- dormant `@memory` semantics without shadow storage;
+- model `CapabilityProposal` with `approval_required=true` and `self_approvable=false`;
+- candidate `ExecutionScope + CapabilityLease` semantics in Python/TypeScript/Rust;
+- shared canonical/adversarial authority corpus;
+- CI guard proving no runtime authority activation exists yet.
 
-- narrow Rust-owned Hunter transport through `originsd`;
-- Python semantic adapter with no Hunter token/network authority;
-- Hunter chat/session remains semantic authority;
-- metadata/digest transport evidence only;
-- Hunter-disabled fallback;
-- configured→disabled cleanup of optional `origins.hunter.transport` capability.
+## Sec-Ops stage-1 verdict
 
-### Context references
-
-```text
-@chat:<hunter-session-id>
-→ Hunter authority
-
-@memory:<project>:<key>
-→ typed/dormant
-→ unavailable until Hunter memory storage exists
-```
-
-Do not create a shadow memory/chat database.
-
-### CapabilityProposal
-
-A model may explain why a missing capability would improve task delivery and propose bounded effects/resources/network/environment/persistence/delegated authority.
-
-Invariant:
+The actual contract-model attack review returned:
 
 ```text
-approval_required = true
-self_approvable = false
+NEEDS_WORK
 ```
 
-Proposal is not execution.
-
-## Candidate authority law — ADR-0012
-
-Current security-review candidate:
+Canonical findings:
 
 ```text
-host policy ceiling
-    ∩ ExecutionScope
-    ∩ CapabilityLease
-    = effective authority
+docs/SECOPS_STAGE1_VERDICT_PR11.md
 ```
 
-A model-facing resource grant uses an Origins-owned resource identity plus normalized relative prefix, not arbitrary host path authority.
+Five merge blockers must be corrected before PR #11 can be accepted:
 
-Candidate validators exist separately in:
+1. **SEC-001:** `parent_lease_id` has no enforceable child-lease monotonicity semantics.
+2. **SEC-002:** child scopes can currently relabel `operation_id` / `candidate_id` without explicit relation rules.
+3. **SEC-003:** lease is not bound to exact provider identity/manifest generation.
+4. **SEC-004:** `ExecutionScope` lifecycle/fencing semantics are incomplete.
+5. **SEC-005:** generic network authority is under-specified by `host[:port]` alone.
 
-- Python `python/origins_contracts/authority.py`;
-- TypeScript `typescript/authority.ts`;
-- Rust `rust/origins-authority-contracts`.
+Also harden:
 
-They share `contracts/authority-fixtures.json` and fixed canonical hashes.
+- lease holder identity so it is canonical and non-recyclable;
+- issuance chronology across parent scope, child scope and lease.
 
-**Do not register these candidate types as active Contract Spine authority yet.**
+## Current stop rule
 
-## Approval durability block
+Do not implement runtime authority while the stage-1 contract findings remain open.
 
-Current AgentOps approval semantics are valid, but current in-memory `ApprovalService` persistence is insufficient to mint production security authority.
+Specifically do not add:
 
-Therefore until the owning AgentOps backend supplies durable approval evidence:
+- production lease persistence/issuance;
+- AgentOps approval-to-lease activation;
+- `ProcessPolicy` lease enforcement;
+- filesystem/network sandbox providers;
+- process-tree revocation semantics;
+- candidate worktree mutation;
+- MCP execution;
+- browser control based on the candidate lease model.
 
-- do not create a production CapabilityLease issuer;
-- do not persist a shadow AgentOps approval database inside Origins;
-- do not convert volatile approval into durable mechanical authority;
-- do not activate browser/MCP/candidate mutation/general agent terminal capability from these candidate contracts.
+## Next valid work
 
-Future lease issuance must bind:
+Only bounded finding-backed corrections:
 
 ```text
-exact CapabilityProposal digest
-+ durable AgentOps approval-record digest
-+ current parent ExecutionScope
-+ current host policy
-+ current provider
-→ bounded lease
+SEC-001 .. SEC-005
+    -> correct Python / TypeScript / Rust candidate semantics
+    -> extend shared adversarial corpus
+    -> prove same canonical JSON/SHA/error semantics
+    -> re-run all inherited Origins proofs
+    -> return exact head for focused Sec-Ops stage-1 reconciliation
 ```
 
-## Sec-Ops continuation point
+Do not re-plan Origins.
 
-The next valid work is **security review**, not more execution capability.
+## Two-stage security rule
 
-Review:
+A future **stage-1 PASS** means only that the authority contract model is acceptable to implement.
 
-```text
-docs/SECOPS_REVIEW_PACKET_PR11.md
-docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md
-```
-
-Requested result:
-
-```text
-PASS | NEEDS WORK | BLOCK
-```
-
-After review:
-
-1. recover the exact Sec-Ops findings;
-2. correct only evidenced defects;
-3. re-run three-runtime candidate proof and all inherited Origins proof;
-4. only after accepted security design, promote accepted scope/lease types into the shared Contract Spine;
-5. require durable AgentOps approval evidence before implementing lease issuance;
-6. then extend existing Sessions/providers with scope/lease provenance, invocation checks and revocation/fencing.
-
-## Kilo donor lock
-
-Do not integrate Kilo Code as a runtime dependency.
-
-Borrow only useful donor patterns:
-
-- candidate/session presentation;
-- sibling-worktree/main-checkout denial;
-- backend enforcement rather than UI-only permissions;
-- invocation-time stale-handle checks;
-- non-self-disablable policy;
-- persistent local MCP/background-process lifetime confinement;
-- explicit delegated-remote authority.
+After real issuer/persistence/enforcement/revocation/containment exists, a separate **stage-2 Sec-Ops red-team against the actual implementation is mandatory** before powerful model-controlled terminal/browser/MCP/candidate-worktree authority can be enabled.
 
 ## Anti-drift rules
 
-- Do not create another Origins master plan.
-- Do not merge PR #11 merely because candidate validators are green.
+- Do not merge PR #11 while the current `NEEDS_WORK` findings remain unresolved.
 - Do not call candidate authority semantics a sandbox implementation.
-- Do not call fixture Hunter proof production-owner proof.
-- Do not let a capability approve or activate its own upgrade.
-- Do not bypass `originsd` or specialist authority for convenience.
-- Do not revive `build/initial-workspace` as implementation base.
+- Do not create a shadow AgentOps approval database.
+- Do not create a shadow Hunter chat/memory database.
+- Do not let a capability approve, mint or enlarge its own authority.
+- Do not bypass `originsd`/specialist authority for convenience.
 - Failed/partial attempts remain visible.
 
 ## Session close rule
