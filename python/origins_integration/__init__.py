@@ -29,6 +29,13 @@ from .hunter import (
     HunterTurnReceipt,
     hunter_session_id,
 )
+from .lease_preflight import (
+    LeaseIssuerPreflightError,
+    LeaseIssuerPreflightReceipt,
+    ResourceGeneration,
+    evaluate_lease_issuer_preflight,
+    issuance_binding_document,
+)
 from .live_mount import (
     LiveEngineeringMount,
     LiveEngineeringMountReceipt,
@@ -54,13 +61,18 @@ __all__ = [
     "HunterMountError",
     "HunterTurnReceipt",
     "IntegrationUnavailable",
+    "LeaseIssuerPreflightError",
+    "LeaseIssuerPreflightReceipt",
     "LiveEngineeringMount",
     "LiveEngineeringMountReceipt",
     "MountSmokeError",
     "MountSurfaceResult",
     "OriginsClient",
+    "ResourceGeneration",
     "ResolvedContextReference",
+    "evaluate_lease_issuer_preflight",
     "extract_context_references",
     "hunter_session_id",
+    "issuance_binding_document",
     "parse_context_reference",
 ]
