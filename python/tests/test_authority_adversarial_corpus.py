@@ -10,6 +10,8 @@ from origins_contracts.authority import (
     validate_authority_contract,
     validate_child_scope,
     validate_lease_within_scope,
+    validate_provider_binding,
+    validate_scope_current,
 )
 from origins_contracts.contracts import ContractError
 
@@ -31,8 +33,8 @@ def _child_scope() -> dict:
     child = deepcopy(parent)
     child.update(
         {
-            "scope_id": "33333333-3333-4333-8333-333333333333",
-            "candidate_id": "candidate-b",
+            "scope_id": "66666666-6666-4666-8666-666666666666",
+            "candidate_id": "candidate-a",
             "parent_scope_id": parent["scope_id"],
             "effects": ["execute", "observe"],
             "resource_reads": [
@@ -42,15 +44,13 @@ def _child_scope() -> dict:
                 }
             ],
             "resource_writes": [],
-            "resource_denies": [
-                {
-                    "resource_id": "worktree:33333333-3333-4333-8333-333333333333",
-                    "prefix": ".origins",
-                }
+            "network_endpoints": [
+                {"protocol": "https", "host": "support.example.com", "port": 443}
             ],
-            "network_hosts": ["support.example.com"],
             "environment_names": ["LANG"],
             "delegation_allowed": False,
+            "issued_at": "2026-08-09T12:10:00Z",
+            "updated_at": "2026-08-09T12:10:00Z",
             "expires_at": "2026-08-09T13:30:00Z",
         }
     )
@@ -68,20 +68,35 @@ def test_shared_invalid_contract_attack_corpus() -> None:
 
 def test_shared_relation_attack_corpus() -> None:
     for attack in ATTACKS["relations"]:
-        if attack["relation"] == "child_scope":
+        relation = attack["relation"]
+        if relation == "child_scope":
             parent = _base("scope")
-            parent.update(deepcopy(attack.get("parent_set", {})))
             child = _child_scope()
+            parent.update(deepcopy(attack.get("parent_set", {})))
             child.update(deepcopy(attack.get("child_set", {})))
             call = lambda: validate_child_scope(child, parent)
-        elif attack["relation"] == "lease_scope":
-            scope = _base("scope")
-            scope.update(deepcopy(attack.get("scope_set", {})))
-            lease = _base("lease")
-            lease.update(deepcopy(attack.get("lease_set", {})))
-            call = lambda: validate_lease_within_scope(lease, scope)
+        elif relation == "lease_scope":
+            parent = _base("scope")
+            item = _base("lease")
+            parent.update(deepcopy(attack.get("scope_set", {})))
+            item.update(deepcopy(attack.get("lease_set", {})))
+            call = lambda: validate_lease_within_scope(item, parent)
+        elif relation == "scope_current":
+            presented = _base("scope")
+            current = _base("scope")
+            presented.update(deepcopy(attack.get("presented_set", {})))
+            current.update(deepcopy(attack.get("current_set", {})))
+            call = lambda: validate_scope_current(presented, current)
+        elif relation == "provider_binding":
+            item = _base("lease")
+            call = lambda: validate_provider_binding(
+                item,
+                provider_id=attack["provider_id"],
+                provider_manifest_digest=attack["provider_manifest_digest"],
+                provider_generation=attack["provider_generation"],
+            )
         else:
-            raise AssertionError(f"unknown relation {attack['relation']}")
+            raise AssertionError(f"unknown relation {relation}")
 
         with pytest.raises(ContractError) as captured:
             call()
