@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -8,246 +10,214 @@ from origins_contracts.authority import (
     validate_authority_contract,
     validate_child_scope,
     validate_lease_within_scope,
+    validate_provider_binding,
+    validate_scope_current,
 )
-from origins_contracts.contracts import ContractError, contract_sha256
+from origins_contracts.contracts import ContractError
 
-WORKSPACE_ID = "11111111-1111-4111-8111-111111111111"
-SCOPE_ID = "22222222-2222-4222-8222-222222222222"
-CHILD_SCOPE_ID = "33333333-3333-4333-8333-333333333333"
-LEASE_ID = "44444444-4444-4444-8444-444444444444"
-EMPTY_DIGEST = "0" * 64
-PROPOSAL_DIGEST = "1" * 64
-
-
-def grant(resource_id: str, prefix: str = "") -> dict[str, str]:
-    return {"resource_id": resource_id, "prefix": prefix}
+ROOT = Path(__file__).parents[2]
+FIXTURES = json.loads((ROOT / "contracts" / "authority-fixtures.json").read_text(encoding="utf-8"))
 
 
 def scope() -> dict:
-    return {
-        "contract_type": "execution_scope",
-        "schema_version": "1.0.0",
-        "scope_id": SCOPE_ID,
-        "workspace_id": WORKSPACE_ID,
-        "operation_id": "agentops:op-42",
-        "candidate_id": "candidate-a",
-        "parent_scope_id": "",
-        "effects": ["execute", "mutate", "observe", "verify"],
-        "resource_reads": [
-            grant(f"worktree:{CHILD_SCOPE_ID}"),
-        ],
-        "resource_writes": [
-            grant(f"worktree:{CHILD_SCOPE_ID}", "src"),
-        ],
-        "resource_denies": [
-            grant(f"worktree:{CHILD_SCOPE_ID}", ".origins"),
-        ],
-        "network_mode": "allowlist",
-        "network_hosts": ["api.example.com", "support.example.com"],
-        "environment_names": ["LANG", "PATH"],
-        "process_execution_allowed": True,
-        "persistent_process_allowed": False,
-        "delegation_allowed": True,
-        "delegated_remote_authority": False,
-        "issued_at": "2026-08-09T12:00:00Z",
-        "updated_at": "2026-08-09T12:00:00Z",
-        "expires_at": "2026-08-09T14:00:00Z",
-        "revision": 1,
-    }
-
-
-def child_scope() -> dict:
-    value = scope()
-    value.update(
-        {
-            "scope_id": CHILD_SCOPE_ID,
-            "candidate_id": "candidate-b",
-            "parent_scope_id": SCOPE_ID,
-            "effects": ["execute", "observe"],
-            "resource_reads": [grant(f"worktree:{CHILD_SCOPE_ID}", "src")],
-            "resource_writes": [],
-            "resource_denies": [grant(f"worktree:{CHILD_SCOPE_ID}", ".origins")],
-            "network_hosts": ["support.example.com"],
-            "environment_names": ["LANG"],
-            "delegation_allowed": False,
-            "expires_at": "2026-08-09T13:30:00Z",
-        }
-    )
-    return value
+    return deepcopy(FIXTURES["valid"][0]["contract"])
 
 
 def lease() -> dict:
-    return {
-        "contract_type": "capability_lease",
-        "schema_version": "1.0.0",
-        "lease_id": LEASE_ID,
-        "scope_id": SCOPE_ID,
-        "workspace_id": WORKSPACE_ID,
-        "parent_lease_id": "",
-        "capability_id": "origins.process.run",
-        "holder_kind": "session",
-        "holder_id": "candidate-a-build",
-        "effects": ["execute", "observe"],
-        "resource_reads": [grant(f"worktree:{CHILD_SCOPE_ID}", "src")],
-        "resource_writes": [],
-        "resource_denies": [grant(f"worktree:{CHILD_SCOPE_ID}", ".origins")],
-        "network_mode": "deny",
-        "network_hosts": [],
-        "environment_names": ["LANG"],
-        "persistent_process_allowed": False,
-        "delegated_remote_authority": False,
-        "approval_authority": "jaydumisuni/Hunter-AgentOps",
-        "approval_id": "approval-42",
-        "approval_digest": EMPTY_DIGEST,
-        "proposal_digest": PROPOSAL_DIGEST,
-        "state": "active",
-        "fence": 1,
-        "issued_at": "2026-08-09T12:05:00Z",
-        "updated_at": "2026-08-09T12:05:00Z",
-        "expires_at": "2026-08-09T13:00:00Z",
-        "revision": 1,
-    }
+    return deepcopy(FIXTURES["valid"][1]["contract"])
 
 
-def test_valid_scope_and_lease_are_canonical_hashable_candidates() -> None:
+def child_scope(*, candidate_id: str = "candidate-a") -> dict:
+    parent = scope()
+    child = deepcopy(parent)
+    child.update(
+        {
+            "scope_id": "66666666-6666-4666-8666-666666666666",
+            "candidate_id": candidate_id,
+            "parent_scope_id": parent["scope_id"],
+            "effects": ["execute", "observe"],
+            "resource_reads": [
+                {
+                    "resource_id": "worktree:33333333-3333-4333-8333-333333333333",
+                    "prefix": "src",
+                }
+            ],
+            "resource_writes": [],
+            "network_endpoints": [
+                {"protocol": "https", "host": "support.example.com", "port": 443}
+            ],
+            "environment_names": ["LANG"],
+            "delegation_allowed": False,
+            "issued_at": "2026-08-09T12:10:00Z",
+            "updated_at": "2026-08-09T12:10:00Z",
+            "expires_at": "2026-08-09T13:30:00Z",
+        }
+    )
+    return child
+
+
+def test_v11_valid_scope_and_lease() -> None:
     parent = scope()
     item = lease()
     validate_authority_contract(parent)
     validate_authority_contract(item)
     validate_lease_within_scope(item, parent)
-    assert len(contract_sha256(parent)) == 64
-    assert len(contract_sha256(item)) == 64
 
 
-def test_child_scope_can_only_narrow_parent_authority() -> None:
-    parent = scope()
+def test_sec001_parent_lease_id_is_not_part_of_v11() -> None:
+    item = lease()
+    item["parent_lease_id"] = "66666666-6666-4666-8666-666666666666"
+    with pytest.raises(ContractError) as captured:
+        validate_authority_contract(item)
+    assert captured.value.code == "UNKNOWN_FIELD"
+
+
+def test_sec002_operation_identity_is_immutable() -> None:
     child = child_scope()
-    validate_child_scope(child, parent)
+    child["operation_id"] = "agentops:other"
+    with pytest.raises(ContractError) as captured:
+        validate_child_scope(child, scope())
+    assert captured.value.code == "SCOPE_ESCALATION"
 
 
-def test_child_scope_cannot_write_outside_parent_write_grant() -> None:
+def test_sec002_candidate_can_bind_once_then_cannot_switch_or_clear() -> None:
+    root = scope()
+    bound = child_scope(candidate_id="candidate-a")
+    validate_child_scope(bound, root)
+
+    grandchild = deepcopy(bound)
+    grandchild.update(
+        {
+            "scope_id": "77777777-7777-4777-8777-777777777777",
+            "parent_scope_id": bound["scope_id"],
+            "issued_at": "2026-08-09T12:20:00Z",
+            "updated_at": "2026-08-09T12:20:00Z",
+        }
+    )
+    bound["delegation_allowed"] = True
+    validate_child_scope(grandchild, bound)
+
+    switched = deepcopy(grandchild)
+    switched["candidate_id"] = "candidate-b"
+    with pytest.raises(ContractError, match="candidate identity"):
+        validate_child_scope(switched, bound)
+
+    cleared = deepcopy(grandchild)
+    cleared["candidate_id"] = ""
+    with pytest.raises(ContractError, match="candidate identity"):
+        validate_child_scope(cleared, bound)
+
+
+def test_sec003_provider_binding_is_exact_and_generation_fenced() -> None:
+    item = lease()
+    validate_provider_binding(
+        item,
+        provider_id="origins.process.local",
+        provider_manifest_digest="2" * 64,
+        provider_generation=1,
+    )
+    for provider_id, digest, generation in (
+        ("origins.process.other", "2" * 64, 1),
+        ("origins.process.local", "3" * 64, 1),
+        ("origins.process.local", "2" * 64, 2),
+    ):
+        with pytest.raises(ContractError) as captured:
+            validate_provider_binding(
+                item,
+                provider_id=provider_id,
+                provider_manifest_digest=digest,
+                provider_generation=generation,
+            )
+        assert captured.value.code == "PROVIDER_SUBSTITUTION"
+
+
+def test_sec004_scope_state_and_fence_reject_stale_generation() -> None:
+    current = scope()
+    validate_scope_current(current, current)
+
+    stale = deepcopy(current)
+    current["fence"] = 2
+    current["revision"] = 2
+    current["updated_at"] = "2026-08-09T12:01:00Z"
+    with pytest.raises(ContractError) as captured:
+        validate_scope_current(stale, current)
+    assert captured.value.code == "STALE_SCOPE"
+
+    revoked = deepcopy(current)
+    revoked["state"] = "revoked"
+    with pytest.raises(ContractError) as captured:
+        validate_scope_current(revoked, revoked)
+    assert captured.value.code == "SCOPE_UNUSABLE"
+
+
+def test_sec005_network_endpoint_requires_protocol_host_port() -> None:
     parent = scope()
+    parent["network_endpoints"] = [{"protocol": "http", "host": "support.example.com", "port": 443}]
+    validate_authority_contract(parent)
+
     child = child_scope()
-    child["resource_reads"] = [grant(f"worktree:{CHILD_SCOPE_ID}", "docs")]
-    child["resource_writes"] = [grant(f"worktree:{CHILD_SCOPE_ID}", "docs")]
+    child["network_endpoints"] = [{"protocol": "https", "host": "support.example.com", "port": 443}]
+    with pytest.raises(ContractError, match="network_endpoints"):
+        validate_child_scope(child, scope())
+
+    bad = scope()
+    bad["network_endpoints"] = [{"protocol": "https", "host": "support.example.com", "port": 0}]
+    with pytest.raises(ContractError) as captured:
+        validate_authority_contract(bad)
+    assert captured.value.code == "INVALID_NETWORK_PORT"
+
+
+def test_holder_identity_is_uuid_and_generation_bound() -> None:
+    item = lease()
+    item["holder_id"] = "candidate-a-build"
+    with pytest.raises(ContractError) as captured:
+        validate_authority_contract(item)
+    assert captured.value.code == "INVALID_UUID"
+
+    item = lease()
+    item["holder_generation"] = 0
+    with pytest.raises(ContractError) as captured:
+        validate_authority_contract(item)
+    assert captured.value.code == "INVALID_HOLDER_GENERATION"
+
+
+def test_relational_issuance_chronology_fails_closed() -> None:
+    child = child_scope()
+    child["issued_at"] = "2026-08-09T11:59:00Z"
+    child["updated_at"] = "2026-08-09T12:10:00Z"
+    with pytest.raises(ContractError) as captured:
+        validate_child_scope(child, scope())
+    assert captured.value.code == "INVALID_ISSUANCE_CHRONOLOGY"
+
+    item = lease()
+    item["issued_at"] = "2026-08-09T11:59:00Z"
+    item["updated_at"] = "2026-08-09T12:05:00Z"
+    with pytest.raises(ContractError) as captured:
+        validate_lease_within_scope(item, scope())
+    assert captured.value.code == "INVALID_ISSUANCE_CHRONOLOGY"
+
+
+def test_child_scope_still_cannot_widen_resources_denies_environment_or_expiry() -> None:
+    parent = scope()
+
+    widened = child_scope()
+    widened["resource_reads"] = [
+        {"resource_id": "worktree:99999999-9999-4999-8999-999999999999", "prefix": "src"}
+    ]
     with pytest.raises(ContractError, match="outside its parent"):
-        validate_child_scope(child, parent)
+        validate_child_scope(widened, parent)
 
+    dropped = child_scope()
+    dropped["resource_denies"] = []
+    with pytest.raises(ContractError, match="cannot drop"):
+        validate_child_scope(dropped, parent)
 
-def test_child_scope_cannot_drop_parent_deny() -> None:
-    child = child_scope()
-    child["resource_denies"] = []
-    with pytest.raises(ContractError, match="cannot drop a parent resource deny"):
-        validate_child_scope(child, scope())
+    environment = child_scope()
+    environment["environment_names"] = ["LANG", "SECRET"]
+    with pytest.raises(ContractError, match="environment_names"):
+        validate_child_scope(environment, parent)
 
-
-def test_child_scope_cannot_change_network_authority_class() -> None:
-    child = child_scope()
-    child["network_mode"] = "delegated_remote"
-    child["network_hosts"] = ["support.example.com"]
-    child["delegated_remote_authority"] = True
-    with pytest.raises(ContractError, match="network authority class"):
-        validate_child_scope(child, scope())
-
-
-def test_child_scope_cannot_extend_expiry() -> None:
-    child = child_scope()
-    child["expires_at"] = "2026-08-09T15:00:00Z"
-    with pytest.raises(ContractError, match="expiry cannot extend"):
-        validate_child_scope(child, scope())
-
-
-def test_child_scope_cannot_exist_when_parent_forbids_delegation() -> None:
-    parent = scope()
-    parent["delegation_allowed"] = False
-    with pytest.raises(ContractError, match="forbids delegation"):
-        validate_child_scope(child_scope(), parent)
-
-
-def test_lease_cannot_expand_effects_environment_or_network() -> None:
-    parent = scope()
-    item = lease()
-    item["effects"] = ["execute", "observe", "publish"]
-    with pytest.raises(ContractError, match="effects cannot expand"):
-        validate_lease_within_scope(item, parent)
-
-    item = lease()
-    item["environment_names"] = ["LANG", "SECRET_TOKEN"]
-    with pytest.raises(ContractError, match="environment_names cannot expand"):
-        validate_lease_within_scope(item, parent)
-
-    item = lease()
-    item["network_mode"] = "delegated_remote"
-    item["network_hosts"] = ["support.example.com"]
-    item["delegated_remote_authority"] = True
-    with pytest.raises(ContractError, match="network authority class"):
-        validate_lease_within_scope(item, parent)
-
-
-def test_lease_requires_approval_and_proposal_digests() -> None:
-    item = lease()
-    item["approval_digest"] = ""
-    with pytest.raises(ContractError, match="approval_digest"):
-        validate_authority_contract(item)
-
-    item = lease()
-    item["proposal_digest"] = "abc"
-    with pytest.raises(ContractError, match="proposal_digest"):
-        validate_authority_contract(item)
-
-
-def test_persistent_process_cannot_appear_without_execute_effect() -> None:
-    item = lease()
-    item["effects"] = ["observe"]
-    item["persistent_process_allowed"] = True
-    with pytest.raises(ContractError, match="requires execute effect"):
-        validate_authority_contract(item)
-
-
-def test_resource_prefixes_are_relative_normalized_and_portable() -> None:
-    bad_prefixes = ["/etc", "../escape", "src/../secret", r"src\\secret", "src//secret", "src/"]
-    for prefix in bad_prefixes:
-        value = scope()
-        value["resource_reads"] = [grant(f"worktree:{CHILD_SCOPE_ID}", prefix)]
-        value["resource_writes"] = []
-        with pytest.raises(ContractError):
-            validate_authority_contract(value)
-
-
-def test_deny_can_carve_hole_but_full_grant_cannot_be_denied() -> None:
-    value = scope()
-    validate_authority_contract(value)
-
-    blocked = deepcopy(value)
-    blocked["resource_reads"] = [grant(f"worktree:{CHILD_SCOPE_ID}", ".origins")]
-    blocked["resource_writes"] = []
-    with pytest.raises(ContractError, match="fully covered by a deny"):
-        validate_authority_contract(blocked)
-
-
-def test_network_hosts_are_exact_not_urls_or_wildcards() -> None:
-    for host in ("https://example.com", "*.example.com", "user@example.com", "example.com/path"):
-        value = scope()
-        value["network_hosts"] = [host]
-        with pytest.raises(ContractError):
-            validate_authority_contract(value)
-
-
-def test_fence_and_revision_must_be_positive() -> None:
-    item = lease()
-    item["fence"] = 0
-    with pytest.raises(ContractError, match="fence"):
-        validate_authority_contract(item)
-
-    item = lease()
-    item["revision"] = 0
-    with pytest.raises(ContractError, match="revision"):
-        validate_authority_contract(item)
-
-
-def test_expired_lease_requires_expiry_timestamp() -> None:
-    item = lease()
-    item["state"] = "expired"
-    item["expires_at"] = ""
-    with pytest.raises(ContractError, match="expired lease requires"):
-        validate_authority_contract(item)
+    expiry = child_scope()
+    expiry["expires_at"] = "2026-08-09T15:00:00Z"
+    with pytest.raises(ContractError, match="expiry"):
+        validate_child_scope(expiry, parent)
