@@ -13,7 +13,13 @@ import urllib.request
 from pathlib import Path
 
 TOKEN = "origins-proof-token"
-EXPECTED_CAPABILITIES = 5
+EXPECTED_CAPABILITY_IDS = {
+    "origins.journal.verify",
+    "origins.process.run",
+    "origins.repository.diff",
+    "origins.repository.inspect",
+    "origins.workspace.persistence",
+}
 
 
 def main() -> int:
@@ -48,7 +54,7 @@ def main() -> int:
             assert health["workspaces"] == 0
             assert health["repositories"] == 0
             assert health["sessions"] == 0
-            assert health["capabilities"] == EXPECTED_CAPABILITIES
+            assert health["capabilities"] == len(EXPECTED_CAPABILITY_IDS)
             assert health["journal"]["entries"] == 0
 
             assert_http_status(f"{base_url}/v1/capabilities", 401)
@@ -62,13 +68,7 @@ def main() -> int:
             capability_ids = {
                 descriptor["capability_id"] for descriptor in capabilities["capabilities"]
             }
-            assert capability_ids == {
-                "origins.journal.verify",
-                "origins.process.run",
-                "origins.repository.diff",
-                "origins.repository.inspect",
-                "origins.workspace.persistence",
-            }
+            assert capability_ids == EXPECTED_CAPABILITY_IDS
 
             workspace = request_json(
                 f"{base_url}/v1/workspaces",

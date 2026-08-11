@@ -1,0 +1,16 @@
+[
+  {
+    "contract_type": "capability_descriptor",
+    "schema_version": "1.0.0",
+    "capability_id": "origins.hunter.transport",
+    "version": "1.0.0",
+    "owner": "jaydumisuni/origins-factory",
+    "effects": ["execute", "observe", "verify"],
+    "permissions": ["origins.hunter.connect", "origins.workspace.read"],
+    "node_os": ["linux", "macos", "windows"],
+    "maturity": "experimental",
+    "model_dependency": "none",
+    "review_required": true,
+    "self_promotable": false
+  }
+]

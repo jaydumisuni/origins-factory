@@ -1,0 +1,259 @@
+# Sec-Ops Review Packet — Origins PR #11 Authority Candidate
+
+Status: **request for adversarial contract-model review**. PR #11 remains draft. No production lease issuer or generalized sandbox activation exists.
+
+This is **stage 1 of a two-stage security review**:
+
+1. **Contract-model review now** — determine whether `ExecutionScope + CapabilityLease` is a safe authority model to implement.
+2. **Implementation red-team later** — after the issuer/enforcement/revocation code exists, attack the actual implementation before terminal/browser/MCP/candidate-worktree authority is enabled.
+
+A stage-1 `PASS` does **not** authorize those capabilities by itself.
+
+## Review target
+
+Primary design authority:
+
+- `docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md`
+
+Executable candidate semantics:
+
+- `python/origins_contracts/authority.py`
+- `typescript/authority.ts`
+- `rust/origins-authority-contracts/`
+- `contracts/authority-fixtures.json`
+- `contracts/authority-adversarial-fixtures.json`
+
+Review-completeness artifacts:
+
+- `docs/SECOPS_ENFORCEMENT_POINT_MATRIX_PR11.md` — exact current/future enforcement hooks and implementation status;
+- `docs/SECOPS_AUTHORITY_THREAT_MODEL_PR11.md` — issuance/invocation TOCTOU, resource/path/network/restart/confused-deputy threat model;
+- `docs/SECOPS_VERDICT_TEMPLATE_PR11.md` — structured PASS / NEEDS_WORK / BLOCK response format;
+- `python/tests/test_authority_inactive.py` — mechanical proof that candidate authority cannot activate `originsd` before review.
+
+Related proposal/context boundary:
+
+- `docs/ADR-0011-CONTEXT-REFERENCES-CAPABILITY-PROPOSALS.md`
+- `python/origins_integration/capability_proposals.py`
+- `python/origins_integration/context_refs.py`
+
+Existing mechanical enforcement donors that are **not being replaced**:
+
+- `rust/originsd/src/process.rs`
+- `rust/originsd/src/workspace_roots.rs`
+- `rust/originsd/src/sessions.rs`
+- `rust/originsd/src/repository.rs`
+- hash-chained Origins journal/store
+
+## Pre-review mechanical proof state
+
+The candidate authority semantics are deliberately separated from active runtime authority.
+
+Required pre-review proof:
+
+```text
+Python authority validator                         PASS
+TypeScript authority validator                     PASS
+Rust origins-authority-contracts validator         PASS
+shared valid/invalid authority corpus              PASS
+shared adversarial relation/contract corpus        PASS in all three runtimes
+canonical SHA-256 agreement                        PASS
+originsd has no authority-crate dependency         PASS
+originsd has no scope/lease/mint activation route  PASS
+all inherited Origins runtime proofs               PASS
+```
+
+If any of those become false, PR #11 is not ready for Sec-Ops reconciliation.
+
+## Trust model
+
+Treat as potentially hostile:
+
+- all model output;
+- repository/worktree contents;
+- filenames and links;
+- browser/web content;
+- MCP servers and MCP-returned data;
+- remote services;
+- candidate worktrees;
+- task-provided environment/config values;
+- stale handles from previously authorized capability providers.
+
+Do not assume a model is malicious for normal operation, but design the authority boundary so compromise or adversarial prompt content cannot enlarge mechanical authority.
+
+## Intended authority chain
+
+```text
+Owner intent
+  -> Hunter / AgentOps semantic operation
+  -> CapabilityProposal
+  -> durable owner approval (future AgentOps persistence)
+  -> current parent ExecutionScope + current host policy
+  -> CapabilityLease
+  -> originsd invocation-time enforcement
+  -> existing mechanical Session/provider
+  -> evidence / Sergeant review
+```
+
+Important: current AgentOps `ApprovalService` semantics exist, but its in-process storage is not durable enough to mint a production security lease. PR #11 intentionally provides **no production lease issuer**.
+
+## Candidate invariants to attack
+
+1. Host policy is an immutable ceiling from the delegated model's perspective.
+2. ExecutionScope may only narrow host policy.
+3. CapabilityLease may only narrow its ExecutionScope.
+4. Child scope/lease authority can never exceed its parent.
+5. A model cannot approve, mint, extend, resume, revoke-and-reissue, or otherwise self-authorize a lease.
+6. Lease is bound to the exact approved CapabilityProposal digest and durable approval-record digest.
+7. Approval is not execution; provider existence/current policy/current scope must still be validated.
+8. Resource authority uses Origins-owned resource IDs plus normalized relative prefixes rather than model-selected raw host paths.
+9. Origins resolves resource IDs to canonical current host paths at invocation time.
+10. Parent denies cannot be dropped by child scope or lease.
+11. Candidate worktree mutation must not reach sibling worktrees or the main checkout.
+12. Network-denied authority cannot regain network through stale handles/tools.
+13. Network authority cannot silently change class from local allowlist to delegated remote authority.
+14. Persistent local MCP/background processes must remain confined for their entire process-tree lifetime.
+15. Remote MCP is explicit delegated remote authority and is not represented as locally sandboxed.
+16. Secret values never appear in model-visible scope/proposal metadata; environment contracts name variables only.
+17. Model-writable project/config data cannot disable or enlarge an active scope/lease.
+18. Suspended/revoked/expired leases fail closed at invocation time.
+19. Restart cannot resurrect revoked/expired authority.
+20. Revocation must terminate/disconnect all bound execution, including child processes/providers where enforceable.
+21. Security denial/failure evidence remains visible and cannot be rewritten as success.
+
+## Specific attack classes requested
+
+Challenge:
+
+- privilege escalation;
+- proposal/approval/lease substitution;
+- approval TOCTOU;
+- stale capability handles;
+- fence/revision replay;
+- resource-ID rebinding;
+- symlink/junction/reparse-point/mount escape;
+- path normalization disagreement between Windows/Linux/macOS;
+- Git common-dir/worktree attacks;
+- sibling worktree/main-checkout mutation;
+- executable substitution/PATH attacks;
+- environment/proxy credential leakage;
+- DNS rebinding and redirect widening;
+- local MCP opening its own undeclared network connection;
+- long-lived MCP/background child survival after revocation;
+- confused-deputy behavior through Hunter, CodeOps, Oracle, browser automation, remote Nodes or specialist providers;
+- self-disable through writable config/project files;
+- daemon crash/restart during approval, issuance, invocation or revocation;
+- forged/replayed approval digest;
+- lease state rollback or lower-fence replay;
+- break-glass authority bypass/audit gaps.
+
+## Required mitigation classification
+
+Do not return a flat list of theoretical attacks. For filesystem, resource, worktree and network findings, classify each item as exactly one of:
+
+- **CLOSED_BY_CONTRACT** — the current authority representation/invariant prevents this class by construction, assuming validators are correctly used;
+- **REQUIRES_RUNTIME_RECHECK** — the contract narrows the request but safety depends on current invocation-time resolution/revalidation;
+- **REQUIRES_OS_PROVIDER_ENFORCEMENT** — safety depends on an OS-specific primitive such as process-tree, filesystem or network containment;
+- **REQUIRES_PROVIDER_ENFORCEMENT** — browser/MCP/remote provider behavior must enforce the lease because Origins cannot prove the property locally;
+- **OPEN_DESIGN_GAP** — the current contract is insufficient and must change before implementation.
+
+Examples that must be distinguished rather than grouped together:
+
+- normalized relative prefixes versus raw `..` traversal;
+- symlink/junction/reparse-point/bind-mount escape after an otherwise-valid resource lookup;
+- resource-ID rebinding between approval and invocation;
+- exact-host allowlist representation versus DNS/proxy/redirect enforcement;
+- worktree resource identity versus Git common-dir/sibling/main-checkout mutation.
+
+For every `REQUIRES_*` classification, identify the exact enforcement point and mandatory proof.
+
+## Questions for Sec-Ops
+
+1. Are `resource_id + normalized relative prefix` grants sufficient as the portable model-facing resource authority representation?
+2. Which filesystem/worktree attack classes are already **CLOSED_BY_CONTRACT**, and which remain live because they require invocation-time or OS-level enforcement?
+3. Should resource grants bind to an immutable resource revision/digest as well as resource ID to prevent rebinding?
+4. Is exact-host network authority adequate, or must the contract distinguish hostname, resolved IP set, port, protocol and redirect policy?
+5. Which network threats are representation problems versus runtime/provider enforcement problems?
+6. What must be captured in a lease to safely enforce DNS/proxy/redirect behavior?
+7. Is the proposed monotonic network rule correct: child may become `deny`; otherwise it must remain in the parent's authority class with a subset of hosts?
+8. What is the correct process-tree primitive per supported OS for revocation guarantees?
+9. What should happen when a platform cannot prove complete process/network confinement?
+10. What durable approval fields/signatures/digests must AgentOps expose before Origins may issue a lease?
+11. Should approval/lease issuance require freshness/nonces in addition to proposal + approval digests?
+12. What fence/revision semantics are required to prevent restart/stale-handle replay?
+13. What additional global deny resources must never be delegable?
+14. What break-glass design preserves owner emergency control without teaching models an escalation path?
+15. What **stage-2 implementation red-team** is mandatory after the issuer/enforcement code exists and before powerful capabilities are enabled?
+16. Which findings can be accepted at contract-model stage only if they become explicit blockers for stage-2 activation?
+
+## Two-stage Sec-Ops gate
+
+### Stage 1 — contract-model review (this PR)
+
+A `PASS` means only:
+
+- the authority contracts are a sound foundation to implement;
+- identified runtime/OS/provider obligations are explicitly carried forward;
+- PR #11 may merge after findings are reconciled and exact-head proof remains green.
+
+A stage-1 `PASS` does **not** mean:
+
+- the future lease issuer is secure;
+- ProcessPolicy/runtime enforcement is secure;
+- filesystem/network sandboxing is secure;
+- revocation is proven;
+- browser/MCP/candidate-worktree authority may be enabled.
+
+### Stage 2 — implementation red-team (future activation gate)
+
+After the real issuer, persistent lease state, invocation-time enforcement, revocation/fencing and OS/provider containment exist, Sec-Ops must review the **actual implementation and adversarial proofs**.
+
+Powerful model-controlled capabilities remain disabled until stage 2 returns its own reconciled verdict for the implemented boundary.
+
+The stage-2 review must attack at minimum:
+
+- actual approval-to-lease issuance transaction;
+- current-resource resolution under mutation/races;
+- stale handles and lower-fence replay;
+- daemon crash/restart during issuance/invocation/revocation;
+- real process-tree survival;
+- real filesystem/worktree escape;
+- actual DNS/proxy/redirect behavior;
+- local persistent MCP lifetime confinement;
+- remote delegated-authority propagation;
+- confused-deputy attempts through Hunter/CodeOps/Oracle/providers;
+- self-disable attempts against model-writable configuration.
+
+## Required response
+
+Use `docs/SECOPS_VERDICT_TEMPLATE_PR11.md`.
+
+Return exactly one overall **stage-1** verdict:
+
+- `PASS`
+- `NEEDS_WORK`
+- `BLOCK`
+
+Then provide:
+
+- exploitable attack paths;
+- mitigation classification for each important attack class;
+- missing invariants;
+- contract fields that must be added/removed/changed;
+- mandatory backend enforcement points;
+- mandatory adversarial tests;
+- platform-specific limitations;
+- explicit stage-2 implementation review requirements;
+- any condition that must be satisfied before browser, MCP, candidate-worktree mutation, generalized agent terminal authority or remote providers are enabled.
+
+## Non-claims
+
+This review packet does not claim:
+
+- Sec-Ops approval;
+- implementation-level Sec-Ops approval;
+- production lease issuance;
+- durable AgentOps approval persistence;
+- filesystem/network sandbox implementation;
+- browser/MCP/candidate execution;
+- UI implementation;
+- Ptah runtime availability.

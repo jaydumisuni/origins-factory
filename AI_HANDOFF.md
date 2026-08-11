@@ -3,246 +3,193 @@
 **Status:** Mandatory recovery entry point
 **Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 **Current implementation truth:** `CURRENT_STATE.md`
+**Active candidate:** draft PR #11
 
-## Read before acting
+## Recover before acting
 
-Every new chat, AI, agent, developer, or reviewer must recover Origins Factory in this order:
+Read in this order:
 
-1. this `AI_HANDOFF.md`;
+1. this file;
 2. `CURRENT_STATE.md`;
-3. `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`;
-4. current implementation ADRs;
-5. current source, branches, pull requests, tests, and proof;
-6. the owning repository for every mounted external capability being changed.
+3. `docs/SECOPS_STAGE1_RECONCILIATION_PR11.md`;
+4. historical `docs/SECOPS_STAGE1_VERDICT_PR11.md`;
+5. `docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md`;
+6. current PR/source/proof;
+7. owning external repositories for any mounted capability being changed.
 
-Do not ask the owner to repeat information recoverable from these records.
+Do not ask the owner to repeat recoverable evidence.
 
 ## Product identity lock
 
-Origins Factory is a **model-optional, evidence-native mission operating environment** combining durable work ownership, full-stack engineering, cyber-physical control, independent verification, cross-machine continuity, and controlled capability synthesis.
-
-Origins is the portable workspace the owner opens to work with Hunter. It is not an operating system, IDE clone, AI sidebar, dashboard, thin desktop wrapper, model router, or replacement for its specialist systems.
-
-## Non-negotiable architecture
-
-```text
-Owner intent
-→ Origins Factory
-→ Hunter semantic understanding
-→ AgentOps durable Mission/Operation graph
-→ Capability Compiler
-→ persistent mechanical execution
-→ Sergeant/X-Ray/deterministic assurance
-→ Artifacts, recovery, sanitation, and governed capability evolution
-```
+Origins Factory is a model-optional, evidence-native mission operating environment. It is not an OS, IDE clone, AI sidebar, dashboard, model router or replacement for its specialist systems.
 
 Three truths remain separate:
 
-- **Semantic truth:** Hunter + AgentOps.
-- **Mechanical truth:** originsd, specialist Gateways, Nodes, and later authorized Ptah integration.
-- **Assurance truth:** Sergeant, X-Ray, deterministic proof, specialist governors, and human acceptance.
+- **Semantic:** Hunter + AgentOps.
+- **Mechanical:** `originsd`, specialist Gateways, Nodes, later authorized Ptah integration.
+- **Assurance:** Sergeant, X-Ray, deterministic proof, specialist governors and human acceptance.
 
-Models amplify the system. They do not manufacture mechanical completion or independent assurance.
+Ownership remains:
 
-## Runtime planes
-
-- **React + TypeScript:** visible Workspace and projections.
-- **Rust:** persistent native control plane, Sessions, repositories/Git, processes, later PTYs/filesystem/Nodes/events/recovery.
-- **Python:** Hunter, AgentOps, CodeOps, provider/model integration, context compilation, reconciliation, and governed capability evolution.
-
-The UI must not own durable runtime truth.
-
-## Capability ownership
-
-- Hunter — intelligence/context;
-- AgentOps — semantic lifecycle/approvals/completion;
-- CodeOps — repository engineering;
+- Hunter / Pete — mission intelligence and optional outside reasoning;
+- AgentOps — semantic lifecycle/approval/completion;
+- CodeOps — repository engineering and provider/model/client routing;
 - Sergeant — independent engineering review;
-- Oracle — browser/OS perception and authorised control;
-- Lumi — downloads/transfers;
-- X-Ray — read-first and post-operation evidence;
-- specialist Gateways — domain/device state and bounded execution;
-- Software Builder — packaging/releases;
-- Ptah — future neutral mechanical substrate after authorization;
-- Origins — mission workspace, native integration, capability compilation, and user control surfaces.
+- Origins — persistent workspace, mechanical integration and capability enforcement;
+- Oracle/Lumi/X-Ray/specialist Gateways — their existing specialist boundaries.
 
 Do not duplicate an owning engine inside Origins.
 
-## Accepted implementation sequence
+## Merged proven implementation
 
-1. Contract Spine v1.2.
-2. originsd persistence foundation.
-3. Supervised Process Sessions v1.
-4. Active Session Control v1.
-5. Live Session Observation v1.
-6. Repository/Git Sessions v1.
-7. Engineering Assurance Bridge v1 — protocol-proven through real originsd.
-8. Production Engineering Mount v1 doctor — compatibility behavior proven.
-9. Live Engineering Mount v1 — doctor-gated read-only smoke mechanism, internal proof scopes, fresh Repository truth, and integrity-addressed receipt proven with controlled fixtures.
+`main` contains:
 
-Read `CURRENT_STATE.md` for exact merge/proof state. An item on an open PR remains a candidate until merged even when its pre-freeze head is green.
+1. Contract Spine v1.2;
+2. persistent `originsd` foundation;
+3. Supervised Process Sessions;
+4. Active Session Control;
+5. Live Session Observation;
+6. Repository/Git Sessions;
+7. Engineering Assurance Bridge protocol;
+8. Production Engineering Mount doctor;
+9. Live Engineering Mount v1.
 
-## Engineering mount lock
+## Draft PR #11
 
-Production dynamic imports remain pinned to:
+PR #11 remains **draft and unmerged** until the normal post-verdict review/promotion gate completes.
 
-```text
-hunter_agentops.code_ops_switcher_runner
-hunter_codeops.code_ops_sergeant_ingest
-```
+It contains:
 
-Mechanical path remains:
+- Hunter Intelligence Mount v1;
+- `@chat` reference semantics through Hunter;
+- dormant `@memory` semantics without shadow storage;
+- model `CapabilityProposal` with `approval_required=true` and `self_approvable=false`;
+- corrected authority-contract v1.1 semantics in Python/TypeScript/Rust;
+- shared canonical/adversarial authority corpus;
+- CI guard proving no runtime authority activation exists yet.
 
-```text
-AgentOps packet/approval
-→ fresh Origins Repository identity
-→ CodeOps command
-→ originsd Session
-→ CodeOps Sergeant-command
-→ originsd Sergeant Session
-→ CodeOps verdict ingestion
-→ recommendation back to AgentOps
-```
+## Sec-Ops stage-1 state
 
-Exact recommendation semantics:
+Historical first verdict:
 
 ```text
-PASS       → complete_candidate
-NEEDS WORK → correct
-BLOCK      → block
-UNKNOWN    → unresolved
+NEEDS_WORK
 ```
 
-`complete_candidate` is not AgentOps completion. Do not create a shadow AgentOps operation database while its owning production lifecycle backend remains pending.
-
-### Fresh Repository truth
-
-Doctor and bridge must re-inspect the Repository through the dedicated originsd Git authority before a new engineering attempt. A previously stored projection is not sufficient proof of current HEAD/revision.
-
-### CodeOps config authority
-
-Do not reintroduce the old assumption that CodeOps config belongs inside every project Repository.
+Historical findings:
 
 ```text
-CodeOps config
-→ integration-stack reference
-→ absolute or relative
-→ non-empty and NUL-free
-
-project files / edit plan
-→ Repository-scoped
-→ plan must remain relative and escape-resistant
+docs/SECOPS_STAGE1_VERDICT_PR11.md
 ```
 
-Origins does not copy, persist, or rewrite config contents merely because the bridge references the path.
+SEC-001 through SEC-005 were corrected and re-proven.
 
-## Production Engineering Mount doctor lock
-
-Observed owner identities are compatibility observations, not eternal version requirements:
+Focused reconciliation verdict:
 
 ```text
-hunter-agentops       0.3.0
-hunter-codeops        0.3.0
-sergeant-reviewer     0.4.1
-hunter-codeops-switcher
-sergeant
+PASS
 ```
 
-The doctor evaluates:
+Canonical reconciliation:
 
 ```text
-agentops_python
-codeops_python
-codeops_cli
-sergeant_cli
+docs/SECOPS_STAGE1_RECONCILIATION_PR11.md
 ```
 
-Status meanings are strict:
+### Closed findings
+
+1. **SEC-001:** `parent_lease_id` removed; lease-to-lease delegation unsupported in v1.1.
+2. **SEC-002:** operation identity immutable; candidate identity bind-once and non-switchable/non-clearable after binding.
+3. **SEC-003:** lease binds exact `provider_id + provider_manifest_digest + provider_generation`.
+4. **SEC-004:** ExecutionScope now has state/fence/revision and exact current-generation stale-scope validation.
+5. **SEC-005:** network authority now uses exact `protocol + host + port` endpoints and explicit `deny_outside_endpoints` redirect policy.
+
+Additional hardening accepted:
+
+- holder UUID + holder generation;
+- child/lease issuance chronology relative to current parent/scope generation.
+
+## Stage-1 PASS semantics
+
+Stage-1 PASS approves only the **authority contract model as a foundation for implementation**.
+
+It does not approve or activate:
+
+- production lease issuance/persistence;
+- filesystem/network sandboxing;
+- process-tree revocation;
+- browser control;
+- MCP execution;
+- candidate-worktree mutation;
+- generalized agent terminal authority.
+
+## Stage-2 security rule
+
+After real issuer/persistence/invocation enforcement/revocation/OS-provider containment exists, a separate **Stage-2 Sec-Ops implementation red-team is mandatory** before powerful model-controlled authority can be enabled.
+
+Stage 2 must attack at minimum:
+
+- durable AgentOps approval authenticity/replay resistance;
+- trusted root/child scope issuance;
+- atomic lease issuance transaction;
+- scope/lease current-state/fence persistence;
+- provider manifest/generation revalidation;
+- current resource/path generation;
+- symlink/junction/reparse/mount/hard-link/special-file escape;
+- candidate/sibling/main worktree mutation isolation;
+- Windows/Linux process-tree revocation;
+- DNS/proxy/redirect/network behavior;
+- persistent local MCP lifetime confinement;
+- remote delegated-authority propagation;
+- holder UUID/generation binding to real durable subjects;
+- confused-deputy paths;
+- model self-disable attempts against policy/security storage.
+
+Stage-1 PASS must never be cited as implementation-level approval.
+
+## Current stop rule
+
+Do not jump directly into powerful capability activation merely because Stage 1 passed.
+
+Still forbidden until their own later design/implementation gates:
+
+- converting volatile AgentOps approval into durable lease authority;
+- browser/MCP/candidate-worktree/general agent authority that bypasses accepted runtime enforcement;
+- direct UI/model/Python execution bypassing `originsd` or specialist authority.
+
+## Next valid work
+
+Complete PR #11 promotion, not another architecture redesign:
 
 ```text
-missing    → cannot be found/started
-available  → present but required contract behavior is not compatible
-compatible → non-mutating compatibility probes pass
-proven     → separate actual live-owner receipt exists
+Sec-Ops Stage-1 PASS
+→ freeze reconciliation/current state/handoff
+→ exact-head Contract Spine + Daemon Foundation proof
+→ independent Sergeant/repository review
+→ promote/merge PR #11 if clean
 ```
 
-The doctor itself never emits `proven` because imports or `--help` work. It never auto-installs packages, repairs PATH, clones/pulls owners, rewrites APIs, or substitutes fixtures for missing production systems.
+After PR #11 merge, begin a **separate authority-runtime phase** starting with durable AgentOps approval evidence and production issuer/enforcement design under the accepted v1.1 model.
 
-## Live Engineering Mount proof lock
-
-Two proof scopes exist:
-
-```text
-fixture
-→ CI/controlled owner fixtures
-→ proves Origins routing/protocol behavior
-→ can never set live_engineering_proven=true
-
-live_owner
-→ production constructor + actual installed owners
-→ may produce live_engineering_proven=true after a canonical end-to-end smoke
-```
-
-Canonical project verdicts `PASS`, `NEEDS WORK`, and `BLOCK` may prove owner-stack communication. `UNKNOWN` never proves the mount.
-
-The compact receipt contains IDs/status/digests plus canonical receipt SHA-256. It excludes raw CodeOps config, credentials, raw review text, and process bodies.
-
-The hosted live smoke now runs in the existing Daemon Foundation workflow. Do not claim the smoke is proven merely because its source file exists.
-
-CI fixture proof is **not** actual target-host proof.
-
-## Mechanical execution boundary
-
-Do not silently expand `origins.process.run` into a generic shell or unrestricted execution path.
-
-Keep separate:
-
-- argv from shell strings;
-- process exits from infrastructure interruptions;
-- complete-stream evidence from bounded retained output;
-- command identity from replay content;
-- configured Workspace roots from full OS isolation;
-- mechanical Sessions from AgentOps Operations;
-- raw retained output from permanent journal metadata;
-- durable cursors from SSE connection state;
-- Repository mechanical truth from CodeOps semantic engineering truth;
-- fixture/protocol proof from actual installed-owner proof.
-
-Repository/Git v1 remains read-only. CodeOps owns engineering mutation and proof.
-
-## Huawei acceptance story
-
-The Huawei P30 Pro/VOG case remains the canonical evidence for Origins mission continuity and cyber-physical architecture. Drive handover is recovery context; live truth remains in current repository authority, persistent Gateway state, Recovery Plans/Artifacts, and fresh X-Ray evidence.
+Do not re-plan Origins.
 
 ## Anti-drift rules
 
-- Do not create another Origins master plan.
-- Update accepted authority in place; do not append competing architectures.
-- Keep implementation status in `CURRENT_STATE.md`.
-- Recover repository evidence before proposing technologies or rewrites.
-- Failed and partial Attempts remain visible.
-- Do not convert a model claim, command exit, Git read, stream frame, fixture proof, doctor `compatible`, or UI acknowledgement into stronger proof than it provides.
-- Do not let a capability approve or activate its own upgrade.
-- Do not revive `build/initial-workspace` as the implementation base.
-
-## Current next valid work
-
-The Live Engineering Mount mechanism is implemented. Do **not** rebuild it in the next chat.
-
-1. check whether PR #10 / ADR-0009 is already merged before doing anything else;
-2. when a controlled host with the actual AgentOps/CodeOps/Sergeant stack is available, run the production live-mount smoke and retain the actual `live_owner` receipt;
-3. do not fake that host verification from fixtures;
-4. meanwhile recover Hunter's current production client/API/session/auth contracts from its owning repository;
-5. define and implement the thinnest model-optional Hunter intelligence mount over the existing Origins/AgentOps foundation;
-6. broad React Workspace work remains downstream of durable runtime projections, not a substitute for them.
+- Preserve the historical NEEDS_WORK verdict and the later PASS reconciliation; do not rewrite history.
+- Do not call stage-1 contract semantics a sandbox implementation.
+- Do not create a shadow AgentOps approval database.
+- Do not create a shadow Hunter chat/memory database.
+- Do not let a capability approve, mint or enlarge its own authority.
+- Do not bypass `originsd`/specialist authority for convenience.
+- Failed/partial attempts remain visible.
 
 ## Session close rule
 
 After substantial Origins work:
 
-1. preserve code and proof checkpoints;
+1. preserve code/proof checkpoint;
 2. update `CURRENT_STATE.md`;
-3. update this handoff when recovery order or next valid action changes;
-4. update the product plan only for an owner-accepted architecture change;
+3. update this handoff when the next valid action changes;
+4. update the product plan only for owner-accepted architecture changes;
 5. preserve unresolved limitations explicitly;
-6. leave one clean continuation point for the next chat or machine.
+6. leave one clean continuation point.

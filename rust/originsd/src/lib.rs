@@ -2,6 +2,8 @@ pub mod auth;
 pub mod control;
 pub mod events;
 pub mod http;
+pub mod hunter;
+pub mod hunter_capabilities;
 pub mod live;
 pub mod output_live;
 pub mod process;
@@ -13,6 +15,8 @@ pub mod workspace_roots;
 
 use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
+use crate::hunter::{HunterState, HunterTransport};
+use crate::hunter_capabilities::synchronize as synchronize_hunter_capabilities;
 use crate::process::{ProcessPolicy, ProcessSupervisor};
 use crate::repository::initialize as initialize_repository_store;
 use crate::repository_capabilities::initialize as initialize_repository_capabilities;
@@ -89,21 +93,34 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     fs::create_dir_all(&config.data_dir).map_err(|error| RuntimeError::Io(error.to_string()))?;
     let token = load_or_create_token(&config.data_dir)
         .map_err(|error| RuntimeError::Io(error.to_string()))?;
+    let local_token = Arc::<str>::from(token);
     let process_policy = ProcessPolicy::from_env().map_err(RuntimeError::Config)?;
     let repository_policy = WorkspaceRootPolicy::from_env().map_err(RuntimeError::Config)?;
+    let hunter_transport =
+        HunterTransport::from_env().map_err(|error| RuntimeError::Config(error.to_string()))?;
+    let hunter_configured = hunter_transport.is_some();
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_capabilities(&store)
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
-    let state = AppState {
-        store,
+    synchronize_hunter_capabilities(&store, hunter_configured)
+        .map_err(|error| RuntimeError::Store(error.to_string()))?;
+
+    let base_state = AppState {
+        store: store.clone(),
         process_policy,
         process_supervisor: ProcessSupervisor::default(),
         repository_policy,
-        local_token: Arc::<str>::from(token),
+        local_token: local_token.clone(),
         started_at: Arc::<str>::from(now_rfc3339()),
     };
+    let hunter_state = HunterState {
+        store,
+        transport: hunter_transport,
+        local_token,
+    };
+    let app = router(base_state).merge(hunter::router(hunter_state));
 
     let listener = TcpListener::bind(config.bind)
         .await
@@ -113,7 +130,7 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
         .map_err(|error| RuntimeError::Server(error.to_string()))?;
     println!("originsd ready on http://{local_addr}");
 
-    axum::serve(listener, router(state))
+    axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await
         .map_err(|error| RuntimeError::Server(error.to_string()))
