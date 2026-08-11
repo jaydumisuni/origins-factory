@@ -158,7 +158,7 @@ def test_sec005_network_endpoint_requires_protocol_host_port() -> None:
     child = child_scope()
     child["network_endpoints"] = [{"protocol": "https", "host": "support.example.com", "port": 443}]
     with pytest.raises(ContractError, match="network_endpoints"):
-        validate_child_scope(child, scope())
+        validate_child_scope(child, parent)
 
     bad = scope()
     bad["network_endpoints"] = [{"protocol": "https", "host": "support.example.com", "port": 0}]
