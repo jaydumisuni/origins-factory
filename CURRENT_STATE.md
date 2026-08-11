@@ -1,202 +1,133 @@
 # Origins Factory — Current State
 
-**Recorded:** 2026-08-09
-**Architecture version:** 1.0.0 — accepted product/architecture authority
-**Canonical merged implementation:** `main` through Live Engineering Mount v1
-**Active candidate:** draft PR #11 — Hunter Intelligence Mount + context/proposal layer + ExecutionScope/CapabilityLease security-review candidate
-
-## Contribution status
-
-Current PR #11 contributes **New implementation + Correction + Verification**, but remains **candidate** until review and merge.
+**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
+**Merged implementation:** `main` through Live Engineering Mount v1
+**Active candidate:** draft PR #11 — Hunter Intelligence Mount + context/proposal layer + authority-contract candidate
 
 ## Merged proven foundation
 
-1. Contract Spine v1.2 — Rust/Python/TypeScript canonical contracts and exact equivalence.
-2. `originsd` persistence foundation — loopback auth, SQLite durability, capability state, hash-chained journal, tamper detection and restart recovery.
-3. Supervised Process Sessions v1 — bounded argv execution, cleared environment, root/executable policy, durable output evidence.
-4. Active Session Control v1 — asynchronous acceptance, cancellation and event replay.
-5. Live Session Observation v1 — one-copy retained output and reconnectable byte/event cursors.
-6. Repository/Git Sessions v1 — read-first Repository/worktree/common-dir/HEAD/status/diff truth.
-7. Engineering Assurance Bridge v1 — AgentOps/CodeOps/Sergeant protocol through real `originsd`.
-8. Production Engineering Mount doctor — compatibility classification without self-install/repair.
-9. Live Engineering Mount v1 — fresh Repository truth, controlled live-owner smoke path, fixture non-promotion and canonical receipt SHA-256.
+1. Contract Spine v1.2.
+2. Persistent `originsd` foundation.
+3. Supervised Process Sessions.
+4. Active Session Control.
+5. Live Session Observation.
+6. Repository/Git Sessions.
+7. Engineering Assurance Bridge protocol.
+8. Production Engineering Mount doctor.
+9. Live Engineering Mount v1.
 
-## PR #11 — current proven candidate
+## PR #11 candidate
 
-### Hunter Intelligence Mount v1
+Implemented but not merged:
 
-Implemented on the draft branch:
+- Hunter Intelligence Mount v1 through Rust-owned `originsd` transport;
+- Python Hunter semantic adapter with no Hunter credential/network authority;
+- `@chat:<hunter-session-id>` through Hunter authority;
+- dormant `@memory:<project>:<key>` with no shadow memory store;
+- model `CapabilityProposal` with mandatory owner approval and no self-approval;
+- candidate `ExecutionScope + CapabilityLease` validators in Python, TypeScript and isolated Rust;
+- shared canonical/adversarial authority corpus;
+- CI no-activation guard proving candidate authority is not wired into `originsd` runtime enforcement;
+- optional Hunter capability synchronization, including configured→disabled cleanup.
 
-- Rust-owned Hunter HTTP transport under `originsd`;
-- no arbitrary Hunter URL/path authority;
-- Hunter bearer credential remains out of Python, argv, SQLite content and journal payloads;
-- Workspace-bound Python Hunter semantic mount;
-- Hunter remains conversation/session authority;
-- successful and failed transport attempts retain metadata/digest evidence rather than raw response bodies;
-- Hunter-disabled operation leaves existing Origins mechanical services healthy;
-- optional `origins.hunter.transport` capability is synchronized with actual runtime configuration, including configured→disabled removal.
+## Sec-Ops stage-1 result
 
-The actual production Hunter owner credential is **not** proven by CI fixtures.
-
-### Context references and Project Memory boundary
-
-Implemented dormant semantics:
+The actual contract-model attack review is complete.
 
 ```text
-@chat:<hunter-session-id>
-→ resolves through Hunter chat authority
-
-@memory:<project>:<key>
-→ typed now
-→ reports unavailable until Hunter runtime memory storage is wired
+VERDICT: NEEDS_WORK
 ```
 
-Origins does not create a second chat or Project Memory database.
-
-### CapabilityProposal
-
-A model may propose that an unavailable capability would improve task delivery. The proposal records reason, expected benefit, effects, filesystem/network/environment scope, persistent/delegated authority requirements, alternatives and risks.
-
-It maps to AgentOps `owner_approval_required` semantics and is invariantly:
+Canonical verdict:
 
 ```text
-approval_required = true
-self_approvable = false
+docs/SECOPS_STAGE1_VERDICT_PR11.md
 ```
 
-The proposal layer has no execution/network authority.
+The overall `ExecutionScope + CapabilityLease` direction is viable, but PR #11 must not merge until these five contract-level blockers are corrected:
 
-## ADR-0012 — security-review candidate
+1. **SEC-001 — parent lease delegation gap**
+   - `parent_lease_id` exists but has no enforceable child-lease monotonicity relation.
+   - Preferred v1 correction: remove lease-to-lease delegation until a real child-lease contract exists.
 
-`docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md` defines the candidate authority law:
+2. **SEC-002 — operation/candidate identity laundering**
+   - child scopes currently constrain Workspace/parent authority but not `operation_id` / `candidate_id` transitions.
+   - operation identity must remain stable; candidate binding must be explicitly one-way and non-switchable.
 
-```text
-host policy ceiling
-    ∩ ExecutionScope
-    ∩ CapabilityLease
-    = effective authority
-```
+3. **SEC-003 — provider semantic substitution**
+   - lease binds `capability_id` but not exact provider identity/manifest generation.
+   - future lease must bind provider identity + provider manifest digest or equivalent recoverable authority-input binding.
 
-The candidate is intentionally **not registered as an active Contract Spine authority type** and does not activate runtime sandboxing or lease issuance.
+4. **SEC-004 — ExecutionScope lifecycle/fencing gap**
+   - scope has revision/expiry but no complete revocation/stale-reference model.
+   - choose immutable scope generations + separate revocation, or add explicit scope state/fence semantics.
 
-### Candidate resource authority
+5. **SEC-005 — network authority under-specified**
+   - `host[:port]` is insufficiently precise for generic authority because protocol/transport and omitted-port semantics are ambiguous.
+   - network endpoint authority must be explicit before implementation.
 
-Model-facing scope uses Origins-owned resource identities plus normalized relative prefixes instead of arbitrary host paths:
+Additional hardening required:
 
-```text
-workspace:<id>
-repository:<id>
-worktree:<id>
-artifact:<id>
-```
+- canonical, non-recyclable lease holder identity;
+- relational issuance chronology between parent scope, child scope and lease.
 
-`originsd` will later resolve these references to canonical current host resources at invocation time and apply the existing host ceiling.
+## Accepted mitigation classification
 
-### Candidate ExecutionScope / CapabilityLease proof
+- raw absolute path / `..` / backslash representation attacks — **CLOSED_BY_CONTRACT**;
+- symlink/junction/reparse/mount/hard-link/special-file escape — **REQUIRES_OS_PROVIDER_ENFORCEMENT**;
+- resource-ID rebinding — **REQUIRES_RUNTIME_RECHECK**, and becomes **OPEN_DESIGN_GAP** if resource IDs can be recycled/rebound without generation binding;
+- sibling worktree/main-checkout mutation — **REQUIRES_RUNTIME_RECHECK + OS/provider enforcement**;
+- DNS/redirect/proxy behavior — **REQUIRES_PROVIDER/OS ENFORCEMENT**;
+- ambiguous protocol/port authority — **OPEN_DESIGN_GAP**;
+- stale lease handle — **REQUIRES_RUNTIME_RECHECK** using lease state/fence;
+- stale parent scope — **OPEN_DESIGN_GAP** until SEC-004 is resolved;
+- process-tree survival — **REQUIRES_OS_PROVIDER_ENFORCEMENT**;
+- confused deputy through Hunter/CodeOps/Oracle/provider — **REQUIRES_PROVIDER ENFORCEMENT** with requester authority propagation.
 
-Executable candidate validators now exist in:
+## Security stop rule
 
-- Python — `python/origins_contracts/authority.py`;
-- TypeScript — `typescript/authority.ts`;
-- Rust — isolated `rust/origins-authority-contracts` crate.
+Until stage-1 findings are reconciled and the corrected exact head is re-reviewed, do **not** implement:
 
-Shared evidence:
-
-- `contracts/authority-fixtures.json`;
-- same valid/invalid corpus across runtimes;
-- fixed canonical SHA-256 for the valid scope and lease fixtures;
-- monotonic child-scope and lease-within-scope challenge tests;
-- denial inheritance, network authority class, expiry, resource-prefix, digest/fence/revision and escalation tests.
-
-Trusted exact head `14636197bd8761085e6f3015dbee16868b399174` passed:
-
-- **Origins Contract Spine — success**;
-- **Origins Daemon Foundation — success**.
-
-This proves candidate semantics and regression safety. It does **not** prove OS filesystem/network isolation, process-tree revocation or Sec-Ops acceptance.
-
-## Approval durability gate
-
-Current AgentOps approval semantics are correct but its current `ApprovalService` stores requests/decisions in process memory. That is insufficient to mint security authority that must survive/recover safely across restarts.
-
-Therefore:
-
-- no production CapabilityLease issuer exists;
-- no volatile approval is converted into durable Origins authority;
-- Origins does not create a shadow AgentOps approval database;
-- future lease issuance must bind the exact approved CapabilityProposal digest and durable AgentOps approval-record digest to current parent scope, host policy and capability provider.
-
-## Kilo donor decision
-
-Do not integrate/fork Kilo Code.
-
-Borrowed concepts only:
-
-- Agent Manager candidate/session presentation;
-- sibling-worktree/main-checkout denial lessons;
-- backend rather than UI-only enforcement;
-- invocation-time re-checks against stale handles;
-- non-self-disablable policy;
-- persistent local MCP/background-process lifetime confinement;
-- explicit remote-MCP delegated authority.
-
-Pete/Hunter, AgentOps, CodeOps, Origins and Sergeant ownership remains unchanged.
-
-## Sec-Ops gate
-
-Review packet:
-
-```text
-docs/SECOPS_REVIEW_PACKET_PR11.md
-```
-
-Primary candidate ADR:
-
-```text
-docs/ADR-0012-EXECUTION-SCOPE-CAPABILITY-LEASE.md
-```
-
-Requested verdict:
-
-```text
-PASS | NEEDS WORK | BLOCK
-```
-
-PR #11 remains **draft** until this review is reconciled.
-
-## Explicit current limitations
-
-Not authorized/proven yet:
-
-- Sec-Ops acceptance of ExecutionScope/CapabilityLease;
-- production lease issuance;
-- durable AgentOps approval persistence;
-- binding process Sessions to scope/lease IDs;
-- lease revocation/fencing enforcement;
-- filesystem sandbox enforcement;
-- network sandbox enforcement;
-- process-tree revocation guarantees per OS;
-- browser capability provider;
+- production lease persistence/issuance;
+- AgentOps approval-to-lease activation;
+- `ProcessPolicy` lease enforcement;
+- filesystem/network sandbox providers;
+- process-tree revocation semantics;
+- candidate worktree mutation;
 - MCP execution;
-- parallel candidate-worktree mutation;
-- generalized agent terminal authority;
-- actual production Hunter owner credential proof;
-- durable Hunter Project Memory storage;
-- React Workspace UI;
-- Ptah runtime integration.
+- browser control based on the candidate lease model.
 
 ## Next valid work
 
-Do **not** continue into browser/MCP/candidate-worktree mutation or generalized agent terminal authority yet.
+Only finding-backed contract corrections are valid:
 
-1. obtain/recover Sec-Ops review against the PR #11 review packet;
-2. classify the result `PASS / NEEDS WORK / BLOCK`;
-3. correct only evidenced authority-contract/enforcement defects;
-4. re-prove candidate semantics across Rust/Python/TypeScript;
-5. only after accepted security boundary, promote the accepted authority types into the shared Contract Spine;
-6. separately require durable AgentOps approval evidence before implementing a production lease issuer;
-7. then bind existing Process Sessions/providers to scope/lease provenance and implement revocation/fencing under the accepted design.
+```text
+SEC-001 .. SEC-005
+    -> update authority contracts in Python / TypeScript / Rust
+    -> extend shared adversarial fixtures for every finding
+    -> prove exact cross-runtime canonical/error equivalence
+    -> run all inherited Origins runtime proofs
+    -> focused Sec-Ops stage-1 reconciliation
+```
 
-## Blocking rule
+A future stage-1 `PASS` approves only the contract model as an implementation foundation.
 
-Do not let UI, models, Hunter, CodeOps, Python workers or external providers bypass `originsd`/specialist authority because direct subprocess/network access is easier. Approval is not execution. A capability may request authority but may never approve, mint or enlarge its own authority.
+A **stage-2 Sec-Ops implementation red-team remains mandatory** after the real issuer, persistence, invocation-time enforcement, revocation/fencing and OS/provider containment exist, before terminal/browser/MCP/candidate-worktree authority can be enabled.
+
+## Other current limitations
+
+Still not proven/implemented:
+
+- durable AgentOps approval persistence;
+- production CapabilityLease issuer;
+- scope/lease runtime binding;
+- filesystem/network sandbox enforcement;
+- OS process-tree containment;
+- browser provider;
+- MCP provider;
+- parallel candidate-worktree mutation;
+- generalized agent terminal authority;
+- actual production Hunter-owner credential proof;
+- durable Hunter Project Memory storage;
+- React Workspace UI;
+- Ptah runtime integration.
