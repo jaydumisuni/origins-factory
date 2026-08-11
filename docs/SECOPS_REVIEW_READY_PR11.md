@@ -60,7 +60,7 @@ No-activation guard:
 
 The refined review package that adds mitigation classification and the mandatory stage-2 implementation gate passed both full proof suites on exact head:
 
-`66abf6fc8da49ef498c2e89a2f6b82215ca5104a`
+`3636ed8d666f61b18a966351ef0fb5a7d1419c49`
 
 - Origins Contract Spine: PASS
 - Origins Daemon Foundation: PASS
