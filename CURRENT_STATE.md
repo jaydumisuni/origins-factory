@@ -2,7 +2,7 @@
 
 **Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
 **Merged implementation:** `main` through Live Engineering Mount v1
-**Active candidate:** draft PR #11 — Hunter Intelligence Mount + context/proposal layer + authority-contract candidate
+**Active candidate:** draft PR #11 — Hunter Intelligence Mount + context/proposal layer + authority-contract v1.1
 
 ## Merged proven foundation
 
@@ -25,94 +25,181 @@ Implemented but not merged:
 - `@chat:<hunter-session-id>` through Hunter authority;
 - dormant `@memory:<project>:<key>` with no shadow memory store;
 - model `CapabilityProposal` with mandatory owner approval and no self-approval;
-- candidate `ExecutionScope + CapabilityLease` validators in Python, TypeScript and isolated Rust;
-- shared canonical/adversarial authority corpus;
-- CI no-activation guard proving candidate authority is not wired into `originsd` runtime enforcement;
-- optional Hunter capability synchronization, including configured→disabled cleanup.
+- optional Hunter capability synchronization, including configured→disabled cleanup;
+- corrected `ExecutionScope + CapabilityLease` v1.1 validators in Python, TypeScript and isolated Rust;
+- shared canonical/adversarial authority corpus across all three runtimes;
+- CI no-activation guard proving candidate authority is not wired into `originsd` runtime enforcement.
 
-## Sec-Ops stage-1 result
+## Sec-Ops stage-1 review
 
-The actual contract-model attack review is complete.
+Original stage-1 verdict:
 
 ```text
-VERDICT: NEEDS_WORK
+NEEDS_WORK
 ```
 
-Canonical verdict:
+Historical findings:
 
 ```text
 docs/SECOPS_STAGE1_VERDICT_PR11.md
 ```
 
-The overall `ExecutionScope + CapabilityLease` direction is viable, but PR #11 must not merge until these five contract-level blockers are corrected:
+SEC-001 through SEC-005 were corrected without activating runtime authority.
 
-1. **SEC-001 — parent lease delegation gap**
-   - `parent_lease_id` exists but has no enforceable child-lease monotonicity relation.
-   - Preferred v1 correction: remove lease-to-lease delegation until a real child-lease contract exists.
+Focused reconciliation verdict:
 
-2. **SEC-002 — operation/candidate identity laundering**
-   - child scopes currently constrain Workspace/parent authority but not `operation_id` / `candidate_id` transitions.
-   - operation identity must remain stable; candidate binding must be explicitly one-way and non-switchable.
+```text
+PASS
+```
 
-3. **SEC-003 — provider semantic substitution**
-   - lease binds `capability_id` but not exact provider identity/manifest generation.
-   - future lease must bind provider identity + provider manifest digest or equivalent recoverable authority-input binding.
+Canonical reconciliation:
 
-4. **SEC-004 — ExecutionScope lifecycle/fencing gap**
-   - scope has revision/expiry but no complete revocation/stale-reference model.
-   - choose immutable scope generations + separate revocation, or add explicit scope state/fence semantics.
+```text
+docs/SECOPS_STAGE1_RECONCILIATION_PR11.md
+```
 
-5. **SEC-005 — network authority under-specified**
-   - `host[:port]` is insufficiently precise for generic authority because protocol/transport and omitted-port semantics are ambiguous.
-   - network endpoint authority must be explicit before implementation.
+This PASS accepts the **contract model only** as a foundation for later implementation. It is not approval of an issuer, sandbox, runtime enforcement, browser, MCP, candidate-worktree mutation or generalized agent terminal authority.
 
-Additional hardening required:
+## Authority contract v1.1 — accepted stage-1 shape
 
-- canonical, non-recyclable lease holder identity;
-- relational issuance chronology between parent scope, child scope and lease.
+```text
+host policy ceiling
+    ∩ current ExecutionScope
+    ∩ current CapabilityLease
+    ∩ current provider manifest
+    = effective invocation authority
+```
 
-## Accepted mitigation classification
+### SEC-001 — closed
 
-- raw absolute path / `..` / backslash representation attacks — **CLOSED_BY_CONTRACT**;
-- symlink/junction/reparse/mount/hard-link/special-file escape — **REQUIRES_OS_PROVIDER_ENFORCEMENT**;
-- resource-ID rebinding — **REQUIRES_RUNTIME_RECHECK**, and becomes **OPEN_DESIGN_GAP** if resource IDs can be recycled/rebound without generation binding;
-- sibling worktree/main-checkout mutation — **REQUIRES_RUNTIME_RECHECK + OS/provider enforcement**;
-- DNS/redirect/proxy behavior — **REQUIRES_PROVIDER/OS ENFORCEMENT**;
-- ambiguous protocol/port authority — **OPEN_DESIGN_GAP**;
-- stale lease handle — **REQUIRES_RUNTIME_RECHECK** using lease state/fence;
-- stale parent scope — **OPEN_DESIGN_GAP** until SEC-004 is resolved;
-- process-tree survival — **REQUIRES_OS_PROVIDER_ENFORCEMENT**;
-- confused deputy through Hunter/CodeOps/Oracle/provider — **REQUIRES_PROVIDER ENFORCEMENT** with requester authority propagation.
+- `parent_lease_id` removed;
+- lease-to-lease delegation unsupported in v1.1;
+- delegated narrowing uses child ExecutionScope + separately issued lease.
 
-## Security stop rule
+### SEC-002 — closed
 
-Until stage-1 findings are reconciled and the corrected exact head is re-reviewed, do **not** implement:
+- operation identity immutable across child scopes;
+- candidate identity may bind once from an unbound parent;
+- once bound, candidate identity cannot switch or clear.
 
-- production lease persistence/issuance;
-- AgentOps approval-to-lease activation;
-- `ProcessPolicy` lease enforcement;
-- filesystem/network sandbox providers;
-- process-tree revocation semantics;
-- candidate worktree mutation;
-- MCP execution;
-- browser control based on the candidate lease model.
+### SEC-003 — closed
+
+CapabilityLease now binds:
+
+```text
+capability_id
+provider_id
+provider_manifest_digest
+provider_generation
+```
+
+Current provider identity/manifest/generation must match before future invocation.
+
+### SEC-004 — closed at contract-model stage
+
+ExecutionScope now carries:
+
+```text
+state
+fence
+revision
+```
+
+Current-generation validation rejects non-active, lower-fence/revision, identity-changed or canonical-content-stale scope presentations.
+
+Durable state transitions/restart atomicity remain stage-2 runtime work.
+
+### SEC-005 — closed
+
+`network_hosts` removed. Network authority uses exact endpoint tuples:
+
+```text
+protocol
+host
+port
+```
+
+Supported candidate protocol classes:
+
+```text
+http | https | tcp | udp | ws | wss
+```
+
+Port is mandatory. Redirect policy is explicit and currently fixed to `deny_outside_endpoints`.
+
+DNS/proxy/redirect/routing/provider lifetime enforcement remains stage-2 work.
+
+### Additional hardening accepted
+
+- holder authority uses canonical Origins UUID + holder generation;
+- child scope issuance cannot predate parent current generation;
+- lease issuance cannot predate scope current generation;
+- delegated expiry cannot extend parent authority.
+
+## Proof state
+
+Pre-reconciliation documentation head `0c7d17cac17df0fadd1435729a2cffb6692a711a` passed:
+
+- Python authority/contract proof;
+- TypeScript authority/contract proof;
+- Rust 1.75 Clippy with `-D warnings`;
+- Rust authority/contract proof;
+- Contract Spine Rust/Python/TypeScript equivalence;
+- shared v1.1 authority canonical SHA-256 agreement across all three runtimes;
+- shared v1.1 adversarial corpus across all three runtimes;
+- Rust formatting;
+- all Origins Daemon Foundation inherited proofs;
+- authority no-activation guard.
+
+The reconciliation/state documentation head must also remain green before promotion.
+
+## Stage-2 security gate — still mandatory
+
+Before powerful authority is enabled, Sec-Ops must red-team the **actual implementation** of:
+
+- durable AgentOps approval authenticity/replay resistance;
+- trusted root/child ExecutionScope issuance;
+- atomic approval/scope/policy/provider/resource-to-lease issuance;
+- durable scope/lease state, revision and fence recovery;
+- invocation-time current-authority evaluation;
+- provider manifest/generation revalidation;
+- resource-generation/path revalidation;
+- symlink/junction/reparse/mount/hard-link/special-file containment;
+- sibling/main worktree mutation isolation;
+- Windows/Linux process-tree revocation;
+- DNS/proxy/redirect/network behavior;
+- persistent local MCP lifetime confinement;
+- delegated remote authority propagation;
+- holder UUID/generation binding to durable runtime subjects;
+- confused-deputy paths through Hunter/CodeOps/Oracle/providers;
+- self-disable attempts against policy/security storage.
+
+Stage-1 PASS must never be cited as implementation-level approval.
+
+## Current security stop rule
+
+Even after stage-1 PASS, do **not** yet implement or enable:
+
+- production lease issuance from volatile AgentOps approval;
+- browser/MCP/candidate-worktree/general agent authority without accepted runtime design;
+- any route that lets UI/model/Python bypass `originsd` or specialist authority;
+- any powerful capability activation before stage-2 Sec-Ops review of its implemented boundary.
 
 ## Next valid work
 
-Only finding-backed contract corrections are valid:
+PR #11 is no longer blocked by SEC-001..SEC-005.
+
+Next promotion sequence:
 
 ```text
-SEC-001 .. SEC-005
-    -> update authority contracts in Python / TypeScript / Rust
-    -> extend shared adversarial fixtures for every finding
-    -> prove exact cross-runtime canonical/error equivalence
-    -> run all inherited Origins runtime proofs
-    -> focused Sec-Ops stage-1 reconciliation
+stage-1 Sec-Ops PASS
+→ freeze reconciliation/current-state/handoff
+→ exact-head full proof
+→ independent Sergeant/repository review
+→ PR #11 promotion/merge if clean
 ```
 
-A future stage-1 `PASS` approves only the contract model as an implementation foundation.
-
-A **stage-2 Sec-Ops implementation red-team remains mandatory** after the real issuer, persistence, invocation-time enforcement, revocation/fencing and OS/provider containment exist, before terminal/browser/MCP/candidate-worktree authority can be enabled.
+After PR #11 merge, the next separate authority-runtime phase begins with durable AgentOps approval evidence and production issuer/enforcement design under the accepted v1.1 contract model.
 
 ## Other current limitations
 
