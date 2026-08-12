@@ -64,7 +64,7 @@ pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     let executable = wide(&spec.executable);
     let cwd = wide(&spec.cwd);
     let mut command_line = command_line(&spec.executable, &spec.args);
-    let environment = environment_block(&spec.environment);
+    let environment = environment_block(&spec.environment, &spec.cwd);
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
     let created = unsafe {
         // SAFETY: all pointers reference live, NUL-terminated buffers for the duration of CreateProcessW.
@@ -436,10 +436,26 @@ impl Drop for ProcessHandles {
     }
 }
 
-fn environment_block(environment: &std::collections::BTreeMap<String, String>) -> Vec<u16> {
+fn environment_block(
+    environment: &std::collections::BTreeMap<String, String>,
+    cwd: &Path,
+) -> Vec<u16> {
+    let mut entries = Vec::with_capacity(environment.len() + 1);
+    let cwd_text = cwd.to_string_lossy();
+    let cwd_bytes = cwd_text.as_bytes();
+    if cwd_bytes.len() >= 3 && cwd_bytes[0].is_ascii_alphabetic() && cwd_bytes[1] == b':' {
+        entries.push(format!("={}={}", &cwd_text[..2], cwd_text));
+    }
+    entries.extend(
+        environment
+            .iter()
+            .map(|(name, value)| format!("{name}={value}")),
+    );
+    entries.sort_by_key(|entry| entry.to_ascii_uppercase());
+
     let mut block = Vec::new();
-    for (name, value) in environment {
-        block.extend(format!("{name}={value}").encode_utf16());
+    for entry in entries {
+        block.extend(entry.encode_utf16());
         block.push(0);
     }
     block.push(0);
