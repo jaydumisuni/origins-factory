@@ -1,7 +1,7 @@
 use std::env;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::net::{TcpStream, UdpSocket};
+use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::path::Path;
 #[cfg(windows)]
 use std::process::{Command, Stdio};
@@ -75,7 +75,14 @@ fn write(path: &str, text: &str) -> i32 {
 }
 
 fn tcp(address: &str) -> i32 {
-    match TcpStream::connect(address) {
+    let address = match address.parse::<SocketAddr>() {
+        Ok(address) => address,
+        Err(error) => {
+            eprintln!("TCP_DENIED: invalid probe address: {error}");
+            return EXIT_TCP_DENIED;
+        }
+    };
+    match TcpStream::connect_timeout(&address, Duration::from_secs(2)) {
         Ok(mut stream) => match stream.write_all(b"origins-tcp-probe") {
             Ok(()) => 0,
             Err(error) => {
