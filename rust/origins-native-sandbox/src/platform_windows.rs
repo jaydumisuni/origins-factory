@@ -302,6 +302,7 @@ impl Drop for AclGrant {
 struct AttributeList {
     storage: Vec<usize>,
     ptr: *mut c_void,
+    _capabilities: Box<SECURITY_CAPABILITIES>,
 }
 
 impl AttributeList {
@@ -326,19 +327,20 @@ impl AttributeList {
         if initialized == 0 {
             return Err(last_os_error("InitializeProcThreadAttributeList failed"));
         }
-        let mut capabilities = SECURITY_CAPABILITIES {
+        let mut capabilities = Box::new(SECURITY_CAPABILITIES {
             AppContainerSid: sid,
             Capabilities: null_mut(),
             CapabilityCount: 0,
             Reserved: 0,
-        };
+        });
         let updated = unsafe {
-            // SAFETY: attribute list is initialized and capabilities remains live through this call.
+            // SAFETY: the boxed capability value is owned by AttributeList and remains live until
+            // DeleteProcThreadAttributeList runs in Drop, as required by UpdateProcThreadAttribute.
             UpdateProcThreadAttribute(
                 ptr,
                 0,
                 PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES as usize,
-                (&mut capabilities as *mut SECURITY_CAPABILITIES).cast::<c_void>(),
+                (&mut *capabilities as *mut SECURITY_CAPABILITIES).cast::<c_void>(),
                 size_of::<SECURITY_CAPABILITIES>(),
                 null_mut(),
                 null_mut(),
@@ -351,7 +353,11 @@ impl AttributeList {
             }
             return Err(last_os_error("UpdateProcThreadAttribute failed"));
         }
-        Ok(Self { storage, ptr })
+        Ok(Self {
+            storage,
+            ptr,
+            _capabilities: capabilities,
+        })
     }
 }
 
