@@ -430,13 +430,7 @@ impl Store {
 
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        store_scope_exact(
-            &transaction,
-            current_scope,
-            &scope_canonical,
-            &scope_digest,
-            issued_at,
-        )?;
+        store_scope_exact(&transaction, current_scope, &scope_canonical, &scope_digest)?;
         transaction.execute(
             "INSERT INTO capability_leases (
                 lease_id, scope_id, workspace_id, contract_json, contract_sha256,
@@ -999,7 +993,6 @@ fn store_scope_exact(
     scope: &Value,
     canonical: &str,
     digest: &str,
-    observed_at: &str,
 ) -> Result<(), StoreError> {
     let scope_id = required_string(scope, "scope_id")?;
     let existing: Option<(String, String)> = transaction
