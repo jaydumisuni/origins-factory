@@ -1,18 +1,18 @@
 use crate::{SandboxError, SandboxPathRule, SandboxSpec};
-use std::ffi::c_void;
+use std::ffi::{c_void, OsString};
 use std::mem::{size_of, zeroed};
-use std::os::windows::ffi::OsStrExt;
-use std::path::Path;
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
+use std::path::{Path, PathBuf};
 use std::ptr::{null, null_mut};
 use std::time::{SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE};
 use windows_sys::Win32::Security::Authorization::{
-    GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW, EXPLICIT_ACCESS_W,
-    GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, TRUSTEE_IS_SID, TRUSTEE_IS_UNKNOWN,
-    TRUSTEE_W,
+    ConvertSidToStringSidW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
+    EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+    TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::Isolation::{
-    CreateAppContainerProfile, DeleteAppContainerProfile,
+    CreateAppContainerProfile, DeleteAppContainerProfile, GetAppContainerFolderPath,
 };
 use windows_sys::Win32::Security::{
     FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID, SECURITY_CAPABILITIES,
@@ -21,6 +21,7 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
 };
+use windows_sys::Win32::System::Com::CoTaskMemFree;
 use windows_sys::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
@@ -37,6 +38,7 @@ use windows_sys::Win32::System::Threading::{
 
 pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     let profile = AppContainerProfile::create()?;
+    let appcontainer_local = appcontainer_local_path(profile.sid)?;
     let mut grants = Vec::new();
     grants.push(AclGrant::apply(
         &spec.executable,
@@ -65,7 +67,7 @@ pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     let executable = wide(&spec.executable);
     let cwd = wide(&spec.cwd);
     let mut command_line = command_line(&spec.executable, &spec.args);
-    let environment = environment_block(&spec.environment, &spec.cwd)?;
+    let environment = environment_block(&spec.environment, &spec.cwd, &appcontainer_local)?;
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
     let created = unsafe {
         // SAFETY: all pointers reference live, NUL-terminated buffers for the duration of CreateProcessW.
@@ -177,6 +179,40 @@ impl Drop for AppContainerProfile {
             }
         }
     }
+}
+
+fn appcontainer_local_path(sid: PSID) -> Result<PathBuf, SandboxError> {
+    let mut sid_text: *mut u16 = null_mut();
+    let converted = unsafe {
+        // SAFETY: sid is owned by the live AppContainer profile and sid_text is a valid out pointer.
+        ConvertSidToStringSidW(sid, &mut sid_text)
+    };
+    if converted == 0 || sid_text.is_null() {
+        return Err(last_os_error("ConvertSidToStringSidW failed"));
+    }
+
+    let mut folder: *mut u16 = null_mut();
+    let result = unsafe {
+        // SAFETY: sid_text is a live NUL-terminated SID string and folder is a valid out pointer.
+        GetAppContainerFolderPath(sid_text, &mut folder)
+    };
+    unsafe {
+        // SAFETY: sid_text was allocated by ConvertSidToStringSidW.
+        let _ = LocalFree(sid_text.cast::<c_void>());
+    }
+    if result < 0 || folder.is_null() {
+        return Err(SandboxError::Os(format!(
+            "GetAppContainerFolderPath failed with HRESULT 0x{:08x}",
+            result as u32
+        )));
+    }
+
+    let path = copy_wide_string(folder.cast_const())?;
+    unsafe {
+        // SAFETY: folder was allocated by GetAppContainerFolderPath and must be freed with CoTaskMemFree.
+        CoTaskMemFree(folder.cast::<c_void>());
+    }
+    Ok(PathBuf::from(path))
 }
 
 struct AclGrant {
@@ -440,6 +476,7 @@ impl Drop for ProcessHandles {
 fn environment_block(
     environment: &std::collections::BTreeMap<String, String>,
     cwd: &Path,
+    appcontainer_local: &Path,
 ) -> Result<Vec<u16>, SandboxError> {
     let mut raw: *mut c_void = null_mut();
     let created = unsafe {
@@ -459,6 +496,13 @@ fn environment_block(
     for (name, value) in environment {
         upsert_environment_entry(&mut entries, name, value);
     }
+
+    let local_text = appcontainer_local.to_string_lossy();
+    let temp_text = appcontainer_local.join("Temp").to_string_lossy().into_owned();
+    upsert_environment_entry(&mut entries, "LOCALAPPDATA", &local_text);
+    upsert_environment_entry(&mut entries, "TEMP", &temp_text);
+    upsert_environment_entry(&mut entries, "TMP", &temp_text);
+
     let cwd_text = cwd.to_string_lossy();
     let cwd_bytes = cwd_text.as_bytes();
     if cwd_bytes.len() >= 3 && cwd_bytes[0].is_ascii_alphabetic() && cwd_bytes[1] == b':' {
@@ -520,6 +564,28 @@ fn copy_environment_entries(raw: *const u16) -> Result<Vec<String>, SandboxError
         offset += 1;
     }
     Ok(entries)
+}
+
+fn copy_wide_string(raw: *const u16) -> Result<OsString, SandboxError> {
+    const MAX_CODE_UNITS: usize = 32_768;
+    let mut len = 0_usize;
+    while len < MAX_CODE_UNITS {
+        let current = unsafe {
+            // SAFETY: raw points to a NUL-terminated string returned by a Windows API.
+            *raw.add(len)
+        };
+        if current == 0 {
+            let units = unsafe {
+                // SAFETY: 0..len was scanned from the live NUL-terminated API string.
+                std::slice::from_raw_parts(raw, len)
+            };
+            return Ok(OsString::from_wide(units));
+        }
+        len += 1;
+    }
+    Err(SandboxError::Os(
+        "Windows API string exceeded safety bound".to_owned(),
+    ))
 }
 
 fn upsert_environment_entry(entries: &mut Vec<String>, name: &str, value: &str) {
