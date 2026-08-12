@@ -293,7 +293,7 @@ fn executable_candidate(candidate: &Path) -> Result<Option<PathBuf>, StoreError>
     Ok(Some(canonical))
 }
 
-fn runtime_read_paths(executable: &Path) -> Vec<PathBuf> {
+fn runtime_read_paths(_executable: &Path) -> Vec<PathBuf> {
     #[cfg(target_os = "linux")]
     {
         [
@@ -311,7 +311,7 @@ fn runtime_read_paths(executable: &Path) -> Vec<PathBuf> {
     }
     #[cfg(windows)]
     {
-        executable
+        _executable
             .parent()
             .map(Path::to_path_buf)
             .into_iter()
@@ -319,7 +319,7 @@ fn runtime_read_paths(executable: &Path) -> Vec<PathBuf> {
     }
     #[cfg(not(any(target_os = "linux", windows)))]
     {
-        let _ = executable;
+        let _ = _executable;
         Vec::new()
     }
 }
