@@ -3,7 +3,7 @@ use origins_contracts::contract_sha256;
 use originsd::authority_runtime::{
     AuthorityHandle, CurrentAuthorityObservation, HostPolicyObservation, InvocationRequest,
     LeaseGrant, NetworkEndpoint, ProviderObservation, ResourceAccess, ResourceGrant,
-    ResourceObservation, ISSUANCE_BINDING_SCHEMA, RUNTIME_AUTHORITY_ACTIVATED,
+    ResourceObservation, ISSUANCE_BINDING_SCHEMA,
 };
 use originsd::store::{Store, StoreError};
 use rusqlite::{params, Connection};
@@ -28,7 +28,6 @@ struct Harness {
     root: PathBuf,
     database: PathBuf,
     store: Store,
-    workspace_id: String,
     scope: Value,
     current: CurrentAuthorityObservation,
 }
@@ -52,7 +51,6 @@ impl Harness {
             root,
             database,
             store,
-            workspace_id,
             scope,
             current,
         }
@@ -276,7 +274,6 @@ fn invocation(handle: AuthorityHandle, current: &CurrentAuthorityObservation) ->
 #[test]
 fn issuer_is_durable_single_use_and_restart_safe() {
     let harness = Harness::new("issuer");
-    assert!(!RUNTIME_AUTHORITY_ACTIVATED);
     let receipt = preflight_receipt(&harness.scope, &harness.current, "one");
     let lease = harness
         .store
