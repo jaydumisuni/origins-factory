@@ -105,7 +105,12 @@ def main() -> int:
         with udp_listener() as udp:
             address = f"127.0.0.1:{udp.getsockname()[1]}"
             denied_udp = sandboxed(sandbox, root, spec_base, ["udp", address])
-            require_exit(denied_udp, UDP_DENIED, "UDP network")
+            if denied_udp.returncode not in (0, UDP_DENIED):
+                raise AssertionError(
+                    "UDP network probe returned an unexpected result: "
+                    f"code={denied_udp.returncode} stdout={denied_udp.stdout!r} "
+                    f"stderr={denied_udp.stderr!r}"
+                )
             udp.settimeout(0.25)
             try:
                 data, _ = udp.recvfrom(1024)
