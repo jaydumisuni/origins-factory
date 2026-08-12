@@ -50,7 +50,7 @@ def main() -> int:
         daemon = start(args.binary, env)
         try:
             health = wait_for_health(base_url, daemon)
-            assert health["database_schema_version"] == 2
+            assert health["database_schema_version"] == 3
             assert health["sessions"] == 0
             assert health["capabilities"] == 5
 
@@ -238,7 +238,7 @@ def main() -> int:
             assert len(updated_workspace["session_refs"]) == 5
 
             health = request_json(f"{base_url}/v1/health")
-            assert health["database_schema_version"] == 2
+            assert health["database_schema_version"] == 3
             assert health["sessions"] == 5
             assert health["journal"]["entries"] == 15
         finally:
