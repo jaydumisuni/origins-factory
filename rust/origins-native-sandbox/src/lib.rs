@@ -102,6 +102,16 @@ pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     platform::run(spec)
 }
 
+#[cfg(windows)]
+pub fn recover_windows_cleanup() -> Result<(), SandboxError> {
+    windows_cleanup::recover_stale()
+}
+
+#[cfg(windows)]
+pub fn watch_windows_cleanup(owner_pid: u32, manifest_path: &Path) -> Result<(), SandboxError> {
+    windows_cleanup::watch_owner(owner_pid, manifest_path)
+}
+
 fn require_existing(path: &Path, label: &str) -> Result<(), SandboxError> {
     if !path.is_absolute() || !path.exists() {
         return Err(SandboxError::Invalid(format!(
@@ -137,6 +147,9 @@ fn require_dir(path: &Path, label: &str) -> Result<(), SandboxError> {
 #[cfg(target_os = "linux")]
 #[path = "platform_linux.rs"]
 mod platform;
+
+#[cfg(windows)]
+mod windows_cleanup;
 
 #[cfg(windows)]
 #[path = "platform_windows.rs"]
