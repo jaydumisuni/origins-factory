@@ -56,7 +56,7 @@ pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     }
 
     let job = JobHandle::create()?;
-    let mut attributes = AttributeList::security_capabilities(profile.sid)?;
+    let attributes = AttributeList::security_capabilities(profile.sid)?;
     let mut startup: STARTUPINFOEXW = unsafe { zeroed() };
     startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
     startup.lpAttributeList = attributes.ptr;
@@ -214,7 +214,7 @@ impl AclGrant {
             )));
         }
 
-        let mut entry = EXPLICIT_ACCESS_W {
+        let entry = EXPLICIT_ACCESS_W {
             grfAccessPermissions: permissions,
             grfAccessMode: GRANT_ACCESS,
             grfInheritance: if inherit {
@@ -233,7 +233,7 @@ impl AclGrant {
         let mut new_dacl: *mut ACL = null_mut();
         let acl_status = unsafe {
             // SAFETY: entry, old ACL and out pointer are valid for this call.
-            SetEntriesInAclW(1, &mut entry, original_dacl, &mut new_dacl)
+            SetEntriesInAclW(1, &entry, original_dacl, &mut new_dacl)
         };
         if acl_status != ERROR_SUCCESS || new_dacl.is_null() {
             unsafe {
