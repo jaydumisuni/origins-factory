@@ -37,10 +37,10 @@ fn main() {
             .next()
             .filter(|_| args.next().is_none())
             .map_or(EXIT_USAGE, |address| udp(&address)),
-        "tree" => args
-            .next()
-            .filter(|_| args.next().is_none())
-            .map_or(EXIT_USAGE, |path| tree(&path)),
+        "tree" => match (args.next(), args.next(), args.next()) {
+            (Some(executable), Some(path), None) => tree(&executable, &path),
+            _ => EXIT_USAGE,
+        },
         "heartbeat" => args
             .next()
             .filter(|_| args.next().is_none())
@@ -104,14 +104,7 @@ fn udp(address: &str) -> i32 {
     }
 }
 
-fn tree(path: &str) -> i32 {
-    let executable = match env::current_exe() {
-        Ok(executable) => executable,
-        Err(error) => {
-            eprintln!("TREE_FAILED: current_exe: {error}");
-            return EXIT_TREE_FAILED;
-        }
-    };
+fn tree(executable: &str, path: &str) -> i32 {
     let child = Command::new(executable)
         .arg("heartbeat")
         .arg(path)
