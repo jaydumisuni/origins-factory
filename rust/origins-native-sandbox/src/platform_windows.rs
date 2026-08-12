@@ -22,16 +22,17 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
 };
 use windows_sys::Win32::System::JobObjects::{
-    AssignProcessToJobObject, CreateJobObjectW, SetInformationJobObject,
-    JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+    SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
     JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::Memory::LocalFree;
 use windows_sys::Win32::System::Threading::{
     CreateProcessW, DeleteProcThreadAttributeList, GetExitCodeProcess,
-    InitializeProcThreadAttributeList, ResumeThread, UpdateProcThreadAttribute, WaitForSingleObject,
-    CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
-    PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES, STARTUPINFOEXW,
+    InitializeProcThreadAttributeList, ResumeThread, UpdateProcThreadAttribute,
+    WaitForSingleObject, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+    EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION, PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES,
+    STARTUPINFOEXW,
 };
 
 pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
@@ -185,7 +186,12 @@ struct AclGrant {
 }
 
 impl AclGrant {
-    fn apply(path: &Path, sid: PSID, permissions: u32, inherit: bool) -> Result<Self, SandboxError> {
+    fn apply(
+        path: &Path,
+        sid: PSID,
+        permissions: u32,
+        inherit: bool,
+    ) -> Result<Self, SandboxError> {
         let mut path_wide = wide(path);
         let mut original_dacl: *mut ACL = null_mut();
         let mut descriptor: *mut c_void = null_mut();

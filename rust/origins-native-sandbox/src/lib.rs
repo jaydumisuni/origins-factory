@@ -64,10 +64,7 @@ impl SandboxSpec {
             ));
         }
         if self.environment.iter().any(|(name, value)| {
-            name.is_empty()
-                || name.contains('=')
-                || name.contains('\0')
-                || value.contains('\0')
+            name.is_empty() || name.contains('=') || name.contains('\0') || value.contains('\0')
         }) {
             return Err(SandboxError::Invalid(
                 "environment contains an invalid name or value".to_owned(),
@@ -89,7 +86,9 @@ impl Display for SandboxError {
     fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(message) => write!(formatter, "invalid sandbox spec: {message}"),
-            Self::Unsupported(message) => write!(formatter, "unsupported sandbox request: {message}"),
+            Self::Unsupported(message) => {
+                write!(formatter, "unsupported sandbox request: {message}")
+            }
             Self::Os(message) => write!(formatter, "sandbox OS error: {message}"),
             Self::Io(message) => write!(formatter, "sandbox I/O error: {message}"),
         }

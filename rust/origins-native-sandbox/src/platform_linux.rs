@@ -106,9 +106,9 @@ fn apply_network_and_escape_filter() -> Result<(), SandboxError> {
         rules,
         SeccompAction::Allow,
         SeccompAction::Errno(libc::EPERM as u32),
-        std::env::consts::ARCH
-            .try_into()
-            .map_err(|error| SandboxError::Os(format!("unsupported seccomp architecture: {error}")))?,
+        std::env::consts::ARCH.try_into().map_err(|error| {
+            SandboxError::Os(format!("unsupported seccomp architecture: {error}"))
+        })?,
     )
     .map_err(|error| SandboxError::Os(format!("seccomp filter invalid: {error}")))?;
     let program: BpfProgram = filter
