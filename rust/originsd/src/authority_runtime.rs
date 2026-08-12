@@ -278,7 +278,9 @@ pub(crate) fn verify_authority_state(store: &Store) -> Result<(), StoreError> {
             )));
         }
         let scope = scopes.get(&scope_id).ok_or_else(|| {
-            StoreError::Corrupt(format!("lease {lease_id} references missing scope {scope_id}"))
+            StoreError::Corrupt(format!(
+                "lease {lease_id} references missing scope {scope_id}"
+            ))
         })?;
         if lease["state"] == "active" {
             validate_lease_within_scope(&lease, scope)
@@ -420,8 +422,8 @@ impl Store {
 
         let scope_canonical = canonical_json(current_scope)
             .map_err(|error| StoreError::InvalidInput(error.to_string()))?;
-        let lease_canonical = canonical_json(&lease)
-            .map_err(|error| StoreError::InvalidInput(error.to_string()))?;
+        let lease_canonical =
+            canonical_json(&lease).map_err(|error| StoreError::InvalidInput(error.to_string()))?;
         let lease_digest = authority_sha256(&lease)
             .map_err(|error| StoreError::InvalidInput(error.to_string()))?;
         let preflight_canonical = canonical_json(preflight_receipt)
@@ -549,10 +551,10 @@ impl Store {
         let lease = self.get_capability_lease(&request.handle.lease_id)?;
         let scope_id = required_string(&lease, "scope_id")?.to_owned();
         let scope = self.get_execution_scope(&scope_id)?;
-        let lease_digest = authority_sha256(&lease)
-            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
-        let scope_digest = authority_sha256(&scope)
-            .map_err(|error| StoreError::Corrupt(error.to_string()))?;
+        let lease_digest =
+            authority_sha256(&lease).map_err(|error| StoreError::Corrupt(error.to_string()))?;
+        let scope_digest =
+            authority_sha256(&scope).map_err(|error| StoreError::Corrupt(error.to_string()))?;
         let lease_revision = required_u64(&lease, "revision")?;
         let lease_fence = required_u64(&lease, "fence")?;
         let scope_revision = required_u64(&scope, "revision")?;
@@ -603,7 +605,10 @@ impl Store {
         if required_string(&lease, "capability_id")? != request.capability_id {
             return Ok(deny("CAPABILITY_MISMATCH"));
         }
-        if !string_array(&lease, "effects")?.iter().any(|effect| effect == &request.effect) {
+        if !string_array(&lease, "effects")?
+            .iter()
+            .any(|effect| effect == &request.effect)
+        {
             return Ok(deny("EFFECT_NOT_GRANTED"));
         }
         if required_string(&lease, "holder_id")? != request.holder_id
@@ -633,7 +638,10 @@ impl Store {
             )
             .optional()?;
         let (host_digest, host_generation) = metadata.ok_or_else(|| {
-            StoreError::Corrupt(format!("lease {} metadata missing", request.handle.lease_id))
+            StoreError::Corrupt(format!(
+                "lease {} metadata missing",
+                request.handle.lease_id
+            ))
         })?;
         if request.host_policy.digest != host_digest
             || i64_from_u64(request.host_policy.generation, "host policy generation")?
@@ -671,8 +679,7 @@ impl Store {
         {
             return Ok(deny("ENVIRONMENT_ACCESS_DENIED"));
         }
-        if request.persistent_process
-            && lease["persistent_process_allowed"].as_bool() != Some(true)
+        if request.persistent_process && lease["persistent_process_allowed"].as_bool() != Some(true)
         {
             return Ok(deny("PERSISTENT_PROCESS_DENIED"));
         }
@@ -683,7 +690,11 @@ impl Store {
         Ok(decision)
     }
 
-    pub fn revoke_lease(&self, lease_id: &str, reason: &str) -> Result<RevocationResult, StoreError> {
+    pub fn revoke_lease(
+        &self,
+        lease_id: &str,
+        reason: &str,
+    ) -> Result<RevocationResult, StoreError> {
         let now = now_rfc3339();
         self.revoke_lease_at(lease_id, reason, &now)
     }
@@ -739,7 +750,11 @@ impl Store {
         })
     }
 
-    pub fn revoke_scope(&self, scope_id: &str, reason: &str) -> Result<RevocationResult, StoreError> {
+    pub fn revoke_scope(
+        &self,
+        scope_id: &str,
+        reason: &str,
+    ) -> Result<RevocationResult, StoreError> {
         let now = now_rfc3339();
         self.revoke_scope_at(scope_id, reason, &now)
     }
@@ -876,8 +891,8 @@ fn validate_preflight_receipt(receipt: &Value) -> Result<PreflightBindings, Stor
     body.as_object_mut()
         .expect("receipt object")
         .remove("receipt_sha256");
-    let calculated = contract_sha256(&body)
-        .map_err(|error| StoreError::InvalidInput(error.to_string()))?;
+    let calculated =
+        contract_sha256(&body).map_err(|error| StoreError::InvalidInput(error.to_string()))?;
     if calculated != receipt_sha256 {
         return Err(StoreError::Conflict(
             "preflight receipt digest mismatch".to_owned(),
@@ -892,7 +907,10 @@ fn validate_preflight_receipt(receipt: &Value) -> Result<PreflightBindings, Stor
             .to_owned(),
         provider_generation: required_object_u64(object, "provider_generation")?,
     };
-    require_digest(&provider.provider_manifest_digest, "provider_manifest_digest")?;
+    require_digest(
+        &provider.provider_manifest_digest,
+        "provider_manifest_digest",
+    )?;
     let host_policy = HostPolicyObservation {
         digest: required_object_string(object, "host_policy_digest")?.to_owned(),
         generation: required_object_u64(object, "host_policy_generation")?,
@@ -908,8 +926,10 @@ fn validate_preflight_receipt(receipt: &Value) -> Result<PreflightBindings, Stor
         scope_revision: required_object_u64(object, "scope_revision")?,
         scope_fence: required_object_u64(object, "scope_fence")?,
         approval_id: required_object_string(object, "approval_id")?.to_owned(),
-        approval_record_digest: required_object_string(object, "approval_record_digest")?.to_owned(),
-        issuance_binding_digest: required_object_string(object, "issuance_binding_digest")?.to_owned(),
+        approval_record_digest: required_object_string(object, "approval_record_digest")?
+            .to_owned(),
+        issuance_binding_digest: required_object_string(object, "issuance_binding_digest")?
+            .to_owned(),
         provider,
         host_policy,
         resources,
@@ -1003,7 +1023,8 @@ fn store_scope_exact(
         )
         .optional()?;
     if let Some((existing_json, existing_digest)) = existing {
-        let existing_scope = verify_stored_authority("scope", scope_id, &existing_json, &existing_digest)?;
+        let existing_scope =
+            verify_stored_authority("scope", scope_id, &existing_json, &existing_digest)?;
         if existing_scope != *scope || existing_digest != digest {
             return Err(StoreError::Conflict(
                 "current scope differs from durable Origins scope generation".to_owned(),
@@ -1031,7 +1052,8 @@ fn store_scope_exact(
 
 fn persist_scope_contract(transaction: &Transaction<'_>, scope: &Value) -> Result<(), StoreError> {
     validate_authority_contract(scope).map_err(|error| StoreError::Corrupt(error.to_string()))?;
-    let canonical = canonical_json(scope).map_err(|error| StoreError::Corrupt(error.to_string()))?;
+    let canonical =
+        canonical_json(scope).map_err(|error| StoreError::Corrupt(error.to_string()))?;
     let digest = authority_sha256(scope).map_err(|error| StoreError::Corrupt(error.to_string()))?;
     transaction.execute(
         "UPDATE execution_scopes SET contract_json = ?2, contract_sha256 = ?3, state = ?4,
@@ -1051,7 +1073,8 @@ fn persist_scope_contract(transaction: &Transaction<'_>, scope: &Value) -> Resul
 
 fn persist_lease_contract(transaction: &Transaction<'_>, lease: &Value) -> Result<(), StoreError> {
     validate_authority_contract(lease).map_err(|error| StoreError::Corrupt(error.to_string()))?;
-    let canonical = canonical_json(lease).map_err(|error| StoreError::Corrupt(error.to_string()))?;
+    let canonical =
+        canonical_json(lease).map_err(|error| StoreError::Corrupt(error.to_string()))?;
     let digest = authority_sha256(lease).map_err(|error| StoreError::Corrupt(error.to_string()))?;
     transaction.execute(
         "UPDATE capability_leases SET contract_json = ?2, contract_sha256 = ?3, state = ?4,
@@ -1078,7 +1101,10 @@ fn set_revoked(value: &mut Value, observed_at: &str) -> Result<(), StoreError> {
     object.insert("state".to_owned(), Value::String("revoked".to_owned()));
     object.insert("revision".to_owned(), json!(revision + 1));
     object.insert("fence".to_owned(), json!(fence + 1));
-    object.insert("updated_at".to_owned(), Value::String(observed_at.to_owned()));
+    object.insert(
+        "updated_at".to_owned(),
+        Value::String(observed_at.to_owned()),
+    );
     Ok(())
 }
 
@@ -1095,7 +1121,11 @@ fn load_authority_tx(
         ("capability_leases", "lease_id") => {
             "SELECT contract_json, contract_sha256 FROM capability_leases WHERE lease_id = ?1"
         }
-        _ => return Err(StoreError::Corrupt("invalid authority table lookup".to_owned())),
+        _ => {
+            return Err(StoreError::Corrupt(
+                "invalid authority table lookup".to_owned(),
+            ))
+        }
     };
     let stored: Option<(String, String)> = transaction
         .query_row(sql, [id], |row| Ok((row.get(0)?, row.get(1)?)))
@@ -1159,7 +1189,10 @@ fn normalize_resources(
     Ok(resources)
 }
 
-fn load_resources(connection: &Connection, lease_id: &str) -> Result<Vec<ResourceObservation>, StoreError> {
+fn load_resources(
+    connection: &Connection,
+    lease_id: &str,
+) -> Result<Vec<ResourceObservation>, StoreError> {
     let mut statement = connection.prepare(
         "SELECT resource_id, generation, digest FROM capability_lease_resources
          WHERE lease_id = ?1 ORDER BY resource_id",
@@ -1197,7 +1230,10 @@ fn resource_access_allowed(lease: &Value, access: &ResourceAccess) -> Result<boo
     }))
 }
 
-fn network_access_allowed(lease: &Value, requested: &[NetworkEndpoint]) -> Result<bool, StoreError> {
+fn network_access_allowed(
+    lease: &Value,
+    requested: &[NetworkEndpoint],
+) -> Result<bool, StoreError> {
     let mode = required_string(lease, "network_mode")?;
     if mode == "deny" {
         return Ok(requested.is_empty());
@@ -1255,7 +1291,10 @@ fn prefix_covers(prefix: &str, path: &str) -> bool {
     if prefix.is_empty() {
         return true;
     }
-    path == prefix || path.strip_prefix(prefix).is_some_and(|suffix| suffix.starts_with('/'))
+    path == prefix
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 fn is_expired(value: &Value, observed_at: &str) -> Result<bool, StoreError> {

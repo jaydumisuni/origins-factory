@@ -17,12 +17,9 @@ const SCOPE_ID: &str = "22222222-2222-4222-8222-222222222222";
 const HOLDER_ID: &str = "55555555-5555-4555-8555-555555555555";
 const CAPABILITY_ID: &str = "origins.process.run";
 const PROVIDER_ID: &str = "origins.process.local";
-const PROVIDER_DIGEST: &str =
-    "2222222222222222222222222222222222222222222222222222222222222222";
-const HOST_POLICY_DIGEST: &str =
-    "3333333333333333333333333333333333333333333333333333333333333333";
-const RESOURCE_DIGEST: &str =
-    "4444444444444444444444444444444444444444444444444444444444444444";
+const PROVIDER_DIGEST: &str = "2222222222222222222222222222222222222222222222222222222222222222";
+const HOST_POLICY_DIGEST: &str = "3333333333333333333333333333333333333333333333333333333333333333";
+const RESOURCE_DIGEST: &str = "4444444444444444444444444444444444444444444444444444444444444444";
 
 struct Harness {
     root: PathBuf,
@@ -155,11 +152,7 @@ fn grant() -> LeaseGrant {
     }
 }
 
-fn preflight_receipt(
-    scope: &Value,
-    current: &CurrentAuthorityObservation,
-    nonce: &str,
-) -> Value {
+fn preflight_receipt(scope: &Value, current: &CurrentAuthorityObservation, nonce: &str) -> Value {
     let workspace_id = scope["workspace_id"].as_str().unwrap();
     let scope_digest = authority_sha256(scope).unwrap();
     let proposal_digest = digest_for(&format!("proposal:{nonce}"));
@@ -284,10 +277,14 @@ fn issuer_is_durable_single_use_and_restart_safe() {
     assert_eq!(lease["revision"], 1);
     assert_eq!(lease["fence"], 1);
 
-    let replay = harness
-        .store
-        .issue_capability_lease(&receipt, &harness.scope, &grant(), &harness.current);
-    assert!(replay.is_err(), "one preflight receipt must never mint two leases");
+    let replay =
+        harness
+            .store
+            .issue_capability_lease(&receipt, &harness.scope, &grant(), &harness.current);
+    assert!(
+        replay.is_err(),
+        "one preflight receipt must never mint two leases"
+    );
 
     let reopened = Store::open(&harness.database).unwrap();
     assert_eq!(reopened.get_capability_lease(&lease_id).unwrap(), lease);
@@ -364,13 +361,18 @@ fn lease_revocation_fences_old_handles_across_restart() {
     let lease = harness.issue("revoke");
     let lease_id = lease["lease_id"].as_str().unwrap().to_owned();
     let handle = harness.store.authority_handle(&lease_id).unwrap();
-    assert!(harness
-        .store
-        .authorize_invocation(&invocation(handle.clone(), &harness.current))
-        .unwrap()
-        .authorized);
+    assert!(
+        harness
+            .store
+            .authorize_invocation(&invocation(handle.clone(), &harness.current))
+            .unwrap()
+            .authorized
+    );
 
-    let revoked = harness.store.revoke_lease(&lease_id, "owner revoked proof lease").unwrap();
+    let revoked = harness
+        .store
+        .revoke_lease(&lease_id, "owner revoked proof lease")
+        .unwrap();
     assert_eq!(revoked.new_revision, 2);
     assert_eq!(revoked.new_fence, 2);
     let denied = harness
@@ -412,9 +414,18 @@ fn scope_revocation_cascades_all_leases_and_is_idempotent() {
     assert_eq!(repeated.new_fence, 2);
 
     let reopened = Store::open(&harness.database).unwrap();
-    assert_eq!(reopened.get_execution_scope(SCOPE_ID).unwrap()["state"], "revoked");
-    assert_eq!(reopened.get_capability_lease(&first_id).unwrap()["state"], "revoked");
-    assert_eq!(reopened.get_capability_lease(&second_id).unwrap()["state"], "revoked");
+    assert_eq!(
+        reopened.get_execution_scope(SCOPE_ID).unwrap()["state"],
+        "revoked"
+    );
+    assert_eq!(
+        reopened.get_capability_lease(&first_id).unwrap()["state"],
+        "revoked"
+    );
+    assert_eq!(
+        reopened.get_capability_lease(&second_id).unwrap()["state"],
+        "revoked"
+    );
 }
 
 #[test]

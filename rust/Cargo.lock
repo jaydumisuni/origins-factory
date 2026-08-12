@@ -765,6 +765,7 @@ dependencies = [
  "chrono",
  "hex",
  "indexmap",
+ "origins-authority-contracts",
  "origins-contracts",
  "reqwest",
  "rusqlite",

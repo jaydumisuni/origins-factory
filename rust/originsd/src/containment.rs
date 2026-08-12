@@ -35,10 +35,7 @@ pub struct ContainmentPlan {
 }
 
 impl ContainmentPlan {
-    pub fn from_lease(
-        lease: &Value,
-        platform: ContainmentPlatform,
-    ) -> Result<Self, StoreError> {
+    pub fn from_lease(lease: &Value, platform: ContainmentPlatform) -> Result<Self, StoreError> {
         validate_authority_contract(lease)
             .map_err(|error| StoreError::InvalidInput(error.to_string()))?;
         if lease["contract_type"] != "capability_lease" {
@@ -186,7 +183,9 @@ pub fn validate_host_path(
                     ));
                 }
                 let canonical = std::fs::canonicalize(&cursor).map_err(|error| {
-                    StoreError::InvalidInput(format!("resource path cannot be canonicalized: {error}"))
+                    StoreError::InvalidInput(format!(
+                        "resource path cannot be canonicalized: {error}"
+                    ))
                 })?;
                 if !canonical.starts_with(&root) {
                     return Err(StoreError::Conflict(
@@ -275,10 +274,9 @@ impl RevocationCoordinator {
 
     pub fn revoke_scope(&self, scope_id: &str) -> Result<u64, StoreError> {
         let targets = {
-            let mut inner = self
-                .inner
-                .lock()
-                .map_err(|_| StoreError::Corrupt("revocation coordinator lock poisoned".to_owned()))?;
+            let mut inner = self.inner.lock().map_err(|_| {
+                StoreError::Corrupt("revocation coordinator lock poisoned".to_owned())
+            })?;
             let keys = inner
                 .iter()
                 .filter(|(_, targets)| targets.iter().any(|target| target.scope_id == scope_id))
@@ -377,7 +375,10 @@ fn prefix_covers(prefix: &str, path: &str) -> bool {
     if prefix.is_empty() {
         return true;
     }
-    path == prefix || path.strip_prefix(prefix).is_some_and(|suffix| suffix.starts_with('/'))
+    path == prefix
+        || path
+            .strip_prefix(prefix)
+            .is_some_and(|suffix| suffix.starts_with('/'))
 }
 
 fn required_string<'a>(value: &'a Value, field: &str) -> Result<&'a str, StoreError> {
@@ -430,13 +431,24 @@ mod tests {
         let windows = ContainmentPlan::from_lease(&lease, ContainmentPlatform::Windows).unwrap();
         assert!(linux.fail_closed && windows.fail_closed);
         assert_eq!(linux.network_driver, "linux.netns-deny.v1");
-        assert_eq!(windows.network_driver, "windows.appcontainer-network-deny.v1");
+        assert_eq!(
+            windows.network_driver,
+            "windows.appcontainer-network-deny.v1"
+        );
         assert!(!linux.runtime_authority_activated && !windows.runtime_authority_activated);
         assert!(linux
-            .allows_resource_path("worktree:33333333-3333-4333-8333-333333333333", "src/main.rs", false)
+            .allows_resource_path(
+                "worktree:33333333-3333-4333-8333-333333333333",
+                "src/main.rs",
+                false
+            )
             .unwrap());
         assert!(!linux
-            .allows_resource_path("worktree:33333333-3333-4333-8333-333333333333", "src/private/key", false)
+            .allows_resource_path(
+                "worktree:33333333-3333-4333-8333-333333333333",
+                "src/private/key",
+                false
+            )
             .unwrap());
     }
 
@@ -453,18 +465,10 @@ mod tests {
         let counter = Arc::new(AtomicU64::new(0));
         let coordinator = RevocationCoordinator::default();
         coordinator
-            .register(
-                "lease-a",
-                "scope-a",
-                Arc::new(FakeFence(counter.clone())),
-            )
+            .register("lease-a", "scope-a", Arc::new(FakeFence(counter.clone())))
             .unwrap();
         coordinator
-            .register(
-                "lease-b",
-                "scope-a",
-                Arc::new(FakeFence(counter.clone())),
-            )
+            .register("lease-b", "scope-a", Arc::new(FakeFence(counter.clone())))
             .unwrap();
         assert_eq!(coordinator.revoke_scope("scope-a").unwrap(), 2);
         assert_eq!(counter.load(Ordering::SeqCst), 2);
