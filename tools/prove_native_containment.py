@@ -30,12 +30,17 @@ def main() -> int:
     if not sandbox.is_file() or not probe.is_file():
         raise AssertionError("native sandbox and probe binaries must exist")
 
+    windows_crash_cleanup = False
     with tempfile.TemporaryDirectory(prefix="origins-native-containment-") as temporary:
         root = Path(temporary).resolve()
         allowed = root / "allowed"
         outside = root / "outside"
+        cleanup_dir = root / "cleanup"
         allowed.mkdir()
         outside.mkdir()
+        if os.name == "nt":
+            cleanup_dir.mkdir()
+            os.environ["ORIGINS_SANDBOX_CLEANUP_DIR"] = str(cleanup_dir)
         allowed_read = allowed / "allowed.txt"
         outside_read = outside / "outside.txt"
         allowed_read.write_text("ALLOWED_READ", encoding="utf-8")
@@ -65,7 +70,9 @@ def main() -> int:
         )
         require_exit(allowed_result, 0, "allowed read")
         if allowed_result.stdout != "ALLOWED_READ":
-            raise AssertionError(f"allowed read returned unexpected output: {allowed_result.stdout!r}")
+            raise AssertionError(
+                f"allowed read returned unexpected output: {allowed_result.stdout!r}"
+            )
 
         denied_read = sandboxed(
             sandbox,
@@ -117,10 +124,26 @@ def main() -> int:
             except TimeoutError:
                 data = b""
             if data:
-                raise AssertionError(f"sandbox emitted UDP payload despite network deny: {data!r}")
+                raise AssertionError(
+                    f"sandbox emitted UDP payload despite network deny: {data!r}"
+                )
 
         heartbeat = allowed / "heartbeat.txt"
-        prove_process_tree_fence(sandbox, probe, root, spec_base, heartbeat)
+        crash_manifest = prove_process_tree_fence(
+            sandbox,
+            probe,
+            root,
+            spec_base,
+            heartbeat,
+            cleanup_dir if os.name == "nt" else None,
+        )
+        if os.name == "nt":
+            if crash_manifest is None:
+                raise AssertionError("Windows crash proof did not capture cleanup manifest")
+            verify_windows_acl_cleanup(crash_manifest, [allowed_read, heartbeat])
+            windows_crash_cleanup = True
+            if any(cleanup_dir.glob("origins-sandbox-cleanup-*.json")):
+                raise AssertionError("Windows cleanup manifests remain after crash recovery")
 
     print(
         json.dumps(
@@ -134,6 +157,7 @@ def main() -> int:
                 "tcp_denied": True,
                 "udp_denied": True,
                 "process_tree_fenced": True,
+                "windows_crash_cleanup": windows_crash_cleanup,
                 "network_mode": "deny",
             },
             sort_keys=True,
@@ -213,7 +237,8 @@ def prove_process_tree_fence(
     root: Path,
     base: dict,
     heartbeat: Path,
-) -> None:
+    cleanup_dir: Path | None,
+) -> dict | None:
     spec = dict(base)
     spec["args"] = ["tree", str(probe), str(heartbeat)]
     spec_path = root / "sandbox-tree.json"
@@ -224,6 +249,7 @@ def prove_process_tree_fence(
         stderr=subprocess.PIPE,
         text=True,
     )
+    crash_manifest: dict | None = None
     try:
         wait_for_heartbeat(heartbeat, process)
         before = heartbeat.stat().st_size
@@ -232,8 +258,13 @@ def prove_process_tree_fence(
         if grown <= before:
             raise AssertionError("heartbeat child did not remain live before fencing")
 
+        manifest_path: Path | None = None
         if os.name == "nt":
-            process.terminate()
+            if cleanup_dir is None:
+                raise AssertionError("Windows process-tree proof requires cleanup directory")
+            manifest_path = wait_for_manifest(cleanup_dir, process)
+            crash_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            process.kill()
         else:
             os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=10)
@@ -244,6 +275,8 @@ def prove_process_tree_fence(
             raise AssertionError(
                 f"child process survived process-tree fence: {fenced_size} -> {after}"
             )
+        if manifest_path is not None:
+            wait_for_manifest_cleanup(manifest_path)
     finally:
         if process.poll() is None:
             if os.name == "nt":
@@ -254,6 +287,67 @@ def prove_process_tree_fence(
                 except ProcessLookupError:
                     pass
             process.wait(timeout=10)
+    return crash_manifest
+
+
+def wait_for_manifest(cleanup_dir: Path, process: subprocess.Popen[str]) -> Path:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            stdout, stderr = process.communicate(timeout=1)
+            raise AssertionError(
+                "sandbox exited before cleanup manifest was observable: "
+                f"code={process.returncode} stdout={stdout!r} stderr={stderr!r}"
+            )
+        manifests = list(cleanup_dir.glob("origins-sandbox-cleanup-*.json"))
+        if len(manifests) == 1:
+            return manifests[0]
+        if len(manifests) > 1:
+            raise AssertionError(f"unexpected concurrent cleanup manifests: {manifests!r}")
+        time.sleep(0.05)
+    raise AssertionError("Windows cleanup manifest was not created in time")
+
+
+def wait_for_manifest_cleanup(path: Path) -> None:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not path.exists():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"Windows crash cleanup manifest remained after helper death: {path}")
+
+
+def verify_windows_acl_cleanup(manifest: dict, extra_paths: list[Path]) -> None:
+    sid = manifest.get("sid_string")
+    paths = manifest.get("paths")
+    if not isinstance(sid, str) or not sid.startswith("S-"):
+        raise AssertionError(f"cleanup manifest contains invalid SID: {sid!r}")
+    if not isinstance(paths, list) or not paths:
+        raise AssertionError("cleanup manifest contains no touched paths")
+
+    targets = [Path(path) for path in paths]
+    targets.extend(extra_paths)
+    seen: set[Path] = set()
+    for target in targets:
+        target = target.resolve()
+        if target in seen or not target.exists():
+            continue
+        seen.add(target)
+        completed = subprocess.run(
+            ["icacls", str(target)],
+            text=True,
+            capture_output=True,
+            timeout=15,
+            check=False,
+        )
+        if completed.returncode != 0:
+            raise AssertionError(
+                f"icacls failed for {target}: stdout={completed.stdout!r} stderr={completed.stderr!r}"
+            )
+        if sid.casefold() in (completed.stdout + completed.stderr).casefold():
+            raise AssertionError(
+                f"temporary AppContainer SID remained in ACL after crash cleanup: {target} {sid}"
+            )
 
 
 def wait_for_heartbeat(path: Path, process: subprocess.Popen[str]) -> None:
