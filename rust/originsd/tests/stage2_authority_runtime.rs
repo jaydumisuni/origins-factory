@@ -61,7 +61,7 @@ impl Harness {
     fn issue(&self, nonce: &str) -> Value {
         let receipt = preflight_receipt(&self.scope, &self.current, nonce);
         self.store
-            .issue_capability_lease(&receipt, &self.scope, &grant())
+            .issue_capability_lease(&receipt, &self.scope, &grant(), &self.current)
             .unwrap()
     }
 }
@@ -280,7 +280,7 @@ fn issuer_is_durable_single_use_and_restart_safe() {
     let receipt = preflight_receipt(&harness.scope, &harness.current, "one");
     let lease = harness
         .store
-        .issue_capability_lease(&receipt, &harness.scope, &grant())
+        .issue_capability_lease(&receipt, &harness.scope, &grant(), &harness.current)
         .unwrap();
     let lease_id = lease["lease_id"].as_str().unwrap().to_owned();
     assert_eq!(lease["state"], "active");
@@ -289,7 +289,7 @@ fn issuer_is_durable_single_use_and_restart_safe() {
 
     let replay = harness
         .store
-        .issue_capability_lease(&receipt, &harness.scope, &grant());
+        .issue_capability_lease(&receipt, &harness.scope, &grant(), &harness.current);
     assert!(replay.is_err(), "one preflight receipt must never mint two leases");
 
     let reopened = Store::open(&harness.database).unwrap();
