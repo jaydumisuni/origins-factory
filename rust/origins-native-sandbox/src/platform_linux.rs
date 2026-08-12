@@ -31,6 +31,7 @@ fn apply_filesystem(spec: &SandboxSpec) -> Result<(), SandboxError> {
     let abi = ABI::V3;
     let access_all = AccessFs::from_all(abi);
     let access_read = AccessFs::from_read(abi);
+    let access_file = AccessFs::from_file(abi);
     let mut ruleset = Ruleset::default()
         .set_compatibility(CompatLevel::HardRequirement)
         .handle_access(access_all)
@@ -39,9 +40,14 @@ fn apply_filesystem(spec: &SandboxSpec) -> Result<(), SandboxError> {
         .map_err(map_landlock)?;
 
     for path in &spec.runtime_read_paths {
+        let access = if path.is_dir() {
+            access_read
+        } else {
+            access_read & access_file
+        };
         ruleset = ruleset
             .add_rule(
-                PathBeneath::new(PathFd::new(path).map_err(map_landlock)?, access_read)
+                PathBeneath::new(PathFd::new(path).map_err(map_landlock)?, access)
                     .set_compatibility(CompatLevel::HardRequirement),
             )
             .map_err(map_landlock)?;
@@ -50,7 +56,7 @@ fn apply_filesystem(spec: &SandboxSpec) -> Result<(), SandboxError> {
         .add_rule(
             PathBeneath::new(
                 PathFd::new(&spec.executable).map_err(map_landlock)?,
-                access_read,
+                access_read & access_file,
             )
             .set_compatibility(CompatLevel::HardRequirement),
         )
@@ -60,6 +66,11 @@ fn apply_filesystem(spec: &SandboxSpec) -> Result<(), SandboxError> {
             access_all
         } else {
             access_read
+        };
+        let access = if rule.path.is_dir() {
+            access
+        } else {
+            access & access_file
         };
         ruleset = ruleset
             .add_rule(
