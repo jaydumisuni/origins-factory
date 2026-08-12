@@ -8,7 +8,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
-const DATABASE_SCHEMA_VERSION: i64 = 2;
+const DATABASE_SCHEMA_VERSION: i64 = 3;
 const JOURNAL_DOMAIN: &[u8] = b"origins-journal-v1\0";
 const BUILTIN_CAPABILITIES: &str = include_str!("../../../capabilities/builtin.json");
 
@@ -71,6 +71,7 @@ impl Store {
         drop(connection);
         store.verify_journal()?;
         crate::sessions::recover_interrupted_sessions(&store)?;
+        crate::authority_runtime::verify_authority_state(&store)?;
         store.verify_journal()?;
         Ok(store)
     }
@@ -321,6 +322,7 @@ fn migrate(connection: &Connection) -> Result<(), StoreError> {
 
     create_core_tables(connection)?;
     crate::sessions::create_session_tables(connection)?;
+    crate::authority_runtime::create_authority_tables(connection)?;
 
     if version != DATABASE_SCHEMA_VERSION {
         connection.execute(

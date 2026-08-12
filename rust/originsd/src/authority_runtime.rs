@@ -296,14 +296,12 @@ pub(crate) fn verify_authority_state(store: &Store) -> Result<(), StoreError> {
         let preflight: Value = serde_json::from_str(&preflight_json).map_err(|error| {
             StoreError::Corrupt(format!("lease {lease_id} preflight JSON: {error}"))
         })?;
-        let actual_preflight = contract_sha256(&preflight)
-            .map_err(|error| StoreError::Corrupt(format!("preflight digest: {error}")))?;
-        if actual_preflight != preflight_digest {
+        let verified_preflight = validate_preflight_receipt(&preflight)?;
+        if verified_preflight.receipt_sha256 != preflight_digest {
             return Err(StoreError::Corrupt(format!(
                 "lease {lease_id} preflight digest mismatch"
             )));
         }
-        validate_preflight_receipt(&preflight)?;
         let resources = load_resources(&connection, &lease_id)?;
         normalize_resources(resources)?;
     }
@@ -764,10 +762,17 @@ impl Store {
         let workspace_id = required_string(&scope, "workspace_id")?.to_owned();
         let previous_revision = required_u64(&scope, "revision")?;
         let previous_fence = required_u64(&scope, "fence")?;
-        if scope["state"] != "revoked" {
-            set_revoked(&mut scope, observed_at)?;
-            persist_scope_contract(&transaction, &scope)?;
+        if scope["state"] == "revoked" {
+            return Ok(RevocationResult {
+                scope_id: scope_id.to_owned(),
+                lease_id: String::new(),
+                revoked_leases: 0,
+                new_revision: previous_revision,
+                new_fence: previous_fence,
+            });
         }
+        set_revoked(&mut scope, observed_at)?;
+        persist_scope_contract(&transaction, &scope)?;
 
         let lease_rows = {
             let mut statement = transaction.prepare(
@@ -1023,7 +1028,7 @@ fn store_scope_exact(
             required_string(scope, "state")?,
             i64_from_u64(required_u64(scope, "revision")?, "scope revision")?,
             i64_from_u64(required_u64(scope, "fence")?, "scope fence")?,
-            observed_at,
+            required_string(scope, "updated_at")?,
         ],
     )?;
     Ok(())
@@ -1203,7 +1208,7 @@ fn network_access_allowed(lease: &Value, requested: &[NetworkEndpoint]) -> Resul
         return Ok(requested.is_empty());
     }
     if mode == "delegated_remote" {
-        return Ok(lease["delegated_remote_authority"].as_bool() == Some(true));
+        return Ok(requested.is_empty());
     }
     let granted_value = lease["network_endpoints"]
         .as_array()
