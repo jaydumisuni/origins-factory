@@ -57,24 +57,22 @@ impl ContainmentPlan {
         }
 
         let network_mode = required_string(lease, "network_mode")?.to_owned();
+        if network_mode != "deny" {
+            return Err(StoreError::Conflict(
+                "native containment v1 refuses network-capable leases; exact endpoint broker is not implemented"
+                    .to_owned(),
+            ));
+        }
         let (filesystem_driver, process_tree_driver, network_driver) = match platform {
             ContainmentPlatform::Linux => (
-                "linux.mount-namespace.v1",
-                "linux.pid-cgroup-fence.v1",
-                if network_mode == "deny" {
-                    "linux.netns-deny.v1"
-                } else {
-                    "linux.netns-endpoint-broker.v1"
-                },
+                "linux.landlock.v1",
+                "linux.setsid-process-group-fence.v1",
+                "linux.seccomp-network-deny.v1",
             ),
             ContainmentPlatform::Windows => (
                 "windows.appcontainer-acl.v1",
                 "windows.job-object-kill-on-close.v1",
-                if network_mode == "deny" {
-                    "windows.appcontainer-network-deny.v1"
-                } else {
-                    "windows.wfp-endpoint-broker.v1"
-                },
+                "windows.appcontainer-network-deny.v1",
             ),
         };
 
@@ -430,7 +428,9 @@ mod tests {
         let linux = ContainmentPlan::from_lease(&lease, ContainmentPlatform::Linux).unwrap();
         let windows = ContainmentPlan::from_lease(&lease, ContainmentPlatform::Windows).unwrap();
         assert!(linux.fail_closed && windows.fail_closed);
-        assert_eq!(linux.network_driver, "linux.netns-deny.v1");
+        assert_eq!(linux.filesystem_driver, "linux.landlock.v1");
+        assert_eq!(linux.process_tree_driver, "linux.setsid-process-group-fence.v1");
+        assert_eq!(linux.network_driver, "linux.seccomp-network-deny.v1");
         assert_eq!(
             windows.network_driver,
             "windows.appcontainer-network-deny.v1"
