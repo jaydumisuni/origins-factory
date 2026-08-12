@@ -130,6 +130,23 @@ pub fn prepare_native_process(
     })
 }
 
+#[cfg(target_os = "linux")]
+fn current_platform() -> Result<ContainmentPlatform, StoreError> {
+    Ok(ContainmentPlatform::Linux)
+}
+
+#[cfg(windows)]
+fn current_platform() -> Result<ContainmentPlatform, StoreError> {
+    Ok(ContainmentPlatform::Windows)
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn current_platform() -> Result<ContainmentPlatform, StoreError> {
+    Err(StoreError::Conflict(
+        "native Stage-2 process admission is supported only on Linux and Windows".to_owned(),
+    ))
+}
+
 fn resolve_resource_roots(
     store: &Store,
     process_policy: &ProcessPolicy,
