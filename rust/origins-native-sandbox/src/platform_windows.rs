@@ -1,3 +1,4 @@
+use crate::windows_cleanup::CleanupRegistration;
 use crate::{SandboxError, SandboxPathRule, SandboxSpec};
 use std::ffi::{c_void, OsString};
 use std::mem::{size_of, zeroed};
@@ -11,9 +12,7 @@ use windows_sys::Win32::Security::Authorization::{
     EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, TRUSTEE_IS_SID,
     TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
-use windows_sys::Win32::Security::Isolation::{
-    CreateAppContainerProfile, DeleteAppContainerProfile, GetAppContainerFolderPath,
-};
+use windows_sys::Win32::Security::Isolation::{CreateAppContainerProfile, GetAppContainerFolderPath};
 use windows_sys::Win32::Security::{
     FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID, SECURITY_CAPABILITIES,
     SUB_CONTAINERS_AND_OBJECTS_INHERIT,
@@ -37,7 +36,7 @@ use windows_sys::Win32::System::Threading::{
 };
 
 pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
-    let profile = AppContainerProfile::create()?;
+    let profile = AppContainerProfile::create(&spec)?;
     let appcontainer_local = appcontainer_local_path(profile.sid)?;
     let mut grants = Vec::new();
     grants.push(AclGrant::apply(
@@ -133,17 +132,22 @@ fn apply_resource_grant(rule: &SandboxPathRule, sid: PSID) -> Result<AclGrant, S
 }
 
 struct AppContainerProfile {
-    name: Vec<u16>,
     sid: PSID,
+    cleanup: CleanupRegistration,
 }
 
 impl AppContainerProfile {
-    fn create() -> Result<Self, SandboxError> {
+    fn create(spec: &SandboxSpec) -> Result<Self, SandboxError> {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| SandboxError::Os(format!("system clock invalid: {error}")))?
             .as_nanos();
         let name_text = format!("TTG.Origins.{}.{}", std::process::id(), nonce);
+        let mut cleanup_paths = vec![spec.executable.clone()];
+        cleanup_paths.extend(spec.runtime_read_paths.iter().cloned());
+        cleanup_paths.extend(spec.resource_paths.iter().map(|rule| rule.path.clone()));
+        let cleanup = CleanupRegistration::register(&name_text, &cleanup_paths)?;
+
         let name = wide_text(&name_text);
         let display = wide_text("THETECHGUY Origins Sandbox");
         let description = wide_text("Ephemeral Origins capability containment profile");
@@ -160,21 +164,22 @@ impl AppContainerProfile {
             )
         };
         if result < 0 || sid.is_null() {
+            let _ = cleanup.cleanup_now();
             return Err(SandboxError::Os(format!(
                 "CreateAppContainerProfile failed with HRESULT 0x{:08x}",
                 result as u32
             )));
         }
-        Ok(Self { name, sid })
+        Ok(Self { sid, cleanup })
     }
 }
 
 impl Drop for AppContainerProfile {
     fn drop(&mut self) {
-        unsafe {
-            // SAFETY: profile name and SID are the resources returned by CreateAppContainerProfile.
-            let _ = DeleteAppContainerProfile(self.name.as_ptr());
-            if !self.sid.is_null() {
+        let _ = self.cleanup.cleanup_now();
+        if !self.sid.is_null() {
+            unsafe {
+                // SAFETY: SID is the resource returned by CreateAppContainerProfile.
                 let _ = FreeSid(self.sid);
             }
         }
