@@ -21,6 +21,7 @@ use windows_sys::Win32::Security::{
 use windows_sys::Win32::Storage::FileSystem::{
     FILE_GENERIC_EXECUTE, FILE_GENERIC_READ, FILE_GENERIC_WRITE,
 };
+use windows_sys::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};
 use windows_sys::Win32::System::JobObjects::{
     AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
     SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
@@ -64,7 +65,7 @@ pub fn run(spec: SandboxSpec) -> Result<i32, SandboxError> {
     let executable = wide(&spec.executable);
     let cwd = wide(&spec.cwd);
     let mut command_line = command_line(&spec.executable, &spec.args);
-    let environment = environment_block(&spec.environment, &spec.cwd);
+    let environment = environment_block(&spec.environment, &spec.cwd)?;
     let mut process: PROCESS_INFORMATION = unsafe { zeroed() };
     let created = unsafe {
         // SAFETY: all pointers reference live, NUL-terminated buffers for the duration of CreateProcessW.
@@ -439,18 +440,31 @@ impl Drop for ProcessHandles {
 fn environment_block(
     environment: &std::collections::BTreeMap<String, String>,
     cwd: &Path,
-) -> Vec<u16> {
-    let mut entries = Vec::with_capacity(environment.len() + 1);
+) -> Result<Vec<u16>, SandboxError> {
+    let mut raw: *mut c_void = null_mut();
+    let created = unsafe {
+        // SAFETY: raw is a valid out pointer; NULL token and inherit=false request system variables only.
+        CreateEnvironmentBlock(&mut raw, null_mut(), 0)
+    };
+    if created == 0 || raw.is_null() {
+        return Err(last_os_error("CreateEnvironmentBlock(system-only) failed"));
+    }
+    let copied = copy_environment_entries(raw.cast::<u16>());
+    unsafe {
+        // SAFETY: raw is the buffer returned by CreateEnvironmentBlock.
+        let _ = DestroyEnvironmentBlock(raw.cast_const());
+    }
+    let mut entries = copied?;
+
+    for (name, value) in environment {
+        upsert_environment_entry(&mut entries, name, value);
+    }
     let cwd_text = cwd.to_string_lossy();
     let cwd_bytes = cwd_text.as_bytes();
     if cwd_bytes.len() >= 3 && cwd_bytes[0].is_ascii_alphabetic() && cwd_bytes[1] == b':' {
-        entries.push(format!("={}={}", &cwd_text[..2], cwd_text));
+        let drive_name = format!("={}", &cwd_text[..2]);
+        upsert_environment_entry(&mut entries, &drive_name, &cwd_text);
     }
-    entries.extend(
-        environment
-            .iter()
-            .map(|(name, value)| format!("{name}={value}")),
-    );
     entries.sort_by_key(|entry| entry.to_ascii_uppercase());
 
     let mut block = Vec::new();
@@ -459,7 +473,66 @@ fn environment_block(
         block.push(0);
     }
     block.push(0);
-    block
+    Ok(block)
+}
+
+fn copy_environment_entries(raw: *const u16) -> Result<Vec<String>, SandboxError> {
+    const MAX_CODE_UNITS: usize = 1_048_576;
+    let mut entries = Vec::new();
+    let mut offset = 0_usize;
+    loop {
+        if offset >= MAX_CODE_UNITS {
+            return Err(SandboxError::Os(
+                "system environment block exceeded safety bound".to_owned(),
+            ));
+        }
+        let first = unsafe {
+            // SAFETY: raw points to a Windows environment block terminated by a double NUL.
+            *raw.add(offset)
+        };
+        if first == 0 {
+            break;
+        }
+        let start = offset;
+        while offset < MAX_CODE_UNITS {
+            let current = unsafe {
+                // SAFETY: offset remains within the explicit safety bound while scanning the API buffer.
+                *raw.add(offset)
+            };
+            if current == 0 {
+                break;
+            }
+            offset += 1;
+        }
+        if offset >= MAX_CODE_UNITS {
+            return Err(SandboxError::Os(
+                "system environment entry exceeded safety bound".to_owned(),
+            ));
+        }
+        let units = unsafe {
+            // SAFETY: start..offset was scanned from the live environment block and excludes the NUL.
+            std::slice::from_raw_parts(raw.add(start), offset - start)
+        };
+        let entry = String::from_utf16(units).map_err(|error| {
+            SandboxError::Os(format!("system environment contains invalid UTF-16: {error}"))
+        })?;
+        entries.push(entry);
+        offset += 1;
+    }
+    Ok(entries)
+}
+
+fn upsert_environment_entry(entries: &mut Vec<String>, name: &str, value: &str) {
+    entries.retain(|entry| !environment_entry_name(entry).eq_ignore_ascii_case(name));
+    entries.push(format!("{name}={value}"));
+}
+
+fn environment_entry_name(entry: &str) -> &str {
+    let search_start = usize::from(entry.starts_with('='));
+    entry[search_start..]
+        .find('=')
+        .map(|index| &entry[..search_start + index])
+        .unwrap_or(entry)
 }
 
 fn command_line(executable: &Path, args: &[String]) -> Vec<u16> {
