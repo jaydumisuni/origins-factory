@@ -3,6 +3,7 @@ use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket};
 use std::path::Path;
+#[cfg(windows)]
 use std::process::{Command, Stdio};
 use std::thread;
 use std::time::Duration;
@@ -104,6 +105,26 @@ fn udp(address: &str) -> i32 {
     }
 }
 
+#[cfg(target_os = "linux")]
+fn tree(_executable: &str, path: &str) -> i32 {
+    let result = unsafe {
+        // SAFETY: this proof process is single-threaded at the fork point and the child immediately
+        // enters the heartbeat loop without invoking non-async-signal-safe setup code first.
+        nix::unistd::fork()
+    };
+    match result {
+        Ok(nix::unistd::ForkResult::Child) => std::process::exit(heartbeat(path)),
+        Ok(nix::unistd::ForkResult::Parent { .. }) => loop {
+            thread::sleep(Duration::from_secs(1));
+        },
+        Err(error) => {
+            eprintln!("TREE_FAILED: fork: {error}");
+            EXIT_TREE_FAILED
+        }
+    }
+}
+
+#[cfg(windows)]
 fn tree(executable: &str, path: &str) -> i32 {
     let child = Command::new(executable)
         .arg("heartbeat")
@@ -119,6 +140,11 @@ fn tree(executable: &str, path: &str) -> i32 {
     loop {
         thread::sleep(Duration::from_secs(1));
     }
+}
+
+#[cfg(not(any(target_os = "linux", windows)))]
+fn tree(_executable: &str, _path: &str) -> i32 {
+    EXIT_TREE_FAILED
 }
 
 fn heartbeat(path: &str) -> i32 {
