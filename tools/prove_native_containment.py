@@ -115,7 +115,7 @@ def main() -> int:
                 raise AssertionError(f"sandbox emitted UDP payload despite network deny: {data!r}")
 
         heartbeat = allowed / "heartbeat.txt"
-        prove_process_tree_fence(sandbox, root, spec_base, heartbeat)
+        prove_process_tree_fence(sandbox, probe, root, spec_base, heartbeat)
 
     print(
         json.dumps(
@@ -204,12 +204,13 @@ def sandboxed(
 
 def prove_process_tree_fence(
     sandbox: Path,
+    probe: Path,
     root: Path,
     base: dict,
     heartbeat: Path,
 ) -> None:
     spec = dict(base)
-    spec["args"] = ["tree", str(heartbeat)]
+    spec["args"] = ["tree", str(probe), str(heartbeat)]
     spec_path = root / "sandbox-tree.json"
     spec_path.write_text(json.dumps(spec, sort_keys=True), encoding="utf-8")
     process = subprocess.Popen(
