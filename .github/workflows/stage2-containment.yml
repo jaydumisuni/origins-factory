@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: stage2-containment-${{ github.ref }}-${{ matrix.os }}
+  group: stage2-containment-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
