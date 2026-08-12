@@ -220,11 +220,7 @@ fn appcontainer_local_path(sid: PSID) -> Result<PathBuf, SandboxError> {
     Ok(PathBuf::from(path))
 }
 
-struct AclGrant {
-    path: Vec<u16>,
-    original_descriptor: *mut c_void,
-    original_dacl: *mut ACL,
-}
+struct AclGrant;
 
 impl AclGrant {
     fn apply(
@@ -234,7 +230,7 @@ impl AclGrant {
         inherit: bool,
     ) -> Result<Self, SandboxError> {
         let mut path_wide = wide(path);
-        let mut original_dacl: *mut ACL = null_mut();
+        let mut current_dacl: *mut ACL = null_mut();
         let mut descriptor: *mut c_void = null_mut();
         let status = unsafe {
             // SAFETY: output pointers are valid and path is NUL terminated.
@@ -244,7 +240,7 @@ impl AclGrant {
                 DACL_SECURITY_INFORMATION,
                 null_mut(),
                 null_mut(),
-                &mut original_dacl,
+                &mut current_dacl,
                 null_mut(),
                 &mut descriptor,
             )
@@ -274,8 +270,8 @@ impl AclGrant {
         };
         let mut new_dacl: *mut ACL = null_mut();
         let acl_status = unsafe {
-            // SAFETY: entry, old ACL and out pointer are valid for this call.
-            SetEntriesInAclW(1, &entry, original_dacl, &mut new_dacl)
+            // SAFETY: entry, current ACL and out pointer are valid for this call.
+            SetEntriesInAclW(1, &entry, current_dacl, &mut new_dacl)
         };
         if acl_status != ERROR_SUCCESS || new_dacl.is_null() {
             unsafe {
@@ -300,44 +296,20 @@ impl AclGrant {
             )
         };
         unsafe {
-            // SAFETY: new_dacl was allocated by SetEntriesInAclW.
+            // SAFETY: both allocations are no longer needed after SetNamedSecurityInfoW returns.
             let _ = LocalFree(new_dacl.cast::<c_void>());
+            let _ = LocalFree(descriptor);
         }
         if set_status != ERROR_SUCCESS {
-            unsafe {
-                // SAFETY: descriptor was allocated by GetNamedSecurityInfoW.
-                let _ = LocalFree(descriptor);
-            }
             return Err(SandboxError::Os(format!(
                 "SetNamedSecurityInfoW failed for {}: {set_status}",
                 path.display()
             )));
         }
-        Ok(Self {
-            path: path_wide,
-            original_descriptor: descriptor,
-            original_dacl,
-        })
-    }
-}
-
-impl Drop for AclGrant {
-    fn drop(&mut self) {
-        unsafe {
-            // SAFETY: original_dacl points into original_descriptor, which remains live until restored.
-            let _ = SetNamedSecurityInfoW(
-                self.path.as_mut_ptr(),
-                SE_FILE_OBJECT,
-                DACL_SECURITY_INFORMATION,
-                null_mut(),
-                null_mut(),
-                self.original_dacl,
-                null_mut(),
-            );
-            if !self.original_descriptor.is_null() {
-                let _ = LocalFree(self.original_descriptor);
-            }
-        }
+        // Normal and crash cleanup both revoke only this ephemeral AppContainer SID through
+        // CleanupRegistration. We deliberately do not restore a whole saved DACL here because doing
+        // so could overwrite an unrelated ACL mutation made while the sandbox was running.
+        Ok(Self)
     }
 }
 
