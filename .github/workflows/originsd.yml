@@ -110,6 +110,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       startsWith(github.ref, 'refs/heads/impl/') &&
+      github.ref_name != 'impl/stage2-authority-runtime-v1' &&
       github.actor == 'jaydumisuni' &&
       !startsWith(github.event.head_commit.message, 'Normalize Origins runtime')
     needs: runtime-proof
