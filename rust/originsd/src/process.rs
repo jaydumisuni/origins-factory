@@ -121,7 +121,7 @@ impl ProcessPolicy {
         })
     }
 
-    fn allows(&self, path: &Path) -> bool {
+    pub(crate) fn allows(&self, path: &Path) -> bool {
         self.allowed_roots.iter().any(|root| path.starts_with(root))
     }
 }
@@ -500,7 +500,7 @@ fn prepare_process(
     })
 }
 
-fn validate_executable(executable: &str) -> Result<(), StoreError> {
+pub(crate) fn validate_executable(executable: &str) -> Result<(), StoreError> {
     if executable.is_empty()
         || executable.len() > 128
         || executable.contains('/')
