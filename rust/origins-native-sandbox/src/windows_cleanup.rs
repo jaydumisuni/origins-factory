@@ -1,25 +1,24 @@
 use crate::SandboxError;
 use serde::{Deserialize, Serialize};
 use std::ffi::c_void;
-use std::fs::{self, File, OpenOptions};
+use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
-use std::ptr::{null, null_mut};
+use std::ptr::null_mut;
 use std::time::{SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::{CloseHandle, LocalFree, ERROR_SUCCESS, HANDLE};
 use windows_sys::Win32::Security::Authorization::{
     ConvertSidToStringSidW, GetNamedSecurityInfoW, SetEntriesInAclW, SetNamedSecurityInfoW,
-    EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, REVOKE_ACCESS, SE_FILE_OBJECT,
-    TRUSTEE_IS_SID, TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
+    EXPLICIT_ACCESS_W, NO_MULTIPLE_TRUSTEE, REVOKE_ACCESS, SE_FILE_OBJECT, TRUSTEE_IS_SID,
+    TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
 use windows_sys::Win32::Security::Isolation::{
     DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
 };
 use windows_sys::Win32::Security::{
     FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID,
-    SUB_CONTAINERS_AND_OBJECTS_INHERIT,
 };
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
 
@@ -34,7 +33,7 @@ const HRESULT_FILE_NOT_FOUND: i32 = 0x8007_0002_u32 as i32;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct CleanupManifest {
+struct CleanupManifest {
     version: u32,
     owner_pid: u32,
     profile_name: String,
@@ -96,44 +95,22 @@ pub(crate) fn watch_owner(owner_pid: u32, manifest_path: &Path) -> Result<(), Sa
     if !manifest_path.exists() {
         return Ok(());
     }
-    match open_process_for_wait(owner_pid)? {
-        Some(handle) => {
-            let result = unsafe {
-                // SAFETY: handle was opened with SYNCHRONIZE access and remains owned until closed.
-                WaitForSingleObject(handle, u32::MAX)
-            };
-            unsafe {
-                // SAFETY: handle is owned by this function.
-                let _ = CloseHandle(handle);
-            }
-            if result != WAIT_OBJECT_0_VALUE {
-                return Err(SandboxError::Os(format!(
-                    "cleanup watchdog wait failed for process {owner_pid}: result={result}"
-                )));
-            }
+    if let Some(handle) = open_process_for_wait(owner_pid)? {
+        let result = unsafe {
+            // SAFETY: handle was opened with SYNCHRONIZE access and remains owned until closed.
+            WaitForSingleObject(handle, u32::MAX)
+        };
+        unsafe {
+            // SAFETY: handle is owned by this function.
+            let _ = CloseHandle(handle);
         }
-        None => {}
+        if result != WAIT_OBJECT_0_VALUE {
+            return Err(SandboxError::Os(format!(
+                "cleanup watchdog wait failed for process {owner_pid}: result={result}"
+            )));
+        }
     }
     cleanup_manifest_file(manifest_path)
-}
-
-pub(crate) fn grant_sid_access(
-    path: &Path,
-    sid: PSID,
-    permissions: u32,
-    inherit: bool,
-) -> Result<(), SandboxError> {
-    update_sid_acl(
-        path,
-        sid,
-        permissions,
-        GRANT_ACCESS,
-        if inherit {
-            SUB_CONTAINERS_AND_OBJECTS_INHERIT
-        } else {
-            NO_INHERITANCE
-        },
-    )
 }
 
 fn revoke_sid_access(path: &Path, sid: PSID) -> Result<(), SandboxError> {
@@ -147,7 +124,7 @@ fn update_sid_acl(
     path: &Path,
     sid: PSID,
     permissions: u32,
-    access_mode: u32,
+    access_mode: i32,
     inheritance: u32,
 ) -> Result<(), SandboxError> {
     let mut path_wide = wide(path);
@@ -260,7 +237,9 @@ fn recover_stale_in(directory: &Path) -> Result<(), SandboxError> {
         let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
             continue;
         };
-        if !name.starts_with(MANIFEST_PREFIX) || path.extension().and_then(|value| value.to_str()) != Some("json") {
+        if !name.starts_with(MANIFEST_PREFIX)
+            || path.extension().and_then(|value| value.to_str()) != Some("json")
+        {
             continue;
         }
         let manifest = read_manifest(&path)?;
@@ -355,8 +334,12 @@ fn write_manifest(path: &Path, manifest: &CleanupManifest) -> Result<(), Sandbox
 
 fn read_manifest(path: &Path) -> Result<CleanupManifest, SandboxError> {
     let bytes = fs::read(path).map_err(io_error)?;
-    serde_json::from_slice(&bytes)
-        .map_err(|error| SandboxError::Invalid(format!("invalid cleanup manifest {}: {error}", path.display())))
+    serde_json::from_slice(&bytes).map_err(|error| {
+        SandboxError::Invalid(format!(
+            "invalid cleanup manifest {}: {error}",
+            path.display()
+        ))
+    })
 }
 
 fn delete_profile_idempotent(name: &str) -> Result<(), SandboxError> {
@@ -427,7 +410,9 @@ impl Drop for DerivedSid {
 
 fn copy_wide_string(pointer: *const u16) -> Result<String, SandboxError> {
     if pointer.is_null() {
-        return Err(SandboxError::Os("Windows returned a null wide string".to_owned()));
+        return Err(SandboxError::Os(
+            "Windows returned a null wide string".to_owned(),
+        ));
     }
     let mut length = 0_usize;
     unsafe {
