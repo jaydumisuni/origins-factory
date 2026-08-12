@@ -196,6 +196,8 @@ pub(crate) fn create_authority_tables(connection: &Connection) -> Result<(), Sto
          );
          CREATE INDEX IF NOT EXISTS idx_capability_leases_scope
             ON capability_leases(scope_id, updated_at DESC);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_capability_leases_preflight_once
+            ON capability_leases(preflight_sha256);
          CREATE TABLE IF NOT EXISTS capability_lease_resources (
             lease_id TEXT NOT NULL,
             resource_id TEXT NOT NULL,
