@@ -1,6 +1,6 @@
-use origins_native_sandbox::{run, SandboxSpec};
 #[cfg(windows)]
 use origins_native_sandbox::{recover_windows_cleanup, watch_windows_cleanup};
+use origins_native_sandbox::{run, SandboxSpec};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
