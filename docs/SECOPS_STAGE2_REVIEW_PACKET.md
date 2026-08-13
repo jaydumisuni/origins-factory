@@ -1,14 +1,16 @@
-# Origins Stage-2 Sec-Ops Implementation Red-Team Packet
+# Origins Stage-2 Adversarial Engineering Checklist
 
-Status: **review packet prepared; runtime authority remains inactive**
+Historical name: **Sec-Ops Stage-2 Implementation Red-Team Packet**
 
-This packet is for the mandatory Stage-2 security review of the **implemented** authority/enforcement boundary. It is not a re-review of the Stage-1 v1.1 contract model.
+Status: **retained as an internal hostile-test checklist; no external Sec-Ops gate is required; runtime authority remains inactive**
+
+Review policy update (2026-08-14): this document remains useful as an attack checklist for Origins engineering and independent implementation review, but it is no longer a separate blocking review authority. Promotion is governed by exact-head engineering proof, adversarial verification, unresolved-finding review and explicit owner approval.
 
 Canonical implementation description: `docs/ADR-0014-STAGE2-AUTHORITY-RUNTIME.md`.
 
 ## Review target
 
-Review the real implementation of:
+Attack the real implementation of:
 
 - durable production lease issuance/persistence;
 - invocation-time authority evaluation;
@@ -40,7 +42,7 @@ native OS containment
 
 No security layer may silently substitute a broader source of authority for the layer above it.
 
-## Required hostile review areas
+## Required hostile verification areas
 
 ### 1. Issuance TOCTOU / replay
 
@@ -55,7 +57,7 @@ Attempt to:
 - race concurrent issuance using the same receipt;
 - exploit rollback/restart to make a consumed receipt usable again.
 
-Determine whether single-use enforcement is atomic under concurrent writers and restart.
+Single-use enforcement must remain atomic under concurrent writers and restart.
 
 ### 2. Durable authority tamper / rollback
 
@@ -82,7 +84,7 @@ Attempt invocation:
 - after daemon restart;
 - while a native process is being admitted/started.
 
-Check whether any already-obtained handle can survive the intended fence transition.
+No already-obtained handle may survive the intended fence transition.
 
 ### 4. Confused deputy / holder substitution
 
@@ -113,7 +115,7 @@ Attack:
 - deleted/recreated grant paths;
 - special filesystem objects.
 
-Explicitly distinguish attacks closed by the resource-id abstraction from attacks that still require runtime path-resolution enforcement.
+Distinguish attacks closed by the resource-id abstraction from attacks that still require runtime path-resolution enforcement.
 
 ### 6. Linux containment escape
 
@@ -131,7 +133,7 @@ Against the actual Landlock/seccomp/setsid implementation, attempt:
 - descendant survival after fencing;
 - kernel/ABI compatibility downgrade behavior.
 
-Landlock is configured as a hard requirement; verify unsupported/partial enforcement fails closed.
+Landlock is configured as a hard requirement; unsupported/partial enforcement must fail closed.
 
 ### 7. Windows containment escape
 
@@ -162,7 +164,7 @@ The helper may be terminated without Rust destructors. Attack:
 - path deletion/recreation before recovery;
 - ACL changes by another principal while the sandbox is running.
 
-Verify cleanup removes only the unique ephemeral AppContainer SID and never restores/overwrites an unrelated principal's concurrent ACL change.
+Cleanup must remove only the unique ephemeral AppContainer SID and never restore/overwrite an unrelated principal's concurrent ACL change.
 
 ### 9. Network fail-closed boundary
 
@@ -191,11 +193,11 @@ Search for every path that could:
 - invoke native containment from a broader legacy process route;
 - edit policy/authority state to widen its own cage.
 
-The reviewed candidate must remain dormant. No Sec-Ops PASS on this packet should be interpreted as permission to enable a surface that was absent from the reviewed code.
+The merged Stage-2 implementation remains dormant. Any later activation must be a separate explicit owner-approved change and cannot inherit authority merely because this implementation passed its engineering proof.
 
-## Proof evidence expected with review
+## Proof evidence required for promotion
 
-Review the exact candidate head only. Evidence should include:
+Review the exact candidate head only. Evidence includes:
 
 - Stage-2 Ubuntu Rust 1.75 `clippy -D warnings` PASS;
 - Stage-2 Windows Rust 1.75 `clippy -D warnings` PASS;
@@ -209,12 +211,12 @@ Review the exact candidate head only. Evidence should include:
 - Contract Spine PASS on the PR head;
 - no-activation/source review evidence.
 
-## Verdict boundary
+## Promotion boundary
 
-Requested verdicts:
+Engineering outcomes are:
 
-- `PASS` — implemented dormant boundary is acceptable to proceed to a separately controlled activation decision;
+- `PASS` — the dormant implementation is mechanically proven and has no unresolved implementation-review findings;
 - `NEEDS_WORK` — concrete findings must be corrected and exact-head proof rerun;
-- `BLOCK` — boundary is structurally unsafe and activation work must stop.
+- `BLOCK` — the boundary is structurally unsafe and promotion stops.
 
-Even a Stage-2 `PASS` does **not** itself activate runtime authority. Activation must be a distinct reviewed change with explicit owner approval and proof of the exact surfaces being enabled.
+A dormant Stage-2 `PASS` does **not** itself activate runtime authority. Activation is a distinct owner-approved engineering change with explicit proof of the exact surfaces being enabled.
