@@ -4,7 +4,9 @@ Status: **Implementation candidate — runtime activation remains false**
 
 ## Decision
 
-Origins Stage-2 implements the production authority mechanics required by the v1.1 `ExecutionScope` / `CapabilityLease` model while keeping model/runtime activation structurally dormant until a separate Stage-2 Sec-Ops implementation red-team approves the real enforcement boundary.
+Origins Stage-2 implements the production authority mechanics required by the v1.1 `ExecutionScope` / `CapabilityLease` model while keeping model/runtime activation structurally dormant until a separate explicit owner-approved activation change is implemented and mechanically proven.
+
+Review policy update (2026-08-14): the separate external Stage-2 Sec-Ops gate is retired. Origins engineering proof, adversarial verification, independent implementation review and explicit owner approval are the promotion authority. The former Sec-Ops packet is retained as an internal hostile-test checklist and historical review artifact, not as a blocking external gate.
 
 The authority chain is:
 
@@ -166,8 +168,8 @@ This implementation does **not** approve or enable:
 
 `RUNTIME_AUTHORITY_ACTIVATED` remains false and no activation route is added.
 
-## Promotion gate
+## Promotion and activation gate
 
-This dormant implementation may be merged after its exact-head engineering proof and independent review are green.
+This dormant implementation may be merged after its exact-head Contract Spine, Origins Daemon Foundation and both-OS Stage-2 containment proofs are green and independent implementation review has no unresolved findings.
 
-**Powerful runtime authority must remain inactive after merge.** A separate Stage-2 Sec-Ops red-team against the merged/real implementation is mandatory before any model-controlled authority can be activated.
+**Powerful runtime authority remains inactive after merge.** Any later activation is a distinct owner-approved engineering change and must mechanically prove the exact model/HTTP/provider surfaces being enabled, authority propagation, revocation/fencing and containment behavior on the affected operating systems before it can merge.
