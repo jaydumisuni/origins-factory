@@ -429,7 +429,10 @@ mod tests {
         let windows = ContainmentPlan::from_lease(&lease, ContainmentPlatform::Windows).unwrap();
         assert!(linux.fail_closed && windows.fail_closed);
         assert_eq!(linux.filesystem_driver, "linux.landlock.v1");
-        assert_eq!(linux.process_tree_driver, "linux.setsid-process-group-fence.v1");
+        assert_eq!(
+            linux.process_tree_driver,
+            "linux.setsid-process-group-fence.v1"
+        );
         assert_eq!(linux.network_driver, "linux.seccomp-network-deny.v1");
         assert_eq!(
             windows.network_driver,

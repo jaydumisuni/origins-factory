@@ -12,7 +12,9 @@ use windows_sys::Win32::Security::Authorization::{
     EXPLICIT_ACCESS_W, GRANT_ACCESS, NO_MULTIPLE_TRUSTEE, SE_FILE_OBJECT, TRUSTEE_IS_SID,
     TRUSTEE_IS_UNKNOWN, TRUSTEE_W,
 };
-use windows_sys::Win32::Security::Isolation::{CreateAppContainerProfile, GetAppContainerFolderPath};
+use windows_sys::Win32::Security::Isolation::{
+    CreateAppContainerProfile, GetAppContainerFolderPath,
+};
 use windows_sys::Win32::Security::{
     FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID, SECURITY_CAPABILITIES,
     SUB_CONTAINERS_AND_OBJECTS_INHERIT,
@@ -475,7 +477,10 @@ fn environment_block(
     }
 
     let local_text = appcontainer_local.to_string_lossy();
-    let temp_text = appcontainer_local.join("Temp").to_string_lossy().into_owned();
+    let temp_text = appcontainer_local
+        .join("Temp")
+        .to_string_lossy()
+        .into_owned();
     upsert_environment_entry(&mut entries, "LOCALAPPDATA", &local_text);
     upsert_environment_entry(&mut entries, "TEMP", &temp_text);
     upsert_environment_entry(&mut entries, "TMP", &temp_text);
@@ -535,7 +540,9 @@ fn copy_environment_entries(raw: *const u16) -> Result<Vec<String>, SandboxError
             std::slice::from_raw_parts(raw.add(start), offset - start)
         };
         let entry = String::from_utf16(units).map_err(|error| {
-            SandboxError::Os(format!("system environment contains invalid UTF-16: {error}"))
+            SandboxError::Os(format!(
+                "system environment contains invalid UTF-16: {error}"
+            ))
         })?;
         entries.push(entry);
         offset += 1;

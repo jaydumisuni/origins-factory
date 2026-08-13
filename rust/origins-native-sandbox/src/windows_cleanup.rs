@@ -17,9 +17,7 @@ use windows_sys::Win32::Security::Authorization::{
 use windows_sys::Win32::Security::Isolation::{
     DeleteAppContainerProfile, DeriveAppContainerSidFromAppContainerName,
 };
-use windows_sys::Win32::Security::{
-    FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID,
-};
+use windows_sys::Win32::Security::{FreeSid, ACL, DACL_SECURITY_INFORMATION, NO_INHERITANCE, PSID};
 use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
 
 const MANIFEST_VERSION: u32 = 1;
@@ -302,7 +300,9 @@ fn spawn_watchdog(owner_pid: u32, manifest_path: &Path) -> Result<(), SandboxErr
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| SandboxError::Os(format!("cannot spawn Windows cleanup watchdog: {error}")))?;
+        .map_err(|error| {
+            SandboxError::Os(format!("cannot spawn Windows cleanup watchdog: {error}"))
+        })?;
     Ok(())
 }
 
@@ -320,8 +320,9 @@ fn cleanup_dir() -> Result<PathBuf, SandboxError> {
 }
 
 fn write_manifest(path: &Path, manifest: &CleanupManifest) -> Result<(), SandboxError> {
-    let bytes = serde_json::to_vec(manifest)
-        .map_err(|error| SandboxError::Invalid(format!("cannot encode cleanup manifest: {error}")))?;
+    let bytes = serde_json::to_vec(manifest).map_err(|error| {
+        SandboxError::Invalid(format!("cannot encode cleanup manifest: {error}"))
+    })?;
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
