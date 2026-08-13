@@ -203,7 +203,11 @@ fn resolve_grant_path(
     canonical_existing(root, &normalize_relative(&grant.prefix)?, false)
 }
 
-fn canonical_existing(root: &Path, relative: &str, require_dir: bool) -> Result<PathBuf, StoreError> {
+fn canonical_existing(
+    root: &Path,
+    relative: &str,
+    require_dir: bool,
+) -> Result<PathBuf, StoreError> {
     let candidate = if relative.is_empty() {
         root.to_path_buf()
     } else {
