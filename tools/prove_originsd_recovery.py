@@ -49,7 +49,7 @@ def main() -> int:
         try:
             health = wait_for_health(base_url, first)
             assert health["ok"] is True
-            assert health["database_schema_version"] == 2
+            assert health["database_schema_version"] == 3
             assert health["repository_schema_version"] == 1
             assert health["workspaces"] == 0
             assert health["repositories"] == 0

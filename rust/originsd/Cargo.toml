@@ -9,7 +9,9 @@ axum = { version = "=0.7.9", features = ["json", "ws"] }
 chrono = { version = "=0.4.39", default-features = false, features = ["clock", "std"] }
 hex = "=0.4.3"
 indexmap = "=2.7.1"
+origins-authority-contracts = { path = "../origins-authority-contracts" }
 origins-contracts = { path = "../origins-contracts" }
+origins-native-sandbox = { path = "../origins-native-sandbox" }
 reqwest = { version = "=0.11.27", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "=0.31.0", features = ["bundled"] }
 serde = { version = "=1.0.229", features = ["derive"] }
