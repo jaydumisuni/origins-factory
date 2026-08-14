@@ -14,6 +14,7 @@ pub mod repository;
 pub mod repository_capabilities;
 pub mod sessions;
 pub mod store;
+pub mod workspace_file_http;
 pub mod workspace_files;
 pub mod workspace_roots;
 
@@ -25,6 +26,7 @@ use crate::process::{ProcessPolicy, ProcessSupervisor};
 use crate::repository::initialize as initialize_repository_store;
 use crate::repository_capabilities::initialize as initialize_repository_capabilities;
 use crate::store::Store;
+use crate::workspace_file_http::WorkspaceFileState;
 use crate::workspace_roots::WorkspaceRootPolicy;
 use chrono::{SecondsFormat, Utc};
 use std::env;
@@ -115,16 +117,23 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
         store: store.clone(),
         process_policy,
         process_supervisor: ProcessSupervisor::default(),
-        repository_policy,
+        repository_policy: repository_policy.clone(),
         local_token: local_token.clone(),
         started_at: Arc::<str>::from(now_rfc3339()),
     };
     let hunter_state = HunterState {
-        store,
+        store: store.clone(),
         transport: hunter_transport,
+        local_token: local_token.clone(),
+    };
+    let workspace_file_state = WorkspaceFileState {
+        store,
+        policy: repository_policy,
         local_token,
     };
-    let app = router(base_state).merge(hunter::router(hunter_state));
+    let app = router(base_state)
+        .merge(hunter::router(hunter_state))
+        .merge(workspace_file_http::router(workspace_file_state));
 
     let listener = TcpListener::bind(config.bind)
         .await
