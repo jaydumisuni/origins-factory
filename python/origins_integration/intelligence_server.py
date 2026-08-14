@@ -9,7 +9,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Callable
 from urllib.parse import urlsplit
 
-from .intelligence_runtime import IntelligenceMountError, IntelligenceRuntime
+from .intelligence_runtime import (
+    IntelligenceApprovalError,
+    IntelligenceMountError,
+    IntelligenceRequestError,
+    IntelligenceRuntime,
+)
 
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 48710
@@ -24,12 +29,7 @@ class IntelligenceHTTPServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
-    def __init__(
-        self,
-        server_address: tuple[str, int],
-        runtime: IntelligenceRuntime,
-        local_token: str,
-    ) -> None:
+    def __init__(self, server_address: tuple[str, int], runtime: IntelligenceRuntime, local_token: str) -> None:
         super().__init__(server_address, IntelligenceRequestHandler)
         self.runtime = runtime
         self.local_token = local_token
@@ -39,7 +39,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
     server: IntelligenceHTTPServer
     protocol_version = "HTTP/1.1"
 
-    def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
+    def do_GET(self) -> None:  # noqa: N802
         path = urlsplit(self.path).path
         if path == "/v1/health":
             self._json(HTTPStatus.OK, _public_health(self.server.runtime.health()))
@@ -49,6 +49,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             return
         routes: dict[str, Callable[[], dict[str, object]]] = {
             "/v1/operations": self.server.runtime.operations,
+            "/v1/playbooks": self.server.runtime.playbooks,
             "/v1/approvals": self.server.runtime.approvals,
             "/v1/providers": self.server.runtime.providers,
         }
@@ -58,7 +59,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             return
         self._invoke(action)
 
-    def do_POST(self) -> None:  # noqa: N802 - stdlib handler contract
+    def do_POST(self) -> None:  # noqa: N802
         if not self._authorized():
             self._unauthorized()
             return
@@ -75,18 +76,26 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._not_found()
             return
         payload = self._body_json()
-        if payload is None:
-            return
-        self._invoke(lambda: action(payload))
+        if payload is not None:
+            self._invoke(lambda: action(payload))
 
-    def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature
+    def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         safe_request = self.requestline.replace("\r", " ").replace("\n", " ")[:500]
-        message = format % args
-        print(f"origins-intelligence {self.client_address[0]} {safe_request} {message}")
+        print(f"origins-intelligence {self.client_address[0]} {safe_request} {format % args}")
 
     def _invoke(self, action: Callable[[], dict[str, object]]) -> None:
         try:
             payload = action()
+        except IntelligenceApprovalError as exc:
+            self._json(
+                HTTPStatus.CONFLICT,
+                {"ok": False, "error_code": "APPROVAL_REQUIRED", "error": str(exc)},
+            )
+        except IntelligenceRequestError as exc:
+            self._json(
+                HTTPStatus.BAD_REQUEST,
+                {"ok": False, "error_code": "INVALID_REQUEST", "error": str(exc)},
+            )
         except IntelligenceMountError as exc:
             self._json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
@@ -97,7 +106,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
                 HTTPStatus.BAD_REQUEST,
                 {"ok": False, "error_code": "INVALID_REQUEST", "error": str(exc)},
             )
-        except Exception as exc:  # owner exception classes are external to this package
+        except Exception as exc:
             self._json(
                 HTTPStatus.SERVICE_UNAVAILABLE,
                 {
@@ -114,50 +123,34 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         try:
             length = int(raw_length)
         except ValueError:
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error_code": "INVALID_BODY", "error": "invalid Content-Length"},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error_code": "INVALID_BODY", "error": "invalid Content-Length"})
             return None
         if length < 0 or length > MAX_BODY_BYTES:
             self._json(
                 HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
-                {
-                    "ok": False,
-                    "error_code": "BODY_TOO_LARGE",
-                    "error": f"JSON body limit is {MAX_BODY_BYTES} bytes",
-                },
+                {"ok": False, "error_code": "BODY_TOO_LARGE", "error": f"JSON body limit is {MAX_BODY_BYTES} bytes"},
             )
             return None
         if length == 0:
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error_code": "INVALID_BODY", "error": "JSON object body is required"},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error_code": "INVALID_BODY", "error": "JSON object body is required"})
             return None
         raw = self.rfile.read(length)
         try:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError):
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error_code": "INVALID_BODY", "error": "body must be UTF-8 JSON"},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error_code": "INVALID_BODY", "error": "body must be UTF-8 JSON"})
             return None
         if not isinstance(value, dict):
-            self._json(
-                HTTPStatus.BAD_REQUEST,
-                {"ok": False, "error_code": "INVALID_BODY", "error": "JSON body must be an object"},
-            )
+            self._json(HTTPStatus.BAD_REQUEST, {"ok": False, "error_code": "INVALID_BODY", "error": "JSON body must be an object"})
             return None
         return value
 
     def _authorized(self) -> bool:
-        expected = self.server.local_token
         supplied = self.headers.get("Authorization", "")
-        prefix = "Bearer "
-        token = supplied[len(prefix) :] if supplied.startswith(prefix) else ""
-        return bool(expected) and hmac.compare_digest(token.encode("utf-8"), expected.encode("utf-8"))
+        token = supplied[len("Bearer ") :] if supplied.startswith("Bearer ") else ""
+        return bool(self.server.local_token) and hmac.compare_digest(
+            token.encode("utf-8"), self.server.local_token.encode("utf-8")
+        )
 
     def _unauthorized(self) -> None:
         self._json(
@@ -166,10 +159,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         )
 
     def _not_found(self) -> None:
-        self._json(
-            HTTPStatus.NOT_FOUND,
-            {"ok": False, "error_code": "NOT_FOUND", "error": "route not found"},
-        )
+        self._json(HTTPStatus.NOT_FOUND, {"ok": False, "error_code": "NOT_FOUND", "error": "route not found"})
 
     def _json(self, status: HTTPStatus, payload: dict[str, object]) -> None:
         body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -234,8 +224,7 @@ def _public_health(payload: dict[str, object]) -> dict[str, object]:
 
 
 def _is_loopback_literal(host: str) -> bool:
-    value = host.strip().lower()
-    return value in {"127.0.0.1", "::1", "localhost"}
+    return host.strip().lower() in {"127.0.0.1", "::1", "localhost"}
 
 
 if __name__ == "__main__":
