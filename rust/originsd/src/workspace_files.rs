@@ -348,7 +348,7 @@ fn existing_path_under_root(root: &Path, relative: &str) -> Result<PathBuf, Work
     } else {
         root.join(Path::new(&normalized))
     };
-    let canonical = fs::canonicalize(&candidate)
+    let canonical = fs::canonicalize(candidate)
         .map_err(|error| WorkspaceFileError::io(error.to_string()))?;
     if !canonical.starts_with(root) {
         return Err(WorkspaceFileError::invalid("path escaped repository root"));
