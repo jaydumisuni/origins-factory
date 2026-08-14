@@ -48,13 +48,13 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._unauthorized()
             return
-        routes: dict[str, Callable[[], dict[str, object]]] = {
-            "/v1/operations": self.server.runtime.operations,
-            "/v1/playbooks": self.server.runtime.playbooks,
-            "/v1/approvals": self.server.runtime.approvals,
-            "/v1/providers": self.server.runtime.providers,
+        route_names = {
+            "/v1/operations": "operations",
+            "/v1/playbooks": "playbooks",
+            "/v1/approvals": "approvals",
+            "/v1/providers": "providers",
         }
-        action = routes.get(path)
+        action = self._runtime_action(route_names.get(path))
         if action is None:
             self._not_found()
             return
@@ -65,20 +65,26 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             self._unauthorized()
             return
         path = urlsplit(self.path).path
-        routes: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
-            "/v1/operations": self.server.runtime.run_agentops,
-            "/v1/approvals": self.server.runtime.create_approval,
-            "/v1/approvals/decision": self.server.runtime.decide_approval,
-            "/v1/capability-proposals": self.server.runtime.compile_capability,
-            "/v1/engineering/attempt": self.server.runtime.engineering_attempt,
+        route_names = {
+            "/v1/operations": "run_agentops",
+            "/v1/approvals": "create_approval",
+            "/v1/approvals/decision": "decide_approval",
+            "/v1/capability-proposals": "compile_capability",
+            "/v1/engineering/attempt": "engineering_attempt",
         }
-        action = routes.get(path)
+        action = self._runtime_action(route_names.get(path))
         if action is None:
             self._not_found()
             return
         payload = self._body_json()
         if payload is not None:
             self._invoke(lambda: action(payload))
+
+    def _runtime_action(self, name: str | None) -> Callable[..., dict[str, object]] | None:
+        if name is None:
+            return None
+        action = getattr(self.server.runtime, name, None)
+        return action if callable(action) else None
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002
         safe_request = self.requestline.replace("\r", " ").replace("\n", " ")[:500]
