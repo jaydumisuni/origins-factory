@@ -140,6 +140,8 @@ class Phase4IntelligenceRuntime(IntelligenceRuntime):
             if isinstance(value, str) and value.strip():
                 authorization[key] = value.strip()
         packet["authorization"] = authorization
+        packet.pop("playbook_id", None)
+        packet.pop("title", None)
 
         service = stores.department_operation_service(
             authorization_port=self._authorization_port(stores)
@@ -241,8 +243,6 @@ class Phase4IntelligenceRuntime(IntelligenceRuntime):
             "playbook_id": playbook_id,
             "title": title,
         }
-        # DepartmentOperationRequest is strict about the packet it receives. These two
-        # fields remain only in approval metadata for the Workspace and are removed at admission.
         return prepared, str(playbook.approval)
 
     @staticmethod
