@@ -42,7 +42,7 @@ jobs:
           python/tests/test_intelligence_server.py
           python/tests/test_intelligence_approvals.py
           python/tests/test_phase4_durable_operations.py
-          python/tests/test_capability_proposals.py
+          python/tests/test_context_refs_and_capability_proposals.py
 
   workspace:
     runs-on: ubuntu-latest
