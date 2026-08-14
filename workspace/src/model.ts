@@ -18,10 +18,15 @@ export interface RepositorySnapshot extends JsonRecord {
   repository_id?: string;
   id?: string;
   workspace_id?: string;
+  worktree_root?: string;
   path?: string;
   root?: string;
-  branch?: string;
-  head?: string;
+  branch?: string | null;
+  head_oid?: string | null;
+  head_ref?: string | null;
+  staged_count?: number;
+  unstaged_count?: number;
+  untracked_count?: number;
   dirty?: boolean;
 }
 
@@ -38,7 +43,7 @@ export interface SessionSnapshot extends JsonRecord {
 export interface HunterStatus extends JsonRecord {
   configured?: boolean;
   available?: boolean;
-  base_origin?: string;
+  base_origin?: string | null;
 }
 
 export function connectionStateFor(health: HealthSnapshot | null, authenticated: boolean): ConnectionState {
