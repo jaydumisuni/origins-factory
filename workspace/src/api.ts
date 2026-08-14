@@ -81,6 +81,13 @@ export class OriginsApi {
     return this.request("/v1/capabilities");
   }
 
+  createWorkspace(name: string): Promise<JsonRecord> {
+    return this.request("/v1/workspaces", {
+      method: "POST",
+      body: JSON.stringify({ name, authority_refs: [], session_refs: [] }),
+    });
+  }
+
   repositories(workspaceId?: string): Promise<{ repositories: RepositorySnapshot[] }> {
     const query = workspaceId ? `?workspace_id=${encodeURIComponent(workspaceId)}` : "";
     return this.request(`/v1/repositories${query}`);
