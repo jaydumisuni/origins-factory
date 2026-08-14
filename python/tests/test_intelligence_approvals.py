@@ -76,12 +76,26 @@ class FakeApprovalService:
 class FakeStores:
     def __init__(self) -> None:
         self.service = FakeApprovalService()
+        self.evidence: list[dict[str, Any]] = []
 
     def approval_service(self) -> FakeApprovalService:
         return self.service
 
+    def save_evidence(self, value: Any) -> dict[str, Any]:
+        payload = value.public_dict()
+        self.evidence.append(payload)
+        return payload
+
     def snapshot(self) -> dict[str, list[dict[str, Any]]]:
-        return {"operations": [], "approvals": [], "evidence": [], "audit": [], "lessons": []}
+        return {"operations": [], "approvals": [], "evidence": self.evidence, "audit": [], "lessons": []}
+
+
+class FakeEvidenceItem:
+    def __init__(self, **kwargs: Any) -> None:
+        self.kwargs = kwargs
+
+    def public_dict(self) -> dict[str, Any]:
+        return {"evidence_id": "evidence-1", **self.kwargs}
 
 
 class FakeBridgeResponse:
@@ -105,6 +119,7 @@ def mounted_agentops() -> tuple[AgentOpsMount, FakeStores]:
     mount = AgentOpsMount(Path("/durable/agentops"))
     mount._stores_type = lambda _path: stores  # type: ignore[assignment]
     mount._bridge_type = FakeBridge  # type: ignore[assignment]
+    mount._evidence_type = FakeEvidenceItem  # type: ignore[assignment]
     FakeBridge.calls.clear()
     return mount, stores
 
@@ -191,3 +206,29 @@ def test_non_mutating_engineering_attempt_needs_no_approval() -> None:
         "task": "Route and review only",
         "apply_plan": False,
     }) == "not_required"
+
+
+def test_engineering_attempt_evidence_is_compact_owner_schema() -> None:
+    mount, stores = mounted_agentops()
+    stored = mount.record_engineering_attempt(
+        subject={
+            "operation_id": "op-42",
+            "repository_id": "repo-7",
+            "provider_id": "local-coder",
+            "mode": "quick_edit",
+            "apply_plan": False,
+        },
+        status="completed",
+        verdict="PASS",
+        recommendation="complete_candidate",
+        evidence={
+            "route_session_id": "session-route",
+            "sergeant_review_session_id": "session-review",
+            "review_sha256": "abc123",
+        },
+    )
+    assert stored["kind"] == "tool_result"
+    assert stored["source_ref"] == "origins.operation:op-42"
+    assert stored["metadata"]["verdict"] == "PASS"
+    assert stored["metadata"]["origins_attempt_evidence"]["review_sha256"] == "abc123"
+    assert stores.evidence == [stored]
