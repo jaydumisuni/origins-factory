@@ -3,7 +3,7 @@
 **Status:** Mandatory recovery entry point  
 **Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
 **Current implementation truth:** `CURRENT_STATE.md`  
-**Current merged product checkpoint:** Phase 3 / PR #14 merge `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`  
+**Current merged product checkpoint:** Phase 3 / PR #14 merge `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`
 **Current Phase-4 functional proof head:** `ecefbb081cd977c4faed21e0703e80f9de57b6eb`
 
 ## Recover before acting
