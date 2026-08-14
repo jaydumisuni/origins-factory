@@ -1,7 +1,8 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const target = process.env.VITE_ORIGINSD_PROXY_TARGET ?? "http://127.0.0.1:48700";
+const originsdTarget = process.env.VITE_ORIGINSD_PROXY_TARGET ?? "http://127.0.0.1:48700";
+const intelligenceTarget = process.env.VITE_ORIGINS_INTELLIGENCE_PROXY_TARGET ?? "http://127.0.0.1:48710";
 
 export default defineConfig({
   plugins: [react()],
@@ -11,9 +12,14 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/origins-api": {
-        target,
+        target: originsdTarget,
         changeOrigin: false,
         rewrite: (path) => path.replace(/^\/origins-api/, ""),
+      },
+      "/origins-intelligence": {
+        target: intelligenceTarget,
+        changeOrigin: false,
+        rewrite: (path) => path.replace(/^\/origins-intelligence/, ""),
       },
     },
   },
