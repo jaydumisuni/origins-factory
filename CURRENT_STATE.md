@@ -1,8 +1,8 @@
 # Origins Factory — Current State
 
 **Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
-**Current merged product checkpoint:** Phase 3 / PR #14 merged at `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`  
-**Current Phase-4 implementation/proof head:** `ecefbb081cd977c4faed21e0703e80f9de57b6eb`  
+**Current merged product checkpoint:** Phase 3 / PR #14 merged at `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`
+**Current Phase-4 implementation/proof head:** `ecefbb081cd977c4faed21e0703e80f9de57b6eb`
 **Security state:** Stage-1 and Stage-2 authority mechanics remain proven and merged; generalized model/runtime activation remains false.
 
 ## Do not reopen completed work
