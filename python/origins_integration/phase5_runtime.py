@@ -34,9 +34,19 @@ class OwnerResponse:
 
 
 class JsonOwnerClient:
-    def __init__(self, base_url: str, *, bearer_token: str = "", timeout: float = 15.0):
+    def __init__(
+        self,
+        base_url: str,
+        *,
+        default_headers: dict[str, str] | None = None,
+        timeout: float = 15.0,
+    ):
         self.base_url = _loopback_url(base_url, default=base_url)
-        self.bearer_token = str(bearer_token or "")
+        self.default_headers = {
+            str(key): str(value)
+            for key, value in dict(default_headers or {}).items()
+            if str(key).strip() and str(value).strip()
+        }
         self.timeout = max(1.0, min(60.0, float(timeout)))
 
     def request(
@@ -53,11 +63,9 @@ class JsonOwnerClient:
         if query:
             url += "?" + urllib.parse.urlencode(query)
         body = None if payload is None else json.dumps(payload, separators=(",", ":")).encode("utf-8")
-        headers = {"Accept": "application/json"}
+        headers = {"Accept": "application/json", **self.default_headers}
         if body is not None:
             headers["Content-Type"] = "application/json"
-        if self.bearer_token:
-            headers["Authorization"] = f"Bearer {self.bearer_token}"
         request = urllib.request.Request(url, data=body, method=method.upper(), headers=headers)
         try:
             with urllib.request.urlopen(request, timeout=self.timeout) as response:
@@ -87,7 +95,9 @@ class OracleBrowserMount:
     ALLOWED_AUTHORITIES = frozenset({"observe", "assist", "control"})
 
     def __init__(self, base_url: str = "http://127.0.0.1:8765", *, pairing_token: str = ""):
-        self.client = JsonOwnerClient(base_url, bearer_token=pairing_token)
+        token = str(pairing_token or "").strip()
+        headers = {"X-Oracle-Pairing": token} if token else {}
+        self.client = JsonOwnerClient(base_url, default_headers=headers)
 
     @classmethod
     def from_env(cls) -> "OracleBrowserMount":
@@ -112,13 +122,11 @@ class OracleBrowserMount:
         authority = str(authority or "").strip().lower()
         if authority not in self.ALLOWED_AUTHORITIES:
             raise Phase5Error(f"unsupported Oracle browser authority: {authority}")
-        # Control is an explicit handoff. The browser owner remains the final authority gate.
         if authority == "control" and not approved:
             raise Phase5Error("control authority requires an explicit approved handoff")
         return self._command({"type": "setAuthority", "authority": authority}, approved=approved)
 
     def human_takeover(self) -> dict[str, Any]:
-        # Oracle itself drops authority to observe, makes the browser visible and detaches debuggers.
         return self._command({"type": "humanTakeover"}, approved=True)
 
     def command(self, command: dict[str, Any], *, approved: bool = False) -> dict[str, Any]:
@@ -178,7 +186,6 @@ class LumiMount:
             raise Phase5Error("Lumi handoff URL must be an absolute http/https/ftp URL")
         if parsed.username or parsed.password:
             raise Phase5Error("credentials must not be embedded in a Lumi handoff URL")
-        # Deliberately omit target_dir/temp_dir/request secrets. Lumi owns destination policy and vault state.
         response = self.client.request(
             "POST",
             "/api/downloads/start",
