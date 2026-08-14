@@ -34,10 +34,7 @@ pub struct WriteFileRequest {
 
 pub fn router(state: WorkspaceFileState) -> Router {
     Router::new()
-        .route(
-            "/v1/repositories/:repository_id/files",
-            get(list_files),
-        )
+        .route("/v1/repositories/:repository_id/files", get(list_files))
         .route(
             "/v1/repositories/:repository_id/file",
             get(read_file).post(write_file),
