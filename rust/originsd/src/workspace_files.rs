@@ -177,6 +177,7 @@ pub fn write_repository_file(
             bytes.len()
         )));
     }
+
     let root = repository_root(store, policy, repository_id)?;
     let normalized = normalize_relative(relative_path)?;
     if normalized.is_empty() {
@@ -225,46 +226,100 @@ pub fn write_repository_file(
         });
     }
 
-    fs::write(&candidate, bytes).map_err(|error| WorkspaceFileError::io(error.to_string()))?;
     let sha256 = sha256_bytes(bytes);
     let repository = store
         .get_repository(repository_id)
         .map_err(WorkspaceFileError::store)?;
-    let workspace_id = repository["workspace_id"].as_str().ok_or_else(|| {
-        WorkspaceFileError::store(StoreError::Corrupt(
-            "repository workspace_id missing".to_owned(),
-        ))
-    })?;
-    let mut connection = store.connection().map_err(WorkspaceFileError::store)?;
-    let transaction = connection
-        .transaction_with_behavior(TransactionBehavior::Immediate)
-        .map_err(StoreError::from)
-        .map_err(WorkspaceFileError::store)?;
-    let event = append_event(
-        &transaction,
-        workspace_id,
+    let workspace_id = repository["workspace_id"]
+        .as_str()
+        .ok_or_else(|| {
+            WorkspaceFileError::store(StoreError::Corrupt(
+                "repository workspace_id missing".to_owned(),
+            ))
+        })?
+        .to_owned();
+
+    let request_event = append_file_event(
+        store,
+        &workspace_id,
+        "workspace.file_write_requested",
+        json!({
+            "repository_id": repository_id,
+            "path": normalized,
+            "bytes": bytes.len(),
+            "sha256": sha256,
+            "expected_sha256": expected_sha256,
+        }),
+    )?;
+    let request_event_id = request_event["event_id"].as_str().unwrap_or("").to_owned();
+
+    if let Err(error) = fs::write(&candidate, bytes) {
+        let failure_result = append_file_event(
+            store,
+            &workspace_id,
+            "workspace.file_write_failed",
+            json!({
+                "repository_id": repository_id,
+                "path": normalized,
+                "bytes": bytes.len(),
+                "sha256": sha256,
+                "request_event_id": request_event_id,
+                "error_kind": format!("{:?}", error.kind()),
+            }),
+        );
+        if let Err(evidence_error) = failure_result {
+            return Err(WorkspaceFileError {
+                code: "STORE_ERROR",
+                message: format!(
+                    "file write failed ({error}); failure evidence could not be appended ({})",
+                    evidence_error.message
+                ),
+            });
+        }
+        return Err(WorkspaceFileError::io(error.to_string()));
+    }
+
+    let event = append_file_event(
+        store,
+        &workspace_id,
         "workspace.file_written",
         json!({
             "repository_id": repository_id,
             "path": normalized,
             "bytes": bytes.len(),
             "sha256": sha256,
+            "request_event_id": request_event_id,
         }),
-        Vec::new(),
-    )
-    .map_err(WorkspaceFileError::store)?;
-    transaction
-        .commit()
-        .map_err(StoreError::from)
-        .map_err(WorkspaceFileError::store)?;
+    )?;
 
     Ok(json!({
         "repository_id": repository_id,
         "path": normalized,
         "bytes": bytes.len(),
         "sha256": sha256,
+        "request_event": request_event,
         "event": event,
     }))
+}
+
+fn append_file_event(
+    store: &Store,
+    workspace_id: &str,
+    kind: &str,
+    payload: Value,
+) -> Result<Value, WorkspaceFileError> {
+    let mut connection = store.connection().map_err(WorkspaceFileError::store)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(StoreError::from)
+        .map_err(WorkspaceFileError::store)?;
+    let event = append_event(&transaction, workspace_id, kind, payload, Vec::new())
+        .map_err(WorkspaceFileError::store)?;
+    transaction
+        .commit()
+        .map_err(StoreError::from)
+        .map_err(WorkspaceFileError::store)?;
+    Ok(event)
 }
 
 fn repository_root(
