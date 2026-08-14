@@ -49,6 +49,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
             return
         routes: dict[str, Callable[[], dict[str, object]]] = {
             "/v1/operations": self.server.runtime.operations,
+            "/v1/approvals": self.server.runtime.approvals,
             "/v1/providers": self.server.runtime.providers,
         }
         action = routes.get(path)
@@ -64,6 +65,8 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         path = urlsplit(self.path).path
         routes: dict[str, Callable[[dict[str, object]], dict[str, object]]] = {
             "/v1/operations": self.server.runtime.run_agentops,
+            "/v1/approvals": self.server.runtime.create_approval,
+            "/v1/approvals/decision": self.server.runtime.decide_approval,
             "/v1/capability-proposals": self.server.runtime.compile_capability,
             "/v1/engineering/attempt": self.server.runtime.engineering_attempt,
         }
