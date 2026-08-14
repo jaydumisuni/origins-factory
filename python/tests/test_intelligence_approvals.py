@@ -21,6 +21,10 @@ class PublicValue:
     def public_dict(self) -> dict[str, Any]:
         return self.value
 
+    @property
+    def approval_id(self) -> str:
+        return str(self.value["approval_id"])
+
 
 class FakeApprovalService:
     def __init__(self) -> None:
