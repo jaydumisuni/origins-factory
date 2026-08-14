@@ -73,7 +73,9 @@ pub fn list_repository_files(
     }
 
     let mut entries = Vec::new();
-    for item in fs::read_dir(&requested).map_err(|error| WorkspaceFileError::io(error.to_string()))? {
+    for item in
+        fs::read_dir(&requested).map_err(|error| WorkspaceFileError::io(error.to_string()))?
+    {
         if entries.len() >= MAX_LIST_ENTRIES {
             break;
         }
@@ -134,8 +136,8 @@ pub fn read_repository_file(
 ) -> Result<Value, WorkspaceFileError> {
     let root = repository_root(store, policy, repository_id)?;
     let path = existing_path_under_root(&root, relative_path)?;
-    let metadata = fs::symlink_metadata(&path)
-        .map_err(|error| WorkspaceFileError::io(error.to_string()))?;
+    let metadata =
+        fs::symlink_metadata(&path).map_err(|error| WorkspaceFileError::io(error.to_string()))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
         return Err(WorkspaceFileError::unsupported(
             "editor reads regular non-symlink files only",
@@ -187,8 +189,8 @@ pub fn write_repository_file(
     let parent = candidate
         .parent()
         .ok_or_else(|| WorkspaceFileError::invalid("file parent is required"))?;
-    let canonical_parent = fs::canonicalize(parent)
-        .map_err(|error| WorkspaceFileError::io(error.to_string()))?;
+    let canonical_parent =
+        fs::canonicalize(parent).map_err(|error| WorkspaceFileError::io(error.to_string()))?;
     if !canonical_parent.starts_with(&root) {
         return Err(WorkspaceFileError::invalid(
             "file parent escaped repository root",
@@ -209,13 +211,14 @@ pub fn write_repository_file(
             return Err(WorkspaceFileError::invalid("file escaped repository root"));
         }
         if let Some(expected) = expected_sha256.filter(|value| !value.trim().is_empty()) {
-            let current = fs::read(&candidate)
-                .map_err(|error| WorkspaceFileError::io(error.to_string()))?;
+            let current =
+                fs::read(&candidate).map_err(|error| WorkspaceFileError::io(error.to_string()))?;
             let actual = sha256_bytes(&current);
             if actual != expected {
                 return Err(WorkspaceFileError {
                     code: "FILE_CHANGED",
-                    message: "file changed since it was opened; reload before overwriting".to_owned(),
+                    message: "file changed since it was opened; reload before overwriting"
+                        .to_owned(),
                 });
             }
         }
@@ -348,8 +351,8 @@ fn existing_path_under_root(root: &Path, relative: &str) -> Result<PathBuf, Work
     } else {
         root.join(Path::new(&normalized))
     };
-    let canonical = fs::canonicalize(candidate)
-        .map_err(|error| WorkspaceFileError::io(error.to_string()))?;
+    let canonical =
+        fs::canonicalize(candidate).map_err(|error| WorkspaceFileError::io(error.to_string()))?;
     if !canonical.starts_with(root) {
         return Err(WorkspaceFileError::invalid("path escaped repository root"));
     }
