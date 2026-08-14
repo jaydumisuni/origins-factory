@@ -10,6 +10,7 @@ from typing import Any, Iterator
 
 import pytest
 
+from origins_integration.oracle_live import OracleLiveError
 from origins_integration.phase5_runtime import (
     LumiMount,
     OracleBrowserMount,
@@ -216,9 +217,40 @@ class FakeLumi:
         return {"owner": "lumi", "owner_task_id": task_id, "path": "/tmp/file.bin"}
 
 
+class FakeRemoteOracle:
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "owner": "oracle",
+            "available": True,
+            "node_id": "node-fixed",
+            "file_retrieval": True,
+            "remote_application_attachment": {
+                "available": False,
+                "reason": "ORACLE_DESKTOP_APPLICATION_SESSION_CONTRACT_UNAVAILABLE",
+            },
+        }
+
+    def retrieve_file(self, remote_path: str, *, approved: bool) -> dict[str, Any]:
+        if not approved:
+            raise OracleLiveError("remote file retrieval requires explicit approval")
+        return {
+            "schema_version": "origins.oracle-remote-file-receipt.v1",
+            "owner": "oracle",
+            "node_id": "node-fixed",
+            "remote_path": remote_path,
+            "sha256": "a" * 64,
+            "bytes_transferred": 4,
+            "artifact_candidate": {"owner": "oracle", "path": "/safe/transfer/file.bin"},
+        }
+
+
 @contextmanager
-def phase5_server() -> Iterator[str]:
-    service = Phase5Service(oracle=FakeOracle(), lumi=FakeLumi())  # type: ignore[arg-type]
+def phase5_server(*, remote: bool = False) -> Iterator[str]:
+    service = Phase5Service(
+        oracle=FakeOracle(),  # type: ignore[arg-type]
+        lumi=FakeLumi(),  # type: ignore[arg-type]
+        oracle_remote=FakeRemoteOracle() if remote else None,  # type: ignore[arg-type]
+    )
     server = ThreadingHTTPServer(("127.0.0.1", 0), Phase5Handler)
     server.phase5 = service  # type: ignore[attr-defined]
     server.local_token = "local-secret"  # type: ignore[attr-defined]
@@ -269,6 +301,7 @@ def test_phase5_public_health_is_sanitized_and_state_routes_require_bearer() -> 
             "lumi": {"available": True},
             "ok": True,
             "oracle": {"available": False},
+            "oracle_remote": {"configured": False},
             "service": "origins-phase5",
         }
         status, body = read_json(f"{base_url}/v1/lumi")
@@ -289,3 +322,52 @@ def test_phase5_service_rejects_lumi_destination_and_secret_overrides() -> None:
             )
             assert status == 400
             assert "does not accept" in body["error"]
+
+
+def test_remote_node_route_is_protected_and_application_attachment_is_truthful() -> None:
+    with phase5_server(remote=True) as base_url:
+        status, body = read_json(f"{base_url}/v1/oracle/node")
+        assert status == 401
+        assert body == {"error": "UNAUTHORIZED"}
+
+        status, node = read_json(f"{base_url}/v1/oracle/node", token="local-secret")
+        assert status == 200
+        assert node["node_id"] == "node-fixed"
+        assert node["remote_application_attachment"] == {
+            "available": False,
+            "reason": "ORACLE_DESKTOP_APPLICATION_SESSION_CONTRACT_UNAVAILABLE",
+        }
+
+
+def test_remote_file_route_requires_approval_and_blocks_authority_overrides() -> None:
+    with phase5_server(remote=True) as base_url:
+        status, body = post_json(
+            f"{base_url}/v1/oracle/files/retrieve",
+            {"remote_path": "/home/node/file.bin", "approved": False},
+            token="local-secret",
+        )
+        assert status == 400
+        assert "explicit approval" in body["error"]
+
+        for forbidden in ("node_id", "destination", "local_path", "token", "headers", "upload", "overwrite"):
+            status, body = post_json(
+                f"{base_url}/v1/oracle/files/retrieve",
+                {
+                    "remote_path": "/home/node/file.bin",
+                    "approved": True,
+                    forbidden: "override",
+                },
+                token="local-secret",
+            )
+            assert status == 400
+            assert "cannot override" in body["error"]
+
+        status, receipt = post_json(
+            f"{base_url}/v1/oracle/files/retrieve",
+            {"remote_path": "/home/node/file.bin", "approved": True},
+            token="local-secret",
+        )
+        assert status == 201
+        assert receipt["node_id"] == "node-fixed"
+        assert receipt["remote_path"] == "/home/node/file.bin"
+        assert "secret" not in json.dumps(receipt).lower()
