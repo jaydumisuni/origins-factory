@@ -45,7 +45,7 @@ impl WorkspaceFileError {
     }
 
     fn store(error: StoreError) -> Self {
-        let code = match error {
+        let code = match &error {
             StoreError::NotFound(_) => "RESOURCE_NOT_FOUND",
             StoreError::InvalidInput(_) => "INVALID_PATH",
             StoreError::Conflict(_) => "FILE_CHANGED",
