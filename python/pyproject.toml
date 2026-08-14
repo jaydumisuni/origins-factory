@@ -7,6 +7,7 @@ name = "origins-contracts"
 version = "0.1.0"
 description = "Origins Factory contract spine"
 requires-python = ">=3.10"
+dependencies = ["websockets==16.1.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
