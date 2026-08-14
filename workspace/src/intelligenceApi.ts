@@ -17,6 +17,11 @@ export interface OperationsSnapshot extends JsonRecord {
   lessons?: JsonRecord[];
 }
 
+export interface ApprovalSnapshot extends JsonRecord {
+  owner?: string;
+  pending?: JsonRecord[];
+}
+
 export interface ProviderSnapshot extends JsonRecord {
   owner?: string;
   default_review?: string;
@@ -78,12 +83,30 @@ export class IntelligenceApi {
     return this.request<OperationsSnapshot>("/v1/operations");
   }
 
+  approvals(): Promise<ApprovalSnapshot> {
+    return this.request<ApprovalSnapshot>("/v1/approvals");
+  }
+
   providers(): Promise<ProviderSnapshot> {
     return this.request<ProviderSnapshot>("/v1/providers");
   }
 
   runOperation(payload: JsonRecord): Promise<JsonRecord> {
     return this.request<JsonRecord>("/v1/operations", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  createApproval(payload: JsonRecord): Promise<JsonRecord> {
+    return this.request<JsonRecord>("/v1/approvals", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  decideApproval(payload: JsonRecord): Promise<JsonRecord> {
+    return this.request<JsonRecord>("/v1/approvals/decision", {
       method: "POST",
       body: JSON.stringify(payload),
     });
