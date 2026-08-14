@@ -14,6 +14,7 @@ pub mod repository;
 pub mod repository_capabilities;
 pub mod sessions;
 pub mod store;
+pub mod workspace_files;
 pub mod workspace_roots;
 
 use crate::auth::load_or_create_token;
