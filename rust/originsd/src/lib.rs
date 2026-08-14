@@ -111,6 +111,7 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let store = Store::open(config.data_dir.join(DATABASE_FILE))
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
+    applications::initialize(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_capabilities(&store)
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     synchronize_hunter_capabilities(&store, hunter_configured)
