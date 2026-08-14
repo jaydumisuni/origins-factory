@@ -3,8 +3,11 @@
 **Status:** Mandatory recovery entry point  
 **Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
 **Current implementation truth:** `CURRENT_STATE.md`  
-**Current merged product checkpoint:** Phase 3 / PR #14 merge `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`
-**Current Phase-4 functional proof head:** `ecefbb081cd977c4faed21e0703e80f9de57b6eb`
+**Current merged checkpoint:** Phase 4 / PR #15 merge `877a25557cfddb451d154f01e238a55e972040bf`  
+**Active phase:** Phase 5 — Oracle, Lumi, applications  
+**Active branch:** `build/phase5-oracle-lumi-applications`  
+**Active PR:** #16, draft  
+**Owner hold:** finish pre-UI backend/proof, then STOP before Workspace UI.
 
 ## Recover before acting
 
@@ -13,282 +16,204 @@ Read in this order:
 1. this file;
 2. `CURRENT_STATE.md`;
 3. `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`;
-4. current `main` source/proof;
-5. current Phase branch/source when a phase is in promotion;
-6. owning external repositories for any mounted capability being changed.
+4. current `main` and current Phase-5 branch;
+5. owning external repositories for any mounted capability being changed;
+6. current proof/CI/Oracle evidence.
 
-Do not ask the owner to repeat recoverable evidence. Do not infer unfinished work from old checkpoints without checking current GitHub/Oracle evidence first.
+Do not ask the owner to repeat recoverable evidence. Do not reopen completed phases because an older handoff or conversation says they were pending.
 
-## Product identity lock
+## Product / ownership lock
 
-Origins Factory is a model-optional, evidence-native mission operating environment. It is not an OS, IDE clone, AI sidebar, dashboard, model router or replacement for specialist systems.
+Origins Factory is a model-optional, evidence-native mission operating environment. Keep semantic, mechanical and assurance truth separate.
 
-Keep three truths separate:
+Ownership:
 
-- **Semantic:** Hunter + AgentOps;
-- **Mechanical:** `originsd`, specialist Gateways/Nodes and later explicitly authorized integrations;
-- **Assurance:** Sergeant, X-Ray, deterministic proof, specialist governors and human acceptance.
-
-Ownership remains:
-
-- Hunter / Pete — mission intelligence and optional outside reasoning;
-- AgentOps — semantic lifecycle, durable Operations, approval/authorization evidence and semantic Attempt evidence;
-- CodeOps — repository engineering and provider/model/client routing;
-- Sergeant — independent engineering review and verdict semantics;
-- Origins — persistent Workspace/Repository/Session state, mechanical integration and capability enforcement;
-- Oracle/Lumi/X-Ray/specialist Gateways — their existing specialist boundaries.
+- Hunter/Pete — mission intelligence/reasoning;
+- AgentOps — durable semantic Operation lifecycle and approval/authorization evidence;
+- CodeOps — repository engineering/provider routing;
+- Sergeant — independent engineering review;
+- Origins/originsd — Workspace/Repository/Session mechanical truth, native application launch, local Artifact handling and capability enforcement;
+- Oracle — retained browser + reviewed remote Node/workstation transport;
+- Lumi — download queues/resume/acquisition verification;
+- X-Ray/specialist Gateways — specialist evidence/execution.
 
 Never duplicate an owning engine inside Origins.
 
 ## Completed checkpoints — do not reopen
 
-### Stage-1 and authority spine
+- Origins PR #13 — dormant Stage-2 authority runtime/native containment — merged.
+- Origins PR #14 — Phase-3 Workspace shell — merge `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`.
+- Hunter-AgentOps PR #17 — durable Department Operations — merge `054a09e7571b08e5865499d66ea6db5ae6eb43a6`.
+- Oracle PR #117 — terminal exit-status truth — merge `50521d5c215f09a212ffd016f487cacb198ff087`.
+- Origins PR #15 — Phase-4 intelligence/assurance plane — merge `877a25557cfddb451d154f01e238a55e972040bf`.
 
-- Origins PR #11 — `ExecutionScope + CapabilityLease` v1.1 — merge `5a7f3cd6e73eed9326b4c6deedbf4e9658271233`.
-- Hunter-AgentOps PR #16 — durable approval/Auth evidence — merge `721be17f1afbdf73cbc4302d89c733596d5160b6`.
-- Origins PR #12 — Lease Issuer Preflight v1 — merge `7454f581d9bdde84e030a9b22f9b2f1f41e06a93`.
-- Origins PR #13 — dormant Stage-2 authority runtime/native containment — merge `c87a5790d1ea1bcb0393a5a5075c18d503ed9c74`.
+Phase 4 target-host proof already established the real AgentOps/CodeOps/Sergeant owner chain on Kratos. Do not rebuild it.
 
-### Phase 3 Workspace
+## Phase 5 — current implementation
 
-Origins PR #14 merged at:
+### Oracle browser
 
-```text
-106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f
-```
+`python/origins_integration/phase5_runtime.py` mounts the existing Oracle browser authority:
 
-Phase 3 provides the Workspace client and the bounded native editor/process/recovery surfaces. Do not rebuild it.
+- loopback owner endpoint;
+- Oracle authority modes `observe / assist / act`;
+- explicit approval before `act`;
+- dedicated human takeover;
+- pairing token sent as Bearer auth;
+- disconnected browser remains unavailable;
+- no shadow browser state database.
 
-### Phase-4 external prerequisites
+### Lumi
 
-Hunter-AgentOps PR #17 merged at:
+Origins projects Lumi queues/downloads and can hand a completed owner task into Artifact-candidate flow. Lumi keeps destination, resume, request envelope and secret ownership. Browser callers cannot inject Lumi destination, headers or cookies.
 
-```text
-054a09e7571b08e5865499d66ea6db5ae6eb43a6
-```
+### Native applications
 
-This makes generic Department Operations restart-durable in the owner repository. Origins must consume that owner authority, not shadow it.
+`rust/originsd/src/applications.rs` provides a server-configured application registry and durable/idempotent launcher. The caller selects an application ID only; executable/argv/cwd remain server-owned. Launch intent is persisted before spawn; environment is sanitized; replay does not spawn twice.
 
-Oracle PR #117 merged at:
+### Artifacts
 
-```text
-50521d5c215f09a212ffd016f487cacb198ff087
-```
+`rust/originsd/src/artifacts.rs` provides content-addressed immutable Artifact materialization/retrieval. Sources must be regular files under configured `ORIGINS_ARTIFACT_ROOTS`. Exact-byte dedupe is Workspace-scoped and provenance remains visible.
 
-Oracle Live proof truth now requires transport success, no timeout and terminal exit code exactly 0.
+`artifact_projection` is shared and adversarially validated across Rust/Python/TypeScript.
 
-## Phase 4 — current promotion candidate
+### Oracle remote Node / file retrieval
 
-Branch:
+`python/origins_integration/oracle_live.py` is a thin client over Oracle's frozen `oracle.live.v1` contract. It does not implement an alternate remote executor.
 
-```text
-build/phase4-intelligence-assurance
-```
+Server-owned configuration selects the exact Node. The browser cannot provide Node ID, token, destination, upload/write or overwrite authority.
 
-Functional implementation/proof head:
-
-```text
-ecefbb081cd977c4faed21e0703e80f9de57b6eb
-```
-
-The Phase-4 implementation mounts existing owners rather than creating new engines:
+Read-only retrieval uses:
 
 ```text
-Hunter context/intelligence
-        ↓
-AgentOps durable Operation + approval semantics
-        ↓
-CodeOps provider/engineering routing
-        ↓
-originsd supervised Sessions / mechanical evidence
-        ↓
-Sergeant independent review
-        ↓
-AgentOps compact semantic Attempt evidence
+node.ping
+node.capabilities
+filesystem.stat
+filesystem.hash
+stream.open
+filesystem.download.start
+ORL1 binary chunks
+stream ACK/backpressure
+stream.close SHA-256
 ```
 
-### Semantic/runtime boundary
+Origins verifies:
 
-The Phase-4 semantic service is loopback-only, bearer-protected, bounded-JSON and sanitized on unauthenticated health.
+- routed Node identity;
+- required file capabilities;
+- regular-file status;
+- bounded size;
+- chunk sequence and absolute offset;
+- pre-transfer SHA;
+- received-byte SHA;
+- request-result SHA;
+- stream-close SHA;
+- byte count;
+- partial-file cleanup on failure.
 
-The browser cannot provide owner approval truth. AgentOps owns request, decision and evidence state.
+Successful transfer is atomically placed under the configured Origins transfer root and returned as a sanitized Oracle receipt + Artifact candidate. The transfer root must also be in `ORIGINS_ARTIFACT_ROOTS` before native Artifact promotion.
 
-Playbooks are selected by bounded owner IDs; browser input does not become arbitrary filesystem authority.
+### Remote native application attachment
 
-Provider status is projected without secret values.
+Do **not** implement around the owner.
 
-Capability compilation remains proposal-only and cannot self-activate or widen authority.
+Oracle's roadmap still marks **Phase 18 — Desktop eyes and hands — NOT STARTED**. The frozen workstation RPC is sufficient for Node/file/process primitives, but there is no accepted durable remote native-application attachment Session contract.
 
-### Hosted proof
-
-Phase-4 GitHub Actions run:
+Origins must therefore expose:
 
 ```text
-31799458371
+available = false
+reason = ORACLE_DESKTOP_APPLICATION_SESSION_CONTRACT_UNAVAILABLE
 ```
 
-PASS:
+Do not substitute process launch, generic pixels, or a new Origins remote-desktop engine.
 
-- semantic plane compile;
-- Phase-4 semantic/approval/durable Operation tests;
-- proof harness compile;
-- Workspace install/typecheck/tests/production build;
-- repository whitespace gate.
+## Phase-5 proof state
 
-Phase 4 changes no Rust files relative to merged Phase 3.
-
-### Oracle AgentOps owner proof
+Dedicated workflow:
 
 ```text
-oracle_control/live_results/origins-phase4-owner-proof-20260814-1203.json
+.github/workflows/phase5-oracle-lumi.yml
 ```
 
-PASS / exit code 0:
+The workflow explicitly fails if the branch contains a `workspace/` delta, enforcing the owner's current UI hold.
 
-- durable Operation accepted;
-- restart replay idempotent;
-- execution intentionally undispatched.
+Pre-documentation implementation head `b71bc99a3bb6a95a85b65db17d50858881150f19` passed the dedicated Phase-5 gate:
 
-### Oracle live four-owner proof
+- exact Python package/dependency install;
+- compile;
+- Oracle/Lumi authority tests;
+- remote Node/ORL1 stream integrity tests;
+- Rust 1.75 format;
+- Clippy `-D warnings`;
+- all Rust tests;
+- whitespace.
 
-Command/result identity:
+Contract Spine initially failed only because that inherited workflow installed `pytest` while collecting Phase-5 tests requiring the newly declared runtime dependency. `.github/workflows/contract-spine.yml` has been corrected to install the Python package and declared dependencies before the full Python corpus. Final branch head must re-prove all gates.
+
+Target-host proof tool:
 
 ```text
-origins-phase4-live-owner-proof-20260814-122210
+tools/prove_phase5_oracle_remote.py
 ```
 
-PASS / exit code 0 / `PHASE4_LIVE_OWNER_STACK_OK`.
+It must be run on the exact reviewed head against real Oracle Live before this pre-UI backend is frozen.
 
-Pinned owner revisions:
+## Oracle/Kratos execution rules
 
-```text
-Origins   ecefbb081cd977c4faed21e0703e80f9de57b6eb
-AgentOps  054a09e7571b08e5865499d66ea6db5ae6eb43a6
-CodeOps   e72afe60ebab41d9f36dc729ad798d5aa4071e83
-Sergeant  fe491502a960e6b581a7d07e35683aa28e58b9f8
-```
-
-Observed proof:
-
-```text
-proof_scope             live_owner
-mount_status            proven
-live_engineering_proven true
-selected_provider       fireworks-code
-enabled_provider_count  3
-project_verdict         BLOCK
-receipt_sha256           51daf4fd80c8c4715ffa858617811afdc961b3e8d33974489e73b172820be5d4
-review_sha256            f801c6b6e3c6fc91fdc541cf3132c74fdee0aa86d555f8adb16c8ed89d53d563
-```
-
-`BLOCK` is an accepted canonical Sergeant verdict. Do not reinterpret it as a failed integration proof; it demonstrates the review authority remained independent.
-
-The host proof used real owner source checkouts and temporary executable entrypoint shims only to expose real owner CLIs to the pre-existing `originsd` executable allowlist. No owner engine was copied and no permanent host package/PATH mutation was performed.
-
-## Current authority chain
-
-The Stage-2 mechanical authority chain remains unchanged:
-
-```text
-AgentOps durable approval + one-time Auth binding
-        ↓
-Origins eligible preflight
-        ↓
-durable single-use CapabilityLease issuance
-        ↓
-current invocation revalidation
-        ↓
-durable Repository projection
-        ↓
-existing ProcessPolicy
-        ↓
-native SandboxSpec
-        ↓
-Linux / Windows containment
-```
-
-Phase 4 adds semantic owner integration around that chain. It does not grant new generalized model authority.
-
-## Dormant activation boundary
-
-Generalized model/runtime activation remains false.
-
-Do not infer authority from implementation availability. Still inactive unless separately owner-approved and mechanically proven:
-
-- model-facing lease issuance;
-- generalized agent terminal authority;
-- browser authority;
-- MCP authority;
-- exact endpoint network broker;
-- delegated remote authority;
-- unrestricted candidate mutation;
-- automatic/self-expanding capability authority.
-
-The Phase-4 live owner proof is human-controlled engineering evidence, not a model permission grant.
-
-## Oracle execution rules recovered during Phase 4
-
-Kratos proof host:
+Target Node:
 
 ```text
 kratos-hp-290-g4-microtower-pc
 ```
 
-Stable Origins checkout:
+Origins checkout:
 
 ```text
 /home/kratos/origins-factory
 ```
 
-Owner checkouts used by Phase 4:
+Use Oracle Live direct argv. Treat terminal exit code, timeout and signal as command truth; transport `ok` alone is insufficient.
 
-```text
-/home/kratos/Hunter-AgentOps
-/home/kratos/hunter-codeops
-/home/kratos/Sergeant
-```
+A Phase-5 branch fetch already returned terminal exit code 0 over `oracle.live.v1` with `githubInteractivePathUsed=false`.
 
-Use Oracle Live as direct argv terminal execution. Treat the terminal result as truth, not only transport `ok`.
+Do not echo Oracle Live tokens. Use the existing local token/token-file configuration.
 
-Operational details:
+## Dormant authority boundary
 
-- Live command timeout ceiling: 120 seconds;
-- user-local Rust toolchain is under `/home/kratos/.cargo/bin`;
-- Oracle Live's sanitized PATH may not contain Cargo, so use the absolute tool path when needed;
-- retryable socket closure can occur after host execution; inspect host/result state before repeating mutation commands;
-- concurrent result publication can race GitHub `main`; a publication race is bookkeeping, not command evidence.
+Phase 5 does not activate generalized model/runtime authority. Still not implicitly authorized:
 
-## Review-policy lock
+- generalized model terminal authority;
+- model-facing lease issuance;
+- MCP authority;
+- unrestricted endpoint/network authority;
+- delegated remote mutation;
+- unrestricted candidate mutation;
+- self-expanding capability authority.
 
-Promotion authority remains:
+Remote file retrieval is an explicit human-approved, read-only mounted capability; it is not generalized remote authority.
 
-```text
-exact-head engineering proof
-+ adversarial verification
-+ independent implementation review
-+ explicit owner approval
-```
+## Exact next action — then HOLD
 
-The separate external Stage-2 Sec-Ops gate remains retired. Historical Sec-Ops material stays an internal hostile-test checklist unless the owner explicitly reintroduces that authority.
+1. Re-prove the final documentation head in the dedicated Phase-5 workflow and all inherited Origins gates.
+2. Pin `/home/kratos/origins-factory` to that exact head.
+3. Install the declared Python package in an isolated Kratos proof environment.
+4. Run focused Phase-5 tests through Oracle.
+5. Run `tools/prove_phase5_oracle_remote.py` against a harmless real file through Oracle Live; require exact Node, byte count, SHA and token non-disclosure.
+6. Update draft PR #16 with final pre-UI proof and the explicit Oracle desktop/application owner gap.
+7. **STOP. Do not modify `workspace/`.**
 
-## Exact next action
-
-1. Re-prove the documentation-only Phase-4 branch head in hosted CI.
-2. Open the Phase-4 PR against `main` with exact source/owner proof and dormant-authority nonclaims.
-3. Wait for relevant inherited Origins checks; do not force merge around a red/pending authority gate.
-4. Merge with expected head SHA only after the PR head is proven and stable.
-5. Recover the Phase-5 roadmap plus existing Oracle/Lumi/application handoff work before adding new implementation.
-
-Do not assume Phase 5 is empty. Search current Origins history and owning repositories first.
+Resume only when the owner explicitly says to start the Phase-5 UI.
 
 ## Session close rule
 
-After substantial Origins work:
+After this pre-UI freeze, leave:
 
-1. preserve exact code/proof checkpoint;
-2. update `CURRENT_STATE.md`;
-3. update this handoff when the next valid action changes;
-4. update the product plan only for owner-accepted architecture changes;
-5. check central `TTG-progress` / `TTG-ecosystem` / `TTG-decisions` before adding ecosystem-level recovery;
-6. preserve unresolved limitations explicitly;
-7. leave one clean continuation point.
+- exact branch SHA;
+- exact workflow run IDs/results;
+- exact Oracle result/proof identity;
+- PR #16 still draft;
+- remote application attachment limitation explicit;
+- one continuation point: Phase-5 Workspace UI.
+
+Do not update the master product plan unless the owner accepts an architecture change; this work implements the existing plan.
