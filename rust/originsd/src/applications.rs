@@ -528,7 +528,7 @@ async fn launch_application(
 #[derive(Debug)]
 enum LaunchReservation {
     New,
-    Replayed(StoredLaunch),
+    Replayed(Box<StoredLaunch>),
 }
 
 fn reserve_launch(
@@ -550,7 +550,7 @@ fn reserve_launch(
             )));
         }
         transaction.commit()?;
-        return Ok(LaunchReservation::Replayed(existing));
+        return Ok(LaunchReservation::Replayed(Box::new(existing)));
     }
 
     let now = now_rfc3339();
