@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "python"))
 
-from origins_integration.engineering import OriginsClient  # noqa: E402
+from origins_integration.engineering import BridgeError, OriginsClient  # noqa: E402
 from origins_integration.live_mount import CANONICAL_PROJECT_VERDICTS, LiveEngineeringMount  # noqa: E402
 
 TOKEN = "origins-phase4-live-owner-proof-token"
@@ -283,6 +283,6 @@ def _request_json(
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
-    except (AssertionError, OSError, ValueError) as exc:
+    except (AssertionError, BridgeError, OSError, ValueError) as exc:
         print(f"FAIL: {exc}", file=sys.stderr)
         raise SystemExit(1)
