@@ -1,5 +1,31 @@
 import type { HealthSnapshot, HunterStatus, JsonRecord, RepositorySnapshot, SessionSnapshot } from "./model";
 
+export interface RepositoryFileEntry {
+  name: string;
+  path: string;
+  kind: "directory" | "file" | "other";
+  bytes?: number | null;
+}
+
+export interface RepositoryFileList {
+  repository_id: string;
+  path: string;
+  entries: RepositoryFileEntry[];
+  truncated: boolean;
+  max_entries: number;
+}
+
+export interface RepositoryFileSnapshot {
+  repository_id: string;
+  path: string;
+  bytes: number;
+  sha256: string;
+  utf8: boolean;
+  text: string | null;
+  editable: boolean;
+  max_bytes: number;
+}
+
 export class OriginsApiError extends Error {
   constructor(public readonly status: number, message: string, public readonly body?: unknown) {
     super(message);
@@ -36,9 +62,12 @@ export class OriginsApi {
       try { body = JSON.parse(text); } catch { body = text; }
     }
     if (!response.ok) {
-      const detail = typeof body === "object" && body !== null && "message" in body
-        ? String((body as JsonRecord).message)
-        : `${response.status} ${response.statusText}`;
+      let detail = `${response.status} ${response.statusText}`;
+      if (typeof body === "object" && body !== null) {
+        const record = body as JsonRecord;
+        if (typeof record.message === "string") detail = record.message;
+        else if (typeof record.error === "string") detail = record.error;
+      }
       throw new OriginsApiError(response.status, detail, body);
     }
     return body as T;
@@ -66,6 +95,21 @@ export class OriginsApi {
 
   repositoryDiff(repositoryId: string, kind = "unstaged"): Promise<JsonRecord> {
     return this.request(`/v1/repositories/${encodeURIComponent(repositoryId)}/diff?kind=${encodeURIComponent(kind)}`);
+  }
+
+  repositoryFiles(repositoryId: string, path = ""): Promise<RepositoryFileList> {
+    return this.request(`/v1/repositories/${encodeURIComponent(repositoryId)}/files?path=${encodeURIComponent(path)}`);
+  }
+
+  repositoryFile(repositoryId: string, path: string): Promise<RepositoryFileSnapshot> {
+    return this.request(`/v1/repositories/${encodeURIComponent(repositoryId)}/file?path=${encodeURIComponent(path)}`);
+  }
+
+  writeRepositoryFile(repositoryId: string, path: string, text: string, expectedSha256?: string): Promise<JsonRecord> {
+    return this.request(`/v1/repositories/${encodeURIComponent(repositoryId)}/file`, {
+      method: "POST",
+      body: JSON.stringify({ path, text, expected_sha256: expectedSha256 ?? null }),
+    });
   }
 
   sessions(): Promise<{ sessions: SessionSnapshot[] }> {
