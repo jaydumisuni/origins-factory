@@ -32,18 +32,21 @@ class OwnerStatus:
 
 
 class AgentOpsMount:
-    """Thin mount over AgentOps-owned durable stores, approvals, and BridgeApi."""
+    """Thin mount over AgentOps-owned durable stores, approvals, evidence, and BridgeApi."""
 
     def __init__(self, data_dir: Path | None = None) -> None:
         self.data_dir = data_dir
         self._stores_type: Any | None = None
         self._bridge_type: Any | None = None
+        self._evidence_type: Any | None = None
         self._import_error = ""
         try:
             storage = importlib.import_module("agentops.storage")
             bridge = importlib.import_module("agentops.bridge_api")
+            evidence = importlib.import_module("agentops.evidence")
             self._stores_type = getattr(storage, "PersistentAgentOpsStores")
             self._bridge_type = getattr(bridge, "BridgeApi")
+            self._evidence_type = getattr(evidence, "EvidenceItem")
         except (ImportError, AttributeError) as exc:
             self._import_error = str(exc)
 
@@ -54,11 +57,16 @@ class AgentOpsMount:
 
     def status(self) -> OwnerStatus:
         configured = self.data_dir is not None
-        available = configured and self._stores_type is not None and self._bridge_type is not None
+        available = (
+            configured
+            and self._stores_type is not None
+            and self._bridge_type is not None
+            and self._evidence_type is not None
+        )
         if not configured:
             detail = "ORIGINS_AGENTOPS_DATA_DIR is not configured"
-        elif self._stores_type is None or self._bridge_type is None:
-            detail = f"AgentOps owner package unavailable: {self._import_error or 'unknown import failure'}"
+        elif not available:
+            detail = f"AgentOps owner package unavailable: {self._import_error or 'incomplete owner interface'}"
         else:
             detail = "AgentOps durable owner mounted"
         return OwnerStatus("Hunter-AgentOps", configured, available, detail)
@@ -92,16 +100,14 @@ class AgentOpsMount:
         canonical = _approval_subject(kind, subject)
         reason = _required_text(payload, "reason")
         requested_by = str(payload.get("requested_by", "origins-owner-ui")).strip() or "origins-owner-ui"
-        task_title = _approval_task_title(kind, canonical)
-        target = _approval_target(kind, canonical)
         service = self._stores().approval_service()
         request = service.create_request(
-            task_title=task_title,
+            task_title=_approval_task_title(kind, canonical),
             mode=f"origins_{kind}",
             gate="owner_approval_required",
             reason=reason,
             requested_by=requested_by,
-            target=target,
+            target=_approval_target(kind, canonical),
             metadata={"origins_approval_kind": kind, "subject": canonical},
         )
         return {"owner": "Hunter-AgentOps", "approval": service.get_state(request.approval_id).public_dict()}
@@ -122,6 +128,51 @@ class AgentOpsMount:
             "approval": state.public_dict(),
             "evidence": evidence.public_dict(),
         }
+
+    def record_engineering_attempt(
+        self,
+        *,
+        subject: dict[str, object],
+        status: str,
+        verdict: str = "",
+        recommendation: str = "",
+        evidence: dict[str, object] | None = None,
+        failure_type: str = "",
+    ) -> dict[str, object]:
+        operation_id = str(subject.get("operation_id", "")).strip()
+        repository_id = str(subject.get("repository_id", "")).strip()
+        metadata: dict[str, object] = {
+            "operation_id": operation_id,
+            "repository_id": repository_id,
+            "provider_id": str(subject.get("provider_id", "")),
+            "mode": str(subject.get("mode", "quick_edit")),
+            "apply_plan": bool(subject.get("apply_plan", False)),
+            "status": status,
+        }
+        if verdict:
+            metadata["verdict"] = verdict
+        if recommendation:
+            metadata["recommended_agentops_action"] = recommendation
+        if evidence is not None:
+            metadata["origins_attempt_evidence"] = evidence
+        if failure_type:
+            metadata["failure_type"] = failure_type
+        summary = (
+            f"Sergeant verdict {verdict}; AgentOps recommendation {recommendation}."
+            if status == "completed"
+            else f"Engineering attempt retained as {status}; see Origins mechanical Session evidence."
+        )
+        item = self._evidence_type(
+            title="Origins engineering attempt",
+            kind="tool_result",
+            summary=summary,
+            source_ref=f"origins.operation:{operation_id}" if operation_id else None,
+            metadata=metadata,
+        )
+        stored = self._stores().save_evidence(item)
+        if not isinstance(stored, dict):
+            raise IntelligenceMountError("AgentOps evidence store returned a non-object")
+        return stored
 
     def _approved(self, kind: str, subject: dict[str, object], approval_id: str) -> bool:
         service = self._stores().approval_service()
@@ -352,7 +403,20 @@ class IntelligenceRuntime:
         try:
             result = EngineeringBridge(self.origins_client).run_attempt(request)
         except (IntegrationUnavailable, BridgeError) as exc:
+            self.agentops.record_engineering_attempt(
+                subject=payload,
+                status="failed",
+                failure_type=type(exc).__name__,
+            )
             raise IntelligenceMountError(str(exc)) from exc
+        evidence_record = result.evidence_record()
+        stored_evidence = self.agentops.record_engineering_attempt(
+            subject=payload,
+            status="completed",
+            verdict=result.verdict,
+            recommendation=result.recommended_agentops_action,
+            evidence=evidence_record,
+        )
         return {
             "operation_id": result.operation_id,
             "repository_id": result.repository_id,
@@ -364,7 +428,8 @@ class IntelligenceRuntime:
             "summary": result.summary,
             "recommended_agentops_action": result.recommended_agentops_action,
             "review_sha256": result.review_sha256,
-            "evidence": result.evidence_record(),
+            "evidence": evidence_record,
+            "agentops_evidence": stored_evidence,
         }
 
 
