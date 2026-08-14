@@ -15,6 +15,7 @@ from .intelligence_runtime import (
     IntelligenceRequestError,
     IntelligenceRuntime,
 )
+from .phase4_runtime import Phase4IntelligenceRuntime
 
 DEFAULT_BIND = "127.0.0.1"
 DEFAULT_PORT = 48710
@@ -184,7 +185,8 @@ def serve(
     token = (local_token if local_token is not None else os.environ.get("ORIGINS_LOCAL_TOKEN", "")).strip()
     if not token:
         raise IntelligenceServerError("ORIGINS_LOCAL_TOKEN is required")
-    return IntelligenceHTTPServer((host, port), runtime or IntelligenceRuntime.from_env(), token)
+    selected_runtime = runtime or Phase4IntelligenceRuntime.from_env()
+    return IntelligenceHTTPServer((host, port), selected_runtime, token)
 
 
 def main(argv: list[str] | None = None) -> int:
