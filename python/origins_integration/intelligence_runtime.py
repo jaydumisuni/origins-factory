@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .capability_proposals import CapabilityProposal, CapabilityProposalError
-from .engineering import EngineeringAttemptRequest, EngineeringBridge, IntegrationUnavailable, OriginsClient
+from .engineering import BridgeError, EngineeringAttemptRequest, EngineeringBridge, IntegrationUnavailable, OriginsClient
 
 
 class IntelligenceMountError(RuntimeError):
@@ -32,7 +32,7 @@ class OwnerStatus:
 
 
 class AgentOpsMount:
-    """Thin mount over AgentOps-owned durable stores and BridgeApi."""
+    """Thin mount over AgentOps-owned durable stores, approvals, and BridgeApi."""
 
     def __init__(self, data_dir: Path | None = None) -> None:
         self.data_dir = data_dir
@@ -63,13 +63,14 @@ class AgentOpsMount:
             detail = "AgentOps durable owner mounted"
         return OwnerStatus("Hunter-AgentOps", configured, available, detail)
 
-    def snapshot(self) -> dict[str, object]:
+    def _stores(self) -> Any:
         self._require_available()
-        stores = self._stores_type(self.data_dir)
-        snapshot = stores.snapshot()
+        return self._stores_type(self.data_dir)
+
+    def snapshot(self) -> dict[str, object]:
+        snapshot = self._stores().snapshot()
         return {
             "owner": "Hunter-AgentOps",
-            "data_dir": str(self.data_dir),
             "operations": snapshot.get("operations", []),
             "approvals": snapshot.get("approvals", []),
             "evidence": snapshot.get("evidence", []),
@@ -77,14 +78,92 @@ class AgentOpsMount:
             "lessons": snapshot.get("lessons", []),
         }
 
+    def pending_approvals(self) -> dict[str, object]:
+        service = self._stores().approval_service()
+        return {"owner": "Hunter-AgentOps", "pending": service.list_pending()}
+
+    def create_approval(self, payload: dict[str, object]) -> dict[str, object]:
+        kind = _required_text(payload, "kind")
+        if kind not in {"operation", "engineering"}:
+            raise IntelligenceMountError("approval kind must be operation or engineering")
+        subject = payload.get("subject")
+        if not isinstance(subject, dict):
+            raise IntelligenceMountError("approval subject must be an object")
+        canonical = _approval_subject(kind, subject)
+        reason = _required_text(payload, "reason")
+        requested_by = str(payload.get("requested_by", "origins-owner-ui")).strip() or "origins-owner-ui"
+        task_title = _approval_task_title(kind, canonical)
+        target = _approval_target(kind, canonical)
+        service = self._stores().approval_service()
+        request = service.create_request(
+            task_title=task_title,
+            mode=f"origins_{kind}",
+            gate="owner_approval_required",
+            reason=reason,
+            requested_by=requested_by,
+            target=target,
+            metadata={"origins_approval_kind": kind, "subject": canonical},
+        )
+        return {"owner": "Hunter-AgentOps", "approval": service.get_state(request.approval_id).public_dict()}
+
+    def decide_approval(self, payload: dict[str, object]) -> dict[str, object]:
+        approval_id = _required_text(payload, "approval_id")
+        decision = _required_text(payload, "decision")
+        if decision not in {"approved", "rejected"}:
+            raise IntelligenceMountError("decision must be approved or rejected")
+        decided_by = _required_text(payload, "decided_by")
+        note_raw = payload.get("note")
+        note = None if note_raw is None else str(note_raw).strip() or None
+        service = self._stores().approval_service()
+        state = service.decide(approval_id, decision, decided_by, note=note)
+        evidence = service.get_evidence(approval_id)
+        return {
+            "owner": "Hunter-AgentOps",
+            "approval": state.public_dict(),
+            "evidence": evidence.public_dict(),
+        }
+
+    def _approved(self, kind: str, subject: dict[str, object], approval_id: str) -> bool:
+        service = self._stores().approval_service()
+        try:
+            evidence = service.get_evidence(approval_id)
+        except (KeyError, ValueError) as exc:
+            raise IntelligenceMountError(f"AgentOps approval unavailable: {exc}") from exc
+        public = evidence.public_dict()
+        request = public.get("request")
+        if not isinstance(request, dict):
+            raise IntelligenceMountError("AgentOps approval evidence is malformed")
+        metadata = request.get("metadata")
+        if not isinstance(metadata, dict):
+            raise IntelligenceMountError("AgentOps approval evidence metadata is malformed")
+        if metadata.get("origins_approval_kind") != kind or metadata.get("subject") != _approval_subject(kind, subject):
+            raise IntelligenceMountError("AgentOps approval is not bound to this exact request")
+        if public.get("status") != "approved":
+            raise IntelligenceMountError("AgentOps approval is not approved")
+        return True
+
     def run(self, payload: dict[str, object]) -> dict[str, object]:
-        self._require_available()
-        stores = self._stores_type(self.data_dir)
-        response = self._bridge_type(stores=stores).run(payload)
+        if "owner_approved" in payload:
+            raise IntelligenceMountError("owner_approved cannot be asserted by the client; use AgentOps approval evidence")
+        command = dict(payload)
+        approval_id = str(command.pop("approval_id", "")).strip()
+        command["owner_approved"] = bool(approval_id and self._approved("operation", command, approval_id))
+        stores = self._stores()
+        response = self._bridge_type(stores=stores).run(command)
         public = response.public_dict()
         if not isinstance(public, dict):
             raise IntelligenceMountError("AgentOps BridgeApi returned a non-object public payload")
         return public
+
+    def approval_state_for_engineering(self, payload: dict[str, object]) -> str:
+        if "approval_state" in payload:
+            raise IntelligenceMountError("approval_state cannot be asserted by the client; use AgentOps approval evidence")
+        if not bool(payload.get("apply_plan", False)):
+            return "not_required"
+        approval_id = str(payload.get("approval_id", "")).strip()
+        if not approval_id:
+            raise IntelligenceMountError("apply_plan requires an approved AgentOps approval_id")
+        return "approved" if self._approved("engineering", payload, approval_id) else "required"
 
     def _require_available(self) -> None:
         status = self.status()
@@ -118,7 +197,7 @@ class CodeOpsMount:
         elif self._loader is None:
             detail = f"CodeOps owner package unavailable: {self._import_error or 'unknown import failure'}"
         elif not self.config_path.is_file():
-            detail = f"CodeOps config does not exist: {self.config_path}"
+            detail = "CodeOps config path is configured but unavailable"
         else:
             detail = "CodeOps provider registry mounted"
         return OwnerStatus("hunter-codeops", configured, available, detail)
@@ -140,16 +219,13 @@ class CodeOpsMount:
                     "enabled": provider.enabled,
                     "local": provider.local,
                     "credential_env": provider.credential_env,
-                    "credential_present": bool(
-                        provider.credential_env and os.environ.get(provider.credential_env)
-                    ),
+                    "credential_present": bool(provider.credential_env and os.environ.get(provider.credential_env)),
                     "capabilities": list(provider.capabilities),
                     "notes": provider.notes,
                 }
             )
         return {
             "owner": "hunter-codeops",
-            "config": str(self.config_path),
             "default_review": config.default_review.value,
             "providers": providers,
         }
@@ -167,7 +243,7 @@ class SergeantMount:
             owner="Sergeant",
             configured=True,
             available=resolved is not None,
-            detail=(f"Sergeant CLI mounted at {resolved}" if resolved else f"Sergeant CLI not found: {self.command}"),
+            detail=("Sergeant CLI mounted" if resolved else "Sergeant CLI not found"),
         )
 
 
@@ -193,8 +269,6 @@ class IntelligenceRuntime:
         try:
             client = OriginsClient.from_env()
         except Exception:
-            # Model-free / semantic-plane-only startup remains valid. Engineering attempts
-            # will report the missing mechanical authority truthfully when invoked.
             client = None
         return cls(origins_client=client)
 
@@ -210,6 +284,15 @@ class IntelligenceRuntime:
 
     def operations(self) -> dict[str, object]:
         return self.agentops.snapshot()
+
+    def approvals(self) -> dict[str, object]:
+        return self.agentops.pending_approvals()
+
+    def create_approval(self, payload: dict[str, object]) -> dict[str, object]:
+        return self.agentops.create_approval(payload)
+
+    def decide_approval(self, payload: dict[str, object]) -> dict[str, object]:
+        return self.agentops.decide_approval(payload)
 
     def run_agentops(self, payload: dict[str, object]) -> dict[str, object]:
         return self.agentops.run(payload)
@@ -249,6 +332,7 @@ class IntelligenceRuntime:
     def engineering_attempt(self, payload: dict[str, object]) -> dict[str, object]:
         if self.origins_client is None:
             raise IntelligenceMountError("originsd mechanical client is not configured")
+        approval_state = self.agentops.approval_state_for_engineering(payload)
         request = EngineeringAttemptRequest(
             operation_id=_required_text(payload, "operation_id"),
             repository_id=_required_text(payload, "repository_id"),
@@ -257,7 +341,7 @@ class IntelligenceRuntime:
             files=_string_tuple(payload.get("files")),
             plan=str(payload.get("plan", "")),
             apply_plan=bool(payload.get("apply_plan", False)),
-            approval_state=str(payload.get("approval_state", "not_required")),
+            approval_state=approval_state,
             client_kind=str(payload.get("client_kind", "terminal")),
             mode=str(payload.get("mode", "quick_edit")),
             provider_id=str(payload.get("provider_id", "")),
@@ -267,7 +351,7 @@ class IntelligenceRuntime:
         )
         try:
             result = EngineeringBridge(self.origins_client).run_attempt(request)
-        except IntegrationUnavailable as exc:
+        except (IntegrationUnavailable, BridgeError) as exc:
             raise IntelligenceMountError(str(exc)) from exc
         return {
             "operation_id": result.operation_id,
@@ -297,3 +381,31 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if not isinstance(value, (list, tuple)) or any(not isinstance(item, str) for item in value):
         raise IntelligenceMountError("expected a list of strings")
     return tuple(item for item in value if item)
+
+
+def _approval_subject(kind: str, subject: dict[str, object]) -> dict[str, object]:
+    canonical = dict(subject)
+    canonical.pop("approval_id", None)
+    canonical.pop("owner_approved", None)
+    canonical.pop("approval_state", None)
+    if kind == "engineering" and not bool(canonical.get("apply_plan", False)):
+        raise IntelligenceMountError("engineering approval is only valid for apply_plan=true")
+    return canonical
+
+
+def _approval_task_title(kind: str, subject: dict[str, object]) -> str:
+    key = "title" if kind == "operation" else "task"
+    value = subject.get(key)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return f"Origins {kind} approval"
+
+
+def _approval_target(kind: str, subject: dict[str, object]) -> str:
+    if kind == "engineering":
+        operation_id = subject.get("operation_id")
+        repository_id = subject.get("repository_id")
+        if isinstance(operation_id, str) and operation_id and isinstance(repository_id, str) and repository_id:
+            return f"{operation_id}:{repository_id}"
+    target = subject.get("target")
+    return target.strip() if isinstance(target, str) and target.strip() else f"origins:{kind}"
