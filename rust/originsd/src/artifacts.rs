@@ -459,7 +459,7 @@ async fn get_artifact_content(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .unwrap_or("application/octet-stream");
-    let safe_filename = filename.replace('\\', "_").replace('"', "_");
+    let safe_filename = filename.replace(['\\', '"'], "_");
     let disposition = format!("attachment; filename=\"{safe_filename}\"");
     let mut response = Response::new(body);
     *response.status_mut() = StatusCode::OK;
