@@ -22,6 +22,11 @@ export interface ApprovalSnapshot extends JsonRecord {
   pending?: JsonRecord[];
 }
 
+export interface PlaybookSnapshot extends JsonRecord {
+  owner?: string;
+  playbooks?: JsonRecord[];
+}
+
 export interface ProviderSnapshot extends JsonRecord {
   owner?: string;
   default_review?: string;
@@ -81,6 +86,10 @@ export class IntelligenceApi {
 
   operations(): Promise<OperationsSnapshot> {
     return this.request<OperationsSnapshot>("/v1/operations");
+  }
+
+  playbooks(): Promise<PlaybookSnapshot> {
+    return this.request<PlaybookSnapshot>("/v1/playbooks");
   }
 
   approvals(): Promise<ApprovalSnapshot> {
