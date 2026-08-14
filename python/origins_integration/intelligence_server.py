@@ -6,8 +6,7 @@ import json
 import os
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from socket import AddressFamily
-from typing import Any, Callable
+from typing import Callable
 from urllib.parse import urlsplit
 
 from .intelligence_runtime import IntelligenceMountError, IntelligenceRuntime
@@ -43,7 +42,7 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:  # noqa: N802 - stdlib handler contract
         path = urlsplit(self.path).path
         if path == "/v1/health":
-            self._json(HTTPStatus.OK, self.server.runtime.health())
+            self._json(HTTPStatus.OK, _public_health(self.server.runtime.health()))
             return
         if not self._authorized():
             self._unauthorized()
@@ -78,7 +77,6 @@ class IntelligenceRequestHandler(BaseHTTPRequestHandler):
         self._invoke(lambda: action(payload))
 
     def log_message(self, format: str, *args: object) -> None:  # noqa: A002 - stdlib signature
-        # Avoid request headers/body/token leakage. Keep only peer + HTTP request line/status.
         safe_request = self.requestline.replace("\r", " ").replace("\n", " ")[:500]
         message = format % args
         print(f"origins-intelligence {self.client_address[0]} {safe_request} {message}")
@@ -193,8 +191,7 @@ def serve(
     token = (local_token if local_token is not None else os.environ.get("ORIGINS_LOCAL_TOKEN", "")).strip()
     if not token:
         raise IntelligenceServerError("ORIGINS_LOCAL_TOKEN is required")
-    server = IntelligenceHTTPServer((host, port), runtime or IntelligenceRuntime.from_env(), token)
-    return server
+    return IntelligenceHTTPServer((host, port), runtime or IntelligenceRuntime.from_env(), token)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -212,6 +209,25 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         server.server_close()
     return 0
+
+
+def _public_health(payload: dict[str, object]) -> dict[str, object]:
+    owners = payload.get("owners")
+    public_owners: dict[str, object] = {}
+    if isinstance(owners, dict):
+        for name, value in owners.items():
+            if isinstance(value, dict):
+                public_owners[str(name)] = {
+                    "configured": bool(value.get("configured", False)),
+                    "available": bool(value.get("available", False)),
+                }
+    return {
+        "ok": payload.get("ok") is True,
+        "service": str(payload.get("service", "origins-intelligence")),
+        "api_version": str(payload.get("api_version", "v1")),
+        "owners": public_owners,
+        "mechanical_originsd_configured": bool(payload.get("mechanical_originsd_configured", False)),
+    }
 
 
 def _is_loopback_literal(host: str) -> bool:
