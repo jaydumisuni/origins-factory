@@ -80,6 +80,9 @@ export function validateContract(value: JsonValue): JsonObject {
     case "repository_projection":
       validateRepositoryProjection(object);
       break;
+    case "artifact_projection":
+      validateArtifactProjection(object);
+      break;
     default:
       throw new ContractError("UNKNOWN_CONTRACT_TYPE", `unsupported contract_type: ${contractType}`);
   }
@@ -355,6 +358,46 @@ function validateRepositoryProjection(value: JsonObject): void {
   }
   if (headRef !== "" && branch !== "" && headRef !== `refs/heads/${branch}`) {
     throw new ContractError("INVALID_REPOSITORY_STATE", "head_ref and branch disagree");
+  }
+}
+
+function validateArtifactProjection(value: JsonObject): void {
+  exactFields(value, [
+    "contract_type",
+    "schema_version",
+    "artifact_id",
+    "workspace_id",
+    "revision",
+    "content_sha256",
+    "size_bytes",
+    "filename",
+    "media_type",
+    "storage_class",
+    "source_count",
+    "created_at",
+    "updated_at",
+  ]);
+  canonicalUuid(value, "artifact_id");
+  canonicalUuid(value, "workspace_id");
+  const revision = nonnegativeInteger(value, "revision", "INVALID_REVISION");
+  if (revision < 1) {
+    throw new ContractError("INVALID_REVISION", "artifact revision must be at least 1");
+  }
+  digestField(value, "content_sha256", false);
+  nonnegativeInteger(value, "size_bytes", "INVALID_BYTE_COUNT");
+  nonemptyString(value, "filename");
+  stringField(value, "media_type");
+  if (stringField(value, "storage_class") !== "local_immutable") {
+    throw new ContractError("INVALID_STORAGE_CLASS", "storage_class must be local_immutable");
+  }
+  const sourceCount = nonnegativeInteger(value, "source_count", "INVALID_SOURCE_COUNT");
+  if (sourceCount < 1) {
+    throw new ContractError("INVALID_SOURCE_COUNT", "source_count must be at least 1");
+  }
+  const created = timestamp(value, "created_at");
+  const updated = timestamp(value, "updated_at");
+  if (updated < created) {
+    throw new ContractError("INVALID_TIMESTAMP_ORDER", "updated_at cannot precede created_at");
   }
 }
 
