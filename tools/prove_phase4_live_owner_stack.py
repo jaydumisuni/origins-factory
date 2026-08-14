@@ -41,6 +41,13 @@ def main() -> int:
     if not binary.is_file():
         raise AssertionError(f"originsd binary missing: {binary}")
 
+    revisions = {
+        "origins_head": _clean_git_head(ROOT, "Origins"),
+        "agentops_head": _clean_git_head(agentops_root, "AgentOps"),
+        "codeops_head": _clean_git_head(codeops_root, "CodeOps"),
+        "sergeant_head": _clean_git_head(sergeant_root, "Sergeant"),
+    }
+
     # Python semantic contracts come directly from the reviewed owner checkouts.
     sys.path.insert(0, str(codeops_root))
     sys.path.insert(0, str(agentops_root))
@@ -159,6 +166,7 @@ def main() -> int:
                 json.dumps(
                     {
                         "proof": "PHASE4_LIVE_OWNER_STACK_OK",
+                        **revisions,
                         "proof_scope": receipt.proof_scope,
                         "mount_status": receipt.mount_status,
                         "live_engineering_proven": receipt.live_engineering_proven,
@@ -191,6 +199,26 @@ def _require_owner_root(path: Path, label: str, package_dir: str) -> Path:
     if not root.is_dir() or not (root / package_dir).is_dir():
         raise AssertionError(f"{label} owner checkout is invalid: {root}")
     return root
+
+
+def _clean_git_head(root: Path, label: str) -> str:
+    head = subprocess.run(
+        ["git", "-C", str(root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if len(head) != 40:
+        raise AssertionError(f"{label} checkout did not expose a full Git commit SHA")
+    status = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    if status:
+        raise AssertionError(f"{label} checkout contains tracked local changes")
+    return head
 
 
 def _write_owner_entrypoint(path: Path, owner_root: Path, module: str) -> None:
