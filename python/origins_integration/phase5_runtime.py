@@ -92,11 +92,11 @@ class JsonOwnerClient:
 class OracleBrowserMount:
     """Thin client for the existing Oracle retained browser authority."""
 
-    ALLOWED_AUTHORITIES = frozenset({"observe", "assist", "control"})
+    ALLOWED_AUTHORITIES = frozenset({"observe", "assist", "act"})
 
     def __init__(self, base_url: str = "http://127.0.0.1:8765", *, pairing_token: str = ""):
         token = str(pairing_token or "").strip()
-        headers = {"X-Oracle-Pairing": token} if token else {}
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
         self.client = JsonOwnerClient(base_url, default_headers=headers)
 
     @classmethod
@@ -110,9 +110,13 @@ class OracleBrowserMount:
         health = self.client.request("GET", "/health")
         capabilities = self.client.request("GET", "/capabilities")
         latest = self.client.request("GET", "/latest")
+        service_available = health.status == 200 and bool(health.value.get("ok"))
+        browser_connected = service_available and bool(health.value.get("browserConnected"))
         return {
             "owner": "oracle",
-            "available": health.status == 200 and bool(health.value.get("ok")),
+            "available": browser_connected,
+            "service_available": service_available,
+            "browser_connected": browser_connected,
             "health": health.value,
             "capabilities": capabilities.value if capabilities.status == 200 else {},
             "latest_observation": latest.value if latest.status == 200 else None,
@@ -122,12 +126,12 @@ class OracleBrowserMount:
         authority = str(authority or "").strip().lower()
         if authority not in self.ALLOWED_AUTHORITIES:
             raise Phase5Error(f"unsupported Oracle browser authority: {authority}")
-        if authority == "control" and not approved:
-            raise Phase5Error("control authority requires an explicit approved handoff")
+        if authority == "act" and not approved:
+            raise Phase5Error("act authority requires an explicit approved handoff")
         return self._command({"type": "setAuthority", "authority": authority}, approved=approved)
 
     def human_takeover(self) -> dict[str, Any]:
-        return self._command({"type": "humanTakeover"}, approved=True)
+        return self._command({"type": "humanTakeover"}, approved=False)
 
     def command(self, command: dict[str, Any], *, approved: bool = False) -> dict[str, Any]:
         command = dict(command or {})
