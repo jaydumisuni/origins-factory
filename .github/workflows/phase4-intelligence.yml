@@ -3,6 +3,8 @@ name: Phase 4 Intelligence Plane
 on:
   pull_request:
     paths:
+      - "CURRENT_STATE.md"
+      - "AI_HANDOFF.md"
       - "python/origins_integration/**"
       - "python/tests/test_intelligence_*.py"
       - "python/tests/test_phase4_*.py"
@@ -13,6 +15,8 @@ on:
     branches:
       - "build/phase4-intelligence-assurance"
     paths:
+      - "CURRENT_STATE.md"
+      - "AI_HANDOFF.md"
       - "python/origins_integration/**"
       - "python/tests/test_intelligence_*.py"
       - "python/tests/test_phase4_*.py"
