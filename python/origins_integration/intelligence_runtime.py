@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import re
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +11,19 @@ from typing import Any
 from .capability_proposals import CapabilityProposal, CapabilityProposalError
 from .engineering import BridgeError, EngineeringAttemptRequest, EngineeringBridge, IntegrationUnavailable, OriginsClient
 
+PLAYBOOK_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,80}$")
+
 
 class IntelligenceMountError(RuntimeError):
     """Raised when an owning intelligence/assurance runtime cannot be used safely."""
+
+
+class IntelligenceRequestError(ValueError):
+    """Raised when a semantic-runtime client request is malformed or unsafe."""
+
+
+class IntelligenceApprovalError(PermissionError):
+    """Raised when exact AgentOps approval evidence is absent or incompatible."""
 
 
 @dataclass(frozen=True)
@@ -32,41 +43,51 @@ class OwnerStatus:
 
 
 class AgentOpsMount:
-    """Thin mount over AgentOps-owned durable stores, approvals, evidence, and BridgeApi."""
+    """Thin mount over AgentOps-owned durable state, playbooks, approvals, and BridgeApi."""
 
-    def __init__(self, data_dir: Path | None = None) -> None:
+    def __init__(self, data_dir: Path | None = None, root_dir: Path | None = None) -> None:
         self.data_dir = data_dir
+        self.root_dir = root_dir
         self._stores_type: Any | None = None
         self._bridge_type: Any | None = None
         self._evidence_type: Any | None = None
+        self._load_playbook: Any | None = None
         self._import_error = ""
         try:
             storage = importlib.import_module("agentops.storage")
             bridge = importlib.import_module("agentops.bridge_api")
             evidence = importlib.import_module("agentops.evidence")
+            playbooks = importlib.import_module("agentops.playbook_loader")
             self._stores_type = getattr(storage, "PersistentAgentOpsStores")
             self._bridge_type = getattr(bridge, "BridgeApi")
             self._evidence_type = getattr(evidence, "EvidenceItem")
+            self._load_playbook = getattr(playbooks, "load_playbook")
         except (ImportError, AttributeError) as exc:
             self._import_error = str(exc)
 
     @classmethod
     def from_env(cls) -> "AgentOpsMount":
-        raw = os.environ.get("ORIGINS_AGENTOPS_DATA_DIR", "").strip()
-        return cls(Path(raw).expanduser() if raw else None)
+        data_raw = os.environ.get("ORIGINS_AGENTOPS_DATA_DIR", "").strip()
+        root_raw = os.environ.get("ORIGINS_AGENTOPS_ROOT", "").strip()
+        return cls(
+            Path(data_raw).expanduser() if data_raw else None,
+            Path(root_raw).expanduser() if root_raw else None,
+        )
 
     def status(self) -> OwnerStatus:
-        configured = self.data_dir is not None
-        available = (
-            configured
-            and self._stores_type is not None
-            and self._bridge_type is not None
-            and self._evidence_type is not None
+        configured = self.data_dir is not None and self.root_dir is not None
+        interfaces = all(
+            value is not None
+            for value in (self._stores_type, self._bridge_type, self._evidence_type, self._load_playbook)
         )
+        root_ok = bool(self.root_dir and (self.root_dir / "playbooks").is_dir())
+        available = configured and interfaces and root_ok
         if not configured:
-            detail = "ORIGINS_AGENTOPS_DATA_DIR is not configured"
-        elif not available:
+            detail = "ORIGINS_AGENTOPS_DATA_DIR and ORIGINS_AGENTOPS_ROOT are required"
+        elif not interfaces:
             detail = f"AgentOps owner package unavailable: {self._import_error or 'incomplete owner interface'}"
+        elif not root_ok:
+            detail = "AgentOps owner root does not expose its playbooks directory"
         else:
             detail = "AgentOps durable owner mounted"
         return OwnerStatus("Hunter-AgentOps", configured, available, detail)
@@ -86,17 +107,33 @@ class AgentOpsMount:
             "lessons": snapshot.get("lessons", []),
         }
 
+    def playbooks(self) -> dict[str, object]:
+        self._require_available()
+        assert self.root_dir is not None
+        items: list[dict[str, object]] = []
+        for path in sorted((self.root_dir / "playbooks").glob("*.yml")):
+            if path.is_symlink() or not path.is_file():
+                continue
+            try:
+                playbook = self._load_playbook(path)
+            except Exception as exc:
+                raise IntelligenceMountError(
+                    f"AgentOps playbook registry rejected {path.name}: {type(exc).__name__}"
+                ) from exc
+            public = playbook.public_dict()
+            items.append({"id": path.stem, **public})
+        return {"owner": "Hunter-AgentOps", "playbooks": items}
+
     def pending_approvals(self) -> dict[str, object]:
-        service = self._stores().approval_service()
-        return {"owner": "Hunter-AgentOps", "pending": service.list_pending()}
+        return {"owner": "Hunter-AgentOps", "pending": self._stores().approval_service().list_pending()}
 
     def create_approval(self, payload: dict[str, object]) -> dict[str, object]:
         kind = _required_text(payload, "kind")
         if kind not in {"operation", "engineering"}:
-            raise IntelligenceMountError("approval kind must be operation or engineering")
+            raise IntelligenceRequestError("approval kind must be operation or engineering")
         subject = payload.get("subject")
         if not isinstance(subject, dict):
-            raise IntelligenceMountError("approval subject must be an object")
+            raise IntelligenceRequestError("approval subject must be an object")
         canonical = _approval_subject(kind, subject)
         reason = _required_text(payload, "reason")
         requested_by = str(payload.get("requested_by", "origins-owner-ui")).strip() or "origins-owner-ui"
@@ -116,13 +153,16 @@ class AgentOpsMount:
         approval_id = _required_text(payload, "approval_id")
         decision = _required_text(payload, "decision")
         if decision not in {"approved", "rejected"}:
-            raise IntelligenceMountError("decision must be approved or rejected")
+            raise IntelligenceRequestError("decision must be approved or rejected")
         decided_by = _required_text(payload, "decided_by")
         note_raw = payload.get("note")
         note = None if note_raw is None else str(note_raw).strip() or None
         service = self._stores().approval_service()
-        state = service.decide(approval_id, decision, decided_by, note=note)
-        evidence = service.get_evidence(approval_id)
+        try:
+            state = service.decide(approval_id, decision, decided_by, note=note)
+            evidence = service.get_evidence(approval_id)
+        except (KeyError, ValueError) as exc:
+            raise IntelligenceRequestError(f"AgentOps approval decision rejected: {exc}") from exc
         return {
             "owner": "Hunter-AgentOps",
             "approval": state.public_dict(),
@@ -140,10 +180,9 @@ class AgentOpsMount:
         failure_type: str = "",
     ) -> dict[str, object]:
         operation_id = str(subject.get("operation_id", "")).strip()
-        repository_id = str(subject.get("repository_id", "")).strip()
         metadata: dict[str, object] = {
             "operation_id": operation_id,
-            "repository_id": repository_id,
+            "repository_id": str(subject.get("repository_id", "")).strip(),
             "provider_id": str(subject.get("provider_id", "")),
             "mode": str(subject.get("mode", "quick_edit")),
             "apply_plan": bool(subject.get("apply_plan", False)),
@@ -174,31 +213,35 @@ class AgentOpsMount:
             raise IntelligenceMountError("AgentOps evidence store returned a non-object")
         return stored
 
-    def _approved(self, kind: str, subject: dict[str, object], approval_id: str) -> bool:
+    def _approved(self, kind: str, subject: dict[str, object], approval_id: str) -> None:
         service = self._stores().approval_service()
         try:
-            evidence = service.get_evidence(approval_id)
+            public = service.get_evidence(approval_id).public_dict()
         except (KeyError, ValueError) as exc:
-            raise IntelligenceMountError(f"AgentOps approval unavailable: {exc}") from exc
-        public = evidence.public_dict()
+            raise IntelligenceApprovalError("AgentOps approval evidence is unavailable") from exc
         request = public.get("request")
-        if not isinstance(request, dict):
-            raise IntelligenceMountError("AgentOps approval evidence is malformed")
-        metadata = request.get("metadata")
+        metadata = request.get("metadata") if isinstance(request, dict) else None
         if not isinstance(metadata, dict):
-            raise IntelligenceMountError("AgentOps approval evidence metadata is malformed")
+            raise IntelligenceApprovalError("AgentOps approval evidence is malformed")
         if metadata.get("origins_approval_kind") != kind or metadata.get("subject") != _approval_subject(kind, subject):
-            raise IntelligenceMountError("AgentOps approval is not bound to this exact request")
+            raise IntelligenceApprovalError("AgentOps approval is not bound to this exact request")
         if public.get("status") != "approved":
-            raise IntelligenceMountError("AgentOps approval is not approved")
-        return True
+            raise IntelligenceApprovalError("AgentOps approval is not approved")
 
     def run(self, payload: dict[str, object]) -> dict[str, object]:
-        if "owner_approved" in payload:
-            raise IntelligenceMountError("owner_approved cannot be asserted by the client; use AgentOps approval evidence")
+        if "owner_approved" in payload or "playbook_path" in payload:
+            raise IntelligenceRequestError(
+                "client cannot assert owner_approved or playbook_path; use approval evidence and a playbook id"
+            )
         command = dict(payload)
+        playbook_id = _required_text(command, "playbook")
+        command.pop("playbook", None)
         approval_id = str(command.pop("approval_id", "")).strip()
-        command["owner_approved"] = bool(approval_id and self._approved("operation", command, approval_id))
+        approval_subject = {"playbook": playbook_id, **command}
+        if approval_id:
+            self._approved("operation", approval_subject, approval_id)
+        command["owner_approved"] = bool(approval_id)
+        command["playbook_path"] = str(self._playbook_path(playbook_id))
         stores = self._stores()
         response = self._bridge_type(stores=stores).run(command)
         public = response.public_dict()
@@ -208,13 +251,27 @@ class AgentOpsMount:
 
     def approval_state_for_engineering(self, payload: dict[str, object]) -> str:
         if "approval_state" in payload:
-            raise IntelligenceMountError("approval_state cannot be asserted by the client; use AgentOps approval evidence")
+            raise IntelligenceRequestError(
+                "approval_state cannot be asserted by the client; use AgentOps approval evidence"
+            )
         if not bool(payload.get("apply_plan", False)):
             return "not_required"
         approval_id = str(payload.get("approval_id", "")).strip()
         if not approval_id:
-            raise IntelligenceMountError("apply_plan requires an approved AgentOps approval_id")
-        return "approved" if self._approved("engineering", payload, approval_id) else "required"
+            raise IntelligenceApprovalError("apply_plan requires an approved AgentOps approval_id")
+        self._approved("engineering", payload, approval_id)
+        return "approved"
+
+    def _playbook_path(self, playbook_id: str) -> Path:
+        if not PLAYBOOK_ID_RE.fullmatch(playbook_id):
+            raise IntelligenceRequestError("playbook id uses unsupported characters")
+        self._require_available()
+        assert self.root_dir is not None
+        root = (self.root_dir / "playbooks").resolve()
+        path = root / f"{playbook_id}.yml"
+        if path.is_symlink() or not path.is_file() or path.resolve().parent != root:
+            raise IntelligenceRequestError("unknown AgentOps playbook id")
+        return path.resolve()
 
     def _require_available(self) -> None:
         status = self.status()
@@ -257,7 +314,12 @@ class CodeOpsMount:
         status = self.status()
         if not status.available:
             raise IntelligenceMountError(status.detail)
-        config = self._loader(self.config_path)
+        try:
+            config = self._loader(self.config_path)
+        except Exception as exc:
+            raise IntelligenceMountError(
+                f"CodeOps provider registry rejected configured source: {type(exc).__name__}"
+            ) from exc
         providers: list[dict[str, object]] = []
         for provider in config.providers:
             providers.append(
@@ -336,6 +398,9 @@ class IntelligenceRuntime:
     def operations(self) -> dict[str, object]:
         return self.agentops.snapshot()
 
+    def playbooks(self) -> dict[str, object]:
+        return self.agentops.playbooks()
+
     def approvals(self) -> dict[str, object]:
         return self.agentops.pending_approvals()
 
@@ -372,7 +437,7 @@ class IntelligenceRuntime:
                 requested_by=str(payload.get("requested_by", "hunter")),
             )
         except (CapabilityProposalError, TypeError, ValueError) as exc:
-            raise IntelligenceMountError(f"capability proposal rejected: {exc}") from exc
+            raise IntelligenceRequestError(f"capability proposal rejected: {exc}") from exc
         return {
             "proposal": proposal.as_dict(),
             "agentops_approval_request": proposal.agentops_approval_request(),
@@ -402,13 +467,20 @@ class IntelligenceRuntime:
         )
         try:
             result = EngineeringBridge(self.origins_client).run_attempt(request)
-        except (IntegrationUnavailable, BridgeError) as exc:
+        except IntegrationUnavailable as exc:
             self.agentops.record_engineering_attempt(
                 subject=payload,
                 status="failed",
                 failure_type=type(exc).__name__,
             )
             raise IntelligenceMountError(str(exc)) from exc
+        except BridgeError as exc:
+            self.agentops.record_engineering_attempt(
+                subject=payload,
+                status="failed",
+                failure_type=type(exc).__name__,
+            )
+            raise IntelligenceMountError("engineering attempt failed; inspect retained Origins Session evidence") from exc
         evidence_record = result.evidence_record()
         stored_evidence = self.agentops.record_engineering_attempt(
             subject=payload,
@@ -436,7 +508,7 @@ class IntelligenceRuntime:
 def _required_text(payload: dict[str, object], key: str) -> str:
     value = payload.get(key)
     if not isinstance(value, str) or not value.strip():
-        raise IntelligenceMountError(f"{key} is required")
+        raise IntelligenceRequestError(f"{key} is required")
     return value.strip()
 
 
@@ -444,7 +516,7 @@ def _string_tuple(value: object) -> tuple[str, ...]:
     if value is None:
         return ()
     if not isinstance(value, (list, tuple)) or any(not isinstance(item, str) for item in value):
-        raise IntelligenceMountError("expected a list of strings")
+        raise IntelligenceRequestError("expected a list of strings")
     return tuple(item for item in value if item)
 
 
@@ -454,16 +526,14 @@ def _approval_subject(kind: str, subject: dict[str, object]) -> dict[str, object
     canonical.pop("owner_approved", None)
     canonical.pop("approval_state", None)
     if kind == "engineering" and not bool(canonical.get("apply_plan", False)):
-        raise IntelligenceMountError("engineering approval is only valid for apply_plan=true")
+        raise IntelligenceRequestError("engineering approval is only valid for apply_plan=true")
     return canonical
 
 
 def _approval_task_title(kind: str, subject: dict[str, object]) -> str:
     key = "title" if kind == "operation" else "task"
     value = subject.get(key)
-    if isinstance(value, str) and value.strip():
-        return value.strip()
-    return f"Origins {kind} approval"
+    return value.strip() if isinstance(value, str) and value.strip() else f"Origins {kind} approval"
 
 
 def _approval_target(kind: str, subject: dict[str, object]) -> str:
