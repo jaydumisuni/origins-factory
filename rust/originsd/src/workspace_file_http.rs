@@ -144,6 +144,7 @@ impl FileApiError {
     fn from_file(error: WorkspaceFileError) -> Self {
         let status = match error.code {
             "INVALID_PATH" => StatusCode::BAD_REQUEST,
+            "RESOURCE_NOT_FOUND" => StatusCode::NOT_FOUND,
             "FILE_TOO_LARGE" => StatusCode::PAYLOAD_TOO_LARGE,
             "UNSUPPORTED_FILE" => StatusCode::UNSUPPORTED_MEDIA_TYPE,
             "FILE_CHANGED" => StatusCode::CONFLICT,
