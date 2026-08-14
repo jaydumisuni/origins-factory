@@ -14,10 +14,11 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::env;
-use std::fs;
+use std::fs::{self, File};
+use std::io::{Read, Write};
 use std::path::{Path as FsPath, PathBuf};
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::sync::mpsc;
 use tokio_stream::wrappers::ReceiverStream;
 use uuid::Uuid;
@@ -32,7 +33,7 @@ const MAX_MEDIA_TYPE_CHARS: usize = 200;
 
 #[derive(Debug, Clone, Default)]
 pub struct ArtifactRootPolicy {
-    roots: Arc<[PathBuf]>,
+    roots: Vec<PathBuf>,
 }
 
 impl ArtifactRootPolicy {
@@ -61,9 +62,7 @@ impl ArtifactRootPolicy {
         }
         roots.sort();
         roots.dedup();
-        Ok(Self {
-            roots: Arc::from(roots),
-        })
+        Ok(Self { roots })
     }
 
     fn require_source(&self, value: &str) -> Result<PathBuf, StoreError> {
@@ -328,7 +327,7 @@ async fn register_artifact(
     let media_type = bounded_text(&request.media_type, MAX_MEDIA_TYPE_CHARS, "media_type")
         .map_err(ArtifactApiError::from_store)?;
 
-    let materialized = materialize(&source_path, &state.object_root)
+    let materialized = materialize(source_path.clone(), state.object_root.clone())
         .await
         .map_err(ArtifactApiError::from_store)?;
     let result = register_materialized(
@@ -460,10 +459,8 @@ async fn get_artifact_content(
         .and_then(Value::as_str)
         .filter(|value| !value.is_empty())
         .unwrap_or("application/octet-stream");
-    let safe_disposition_filename = filename.replace('\\', "_").replace('"', "_");
-    let disposition = format!(
-        "attachment; filename=\"{safe_disposition_filename}\""
-    );
+    let safe_filename = filename.replace('\\', "_").replace('"', "_");
+    let disposition = format!("attachment; filename=\"{safe_filename}\"");
     let mut response = Response::new(body);
     *response.status_mut() = StatusCode::OK;
     response.headers_mut().insert(
@@ -507,17 +504,25 @@ struct MaterializedObject {
 }
 
 async fn materialize(
+    source: PathBuf,
+    object_root: PathBuf,
+) -> Result<MaterializedObject, StoreError> {
+    tokio::task::spawn_blocking(move || materialize_blocking(&source, &object_root))
+        .await
+        .map_err(|error| StoreError::Io(format!("Artifact worker failed: {error}")))?
+}
+
+fn materialize_blocking(
     source: &FsPath,
     object_root: &FsPath,
 ) -> Result<MaterializedObject, StoreError> {
     let temp_path = object_root
         .join("tmp")
         .join(format!("{}.partial", Uuid::new_v4().hyphenated()));
-    let result = async {
-        let mut input = tokio::fs::File::open(source)
-            .await
+    let result = (|| {
+        let mut input = File::open(source)
             .map_err(|error| StoreError::Io(format!("Artifact source open failed: {error}")))?;
-        let mut output = tokio::fs::File::create(&temp_path).await.map_err(|error| {
+        let mut output = File::create(&temp_path).map_err(|error| {
             StoreError::Io(format!("Artifact staging create failed: {error}"))
         })?;
         let mut hasher = Sha256::new();
@@ -526,7 +531,6 @@ async fn materialize(
         loop {
             let read = input
                 .read(&mut buffer)
-                .await
                 .map_err(|error| StoreError::Io(format!("Artifact source read failed: {error}")))?;
             if read == 0 {
                 break;
@@ -540,36 +544,31 @@ async fn materialize(
                     "Artifact exceeds cross-language safe byte-count range".to_owned(),
                 ));
             }
-            output
-                .write_all(&buffer[..read])
-                .await
-                .map_err(|error| {
-                    StoreError::Io(format!("Artifact staging write failed: {error}"))
-                })?;
+            output.write_all(&buffer[..read]).map_err(|error| {
+                StoreError::Io(format!("Artifact staging write failed: {error}"))
+            })?;
         }
         output
             .flush()
-            .await
             .map_err(|error| StoreError::Io(format!("Artifact staging flush failed: {error}")))?;
+        output
+            .sync_all()
+            .map_err(|error| StoreError::Io(format!("Artifact staging sync failed: {error}")))?;
         drop(output);
+
         let sha256 = hex::encode(hasher.finalize());
         let destination_dir = object_root.join(&sha256[..2]);
-        tokio::fs::create_dir_all(&destination_dir)
-            .await
-            .map_err(|error| {
-                StoreError::Io(format!("Artifact object directory failed: {error}"))
-            })?;
+        fs::create_dir_all(&destination_dir).map_err(|error| {
+            StoreError::Io(format!("Artifact object directory failed: {error}"))
+        })?;
         let object_path = destination_dir.join(&sha256);
-        if tokio::fs::try_exists(&object_path)
-            .await
-            .map_err(|error| StoreError::Io(format!("Artifact object check failed: {error}")))?
-        {
-            verify_object(&object_path, &sha256, size_bytes).await?;
-            let _ = tokio::fs::remove_file(&temp_path).await;
-        } else if let Err(error) = tokio::fs::rename(&temp_path, &object_path).await {
-            if tokio::fs::try_exists(&object_path).await.unwrap_or(false) {
-                verify_object(&object_path, &sha256, size_bytes).await?;
-                let _ = tokio::fs::remove_file(&temp_path).await;
+        if object_path.exists() {
+            verify_object_blocking(&object_path, &sha256, size_bytes)?;
+            let _ = fs::remove_file(&temp_path);
+        } else if let Err(error) = fs::rename(&temp_path, &object_path) {
+            if object_path.exists() {
+                verify_object_blocking(&object_path, &sha256, size_bytes)?;
+                let _ = fs::remove_file(&temp_path);
             } else {
                 return Err(StoreError::Io(format!(
                     "Artifact materialization failed: {error}"
@@ -588,36 +587,32 @@ async fn materialize(
             size_bytes,
             object_path,
         })
-    }
-    .await;
+    })();
     if result.is_err() {
-        let _ = tokio::fs::remove_file(&temp_path).await;
+        let _ = fs::remove_file(&temp_path);
     }
     result
 }
 
-async fn verify_object(
+fn verify_object_blocking(
     path: &FsPath,
     expected_sha256: &str,
     expected_size: u64,
 ) -> Result<(), StoreError> {
-    let metadata = tokio::fs::metadata(path)
-        .await
+    let metadata = fs::metadata(path)
         .map_err(|error| StoreError::Io(format!("Artifact object metadata failed: {error}")))?;
     if metadata.len() != expected_size {
         return Err(StoreError::Corrupt(
             "existing content-addressed Artifact object has the wrong size".to_owned(),
         ));
     }
-    let mut file = tokio::fs::File::open(path)
-        .await
+    let mut file = File::open(path)
         .map_err(|error| StoreError::Io(format!("Artifact object open failed: {error}")))?;
     let mut hasher = Sha256::new();
     let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
     loop {
         let read = file
             .read(&mut buffer)
-            .await
             .map_err(|error| StoreError::Io(format!("Artifact object read failed: {error}")))?;
         if read == 0 {
             break;
@@ -682,11 +677,9 @@ fn register_materialized(
         });
     }
 
-    if let Some(existing) = load_artifact_by_content_connection(
-        &transaction,
-        workspace_id,
-        &materialized.sha256,
-    )? {
+    if let Some(existing) =
+        load_artifact_by_content_connection(&transaction, workspace_id, &materialized.sha256)?
+    {
         attach_source(
             &transaction,
             workspace_id,
@@ -1113,7 +1106,9 @@ fn bounded_nonempty(
 fn bounded_text(value: &str, max_chars: usize, field: &str) -> Result<String, StoreError> {
     let value = value.trim();
     if value.chars().count() > max_chars
-        || value.chars().any(|character| matches!(character, '\r' | '\n' | '\0'))
+        || value
+            .chars()
+            .any(|character| matches!(character, '\r' | '\n' | '\0'))
     {
         return Err(StoreError::InvalidInput(format!("invalid {field}")));
     }
