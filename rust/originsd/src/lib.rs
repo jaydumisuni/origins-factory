@@ -1,4 +1,5 @@
 pub mod applications;
+pub mod artifacts;
 pub mod auth;
 pub mod authority_process;
 pub mod authority_runtime;
@@ -20,6 +21,7 @@ pub mod workspace_files;
 pub mod workspace_roots;
 
 use crate::applications::{ApplicationRegistry, ApplicationState};
+use crate::artifacts::{ArtifactRootPolicy, ArtifactState};
 use crate::auth::load_or_create_token;
 use crate::http::{router, AppState};
 use crate::hunter::{HunterState, HunterTransport};
@@ -105,6 +107,7 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let process_policy = ProcessPolicy::from_env().map_err(RuntimeError::Config)?;
     let repository_policy = WorkspaceRootPolicy::from_env().map_err(RuntimeError::Config)?;
     let application_registry = ApplicationRegistry::from_env().map_err(RuntimeError::Config)?;
+    let artifact_policy = ArtifactRootPolicy::from_env().map_err(RuntimeError::Config)?;
     let hunter_transport =
         HunterTransport::from_env().map_err(|error| RuntimeError::Config(error.to_string()))?;
     let hunter_configured = hunter_transport.is_some();
@@ -112,6 +115,11 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     initialize_repository_store(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
     applications::initialize(&store).map_err(|error| RuntimeError::Store(error.to_string()))?;
+    let artifact_object_root = config.data_dir.join("artifacts").join("objects");
+    artifacts::initialize(&store, &artifact_object_root)
+        .map_err(|error| RuntimeError::Store(error.to_string()))?;
+    let artifact_object_root = fs::canonicalize(&artifact_object_root)
+        .map_err(|error| RuntimeError::Io(error.to_string()))?;
     initialize_repository_capabilities(&store)
         .map_err(|error| RuntimeError::Store(error.to_string()))?;
     synchronize_hunter_capabilities(&store, hunter_configured)
@@ -135,6 +143,12 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
         registry: application_registry,
         local_token: local_token.clone(),
     };
+    let artifact_state = ArtifactState {
+        store: store.clone(),
+        policy: artifact_policy,
+        object_root: artifact_object_root,
+        local_token: local_token.clone(),
+    };
     let workspace_file_state = WorkspaceFileState {
         store,
         policy: repository_policy,
@@ -143,6 +157,7 @@ pub async fn run(config: RuntimeConfig) -> Result<(), RuntimeError> {
     let app = router(base_state)
         .merge(hunter::router(hunter_state))
         .merge(applications::router(application_state))
+        .merge(artifacts::router(artifact_state))
         .merge(workspace_file_http::router(workspace_file_state));
 
     let listener = TcpListener::bind(config.bind)
