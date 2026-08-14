@@ -8,6 +8,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
 
+from .oracle_live import OracleLiveError, OracleRemoteNodeMount
 from .phase5_runtime import LumiMount, OracleBrowserMount, Phase5Error
 
 MAX_BODY_BYTES = 512 * 1024
@@ -30,12 +31,24 @@ def _local_token() -> str:
 
 
 class Phase5Service:
-    def __init__(self, *, oracle: OracleBrowserMount, lumi: LumiMount):
+    def __init__(
+        self,
+        *,
+        oracle: OracleBrowserMount,
+        lumi: LumiMount,
+        oracle_remote: OracleRemoteNodeMount | None = None,
+    ):
         self.oracle = oracle
         self.lumi = lumi
+        self.oracle_remote = oracle_remote
 
     def health(self) -> dict[str, Any]:
-        result: dict[str, Any] = {"ok": True, "service": "origins-phase5", "api_version": "v1"}
+        result: dict[str, Any] = {
+            "ok": True,
+            "service": "origins-phase5",
+            "api_version": "v1",
+            "oracle_remote": {"configured": self.oracle_remote is not None},
+        }
         for name, operation in (("oracle", self.oracle.snapshot), ("lumi", self.lumi.snapshot)):
             try:
                 value = operation()
@@ -43,6 +56,39 @@ class Phase5Service:
             except Phase5Error:
                 result[name] = {"available": False}
         return result
+
+    def remote_node(self) -> dict[str, Any]:
+        if self.oracle_remote is None:
+            return {
+                "owner": "oracle",
+                "available": False,
+                "reason": "ORACLE_REMOTE_NODE_NOT_CONFIGURED",
+                "remote_application_attachment": {
+                    "available": False,
+                    "reason": "ORACLE_DESKTOP_APPLICATION_SESSION_CONTRACT_UNAVAILABLE",
+                },
+            }
+        return self.oracle_remote.snapshot()
+
+    def retrieve_remote_file(self, body: dict[str, Any]) -> dict[str, Any]:
+        if self.oracle_remote is None:
+            raise OracleLiveError("Oracle remote Node is not configured")
+        forbidden = {
+            "node_id",
+            "nodeId",
+            "destination",
+            "destination_path",
+            "local_path",
+            "token",
+            "headers",
+            "authorization",
+            "upload",
+            "overwrite",
+        }
+        if forbidden.intersection(body):
+            raise OracleLiveError("caller cannot override Oracle Node, destination, credentials, or write authority")
+        remote_path = str(body.get("remote_path") or body.get("path") or "")
+        return self.oracle_remote.retrieve_file(remote_path, approved=bool(body.get("approved")))
 
 
 class Phase5Handler(BaseHTTPRequestHandler):
@@ -70,11 +116,13 @@ class Phase5Handler(BaseHTTPRequestHandler):
                 return self._send(200, self.phase5.oracle.snapshot())
             if parsed.path == "/v1/lumi":
                 return self._send(200, self.phase5.lumi.snapshot())
+            if parsed.path == "/v1/oracle/node":
+                return self._send(200, self.phase5.remote_node())
             if parsed.path.startswith("/v1/lumi/tasks/"):
                 task_id = parsed.path.removeprefix("/v1/lumi/tasks/")
                 return self._send(200, self.phase5.lumi.task(task_id))
             return self._send(404, {"error": "NOT_FOUND"})
-        except Phase5Error as exc:
+        except (Phase5Error, OracleLiveError) as exc:
             return self._send(409, {"error": str(exc)})
 
     def do_POST(self) -> None:  # noqa: N802
@@ -112,8 +160,10 @@ class Phase5Handler(BaseHTTPRequestHandler):
             if parsed.path.startswith("/v1/lumi/artifact-candidates/"):
                 task_id = parsed.path.removeprefix("/v1/lumi/artifact-candidates/")
                 return self._send(200, self.phase5.lumi.artifact_candidate(task_id))
+            if parsed.path == "/v1/oracle/files/retrieve":
+                return self._send(201, self.phase5.retrieve_remote_file(body))
             return self._send(404, {"error": "NOT_FOUND"})
-        except (Phase5Error, TypeError, ValueError) as exc:
+        except (Phase5Error, OracleLiveError, TypeError, ValueError) as exc:
             return self._send(400, {"error": str(exc)})
 
     def _authorized(self) -> bool:
@@ -147,7 +197,11 @@ class Phase5Handler(BaseHTTPRequestHandler):
 def serve(*, host: str = DEFAULT_BIND, port: int = DEFAULT_PORT) -> None:
     host = _require_loopback(host)
     token = _local_token()
-    phase5 = Phase5Service(oracle=OracleBrowserMount.from_env(), lumi=LumiMount.from_env())
+    phase5 = Phase5Service(
+        oracle=OracleBrowserMount.from_env(),
+        lumi=LumiMount.from_env(),
+        oracle_remote=OracleRemoteNodeMount.from_env(),
+    )
     server = ThreadingHTTPServer((host, int(port)), Phase5Handler)
     server.phase5 = phase5  # type: ignore[attr-defined]
     server.local_token = token  # type: ignore[attr-defined]
