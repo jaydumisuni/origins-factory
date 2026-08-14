@@ -149,7 +149,8 @@ impl StoredArtifact {
 
 pub fn initialize(store: &Store, object_root: &FsPath) -> Result<(), StoreError> {
     fs::create_dir_all(object_root).map_err(|error| StoreError::Io(error.to_string()))?;
-    fs::create_dir_all(object_root.join("tmp")).map_err(|error| StoreError::Io(error.to_string()))?;
+    fs::create_dir_all(object_root.join("tmp"))
+        .map_err(|error| StoreError::Io(error.to_string()))?;
     let connection = store.connection()?;
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS artifact_meta (
@@ -228,8 +229,7 @@ impl Store {
         let connection = self.connection()?;
         let count: i64 =
             connection.query_row("SELECT COUNT(*) FROM artifacts", [], |row| row.get(0))?;
-        u64::try_from(count)
-            .map_err(|_| StoreError::Corrupt("negative Artifact count".to_owned()))
+        u64::try_from(count).map_err(|_| StoreError::Corrupt("negative Artifact count".to_owned()))
     }
 }
 
@@ -322,8 +322,8 @@ async fn register_artifact(
         .policy
         .require_source(&request.path)
         .map_err(ArtifactApiError::from_store)?;
-    let filename = artifact_filename(&request.filename, &source_path)
-        .map_err(ArtifactApiError::from_store)?;
+    let filename =
+        artifact_filename(&request.filename, &source_path).map_err(ArtifactApiError::from_store)?;
     let media_type = bounded_text(&request.media_type, MAX_MEDIA_TYPE_CHARS, "media_type")
         .map_err(ArtifactApiError::from_store)?;
 
@@ -522,9 +522,8 @@ fn materialize_blocking(
     let result = (|| {
         let mut input = File::open(source)
             .map_err(|error| StoreError::Io(format!("Artifact source open failed: {error}")))?;
-        let mut output = File::create(&temp_path).map_err(|error| {
-            StoreError::Io(format!("Artifact staging create failed: {error}"))
-        })?;
+        let mut output = File::create(&temp_path)
+            .map_err(|error| StoreError::Io(format!("Artifact staging create failed: {error}")))?;
         let mut hasher = Sha256::new();
         let mut size_bytes = 0_u64;
         let mut buffer = vec![0_u8; COPY_BUFFER_BYTES];
@@ -656,8 +655,8 @@ fn register_materialized(
         )
         .optional()?
     {
-        let artifact = load_artifact_connection(&transaction, &source_artifact_id)?
-            .ok_or_else(|| {
+        let artifact =
+            load_artifact_connection(&transaction, &source_artifact_id)?.ok_or_else(|| {
                 StoreError::Corrupt("Artifact source points to missing Artifact".to_owned())
             })?;
         if artifact
@@ -853,8 +852,9 @@ fn update_source_count(
     let canonical = canonical_json(&projection).map_err(|error| {
         StoreError::Corrupt(format!("Artifact projection serialization failed: {error}"))
     })?;
-    let digest = contract_sha256(&projection)
-        .map_err(|error| StoreError::Corrupt(format!("Artifact projection digest failed: {error}")))?;
+    let digest = contract_sha256(&projection).map_err(|error| {
+        StoreError::Corrupt(format!("Artifact projection digest failed: {error}"))
+    })?;
     transaction.execute(
         "UPDATE artifacts
          SET projection_json = ?2, projection_sha256 = ?3, revision = ?4, updated_at = ?5
@@ -1086,16 +1086,10 @@ fn normalize_owner(value: &str) -> Result<String, StoreError> {
     Ok(owner)
 }
 
-fn bounded_nonempty(
-    value: &str,
-    max_chars: usize,
-    field: &str,
-) -> Result<String, StoreError> {
+fn bounded_nonempty(value: &str, max_chars: usize, field: &str) -> Result<String, StoreError> {
     let value = value.trim();
     if value.is_empty() {
-        return Err(StoreError::InvalidInput(format!(
-            "{field} cannot be empty"
-        )));
+        return Err(StoreError::InvalidInput(format!("{field} cannot be empty")));
     }
     if value.chars().count() > max_chars {
         return Err(StoreError::InvalidInput(format!("{field} is too long")));
@@ -1188,12 +1182,8 @@ impl ArtifactApiError {
             StoreError::InvalidInput(message) | StoreError::Contract(message) => {
                 Self::new(StatusCode::BAD_REQUEST, "INVALID_REQUEST", message)
             }
-            StoreError::NotFound(message) => {
-                Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message)
-            }
-            StoreError::Conflict(message) => {
-                Self::new(StatusCode::CONFLICT, "CONFLICT", message)
-            }
+            StoreError::NotFound(message) => Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message),
+            StoreError::Conflict(message) => Self::new(StatusCode::CONFLICT, "CONFLICT", message),
             StoreError::Corrupt(message) => {
                 Self::new(StatusCode::SERVICE_UNAVAILABLE, "CORRUPT_STATE", message)
             }

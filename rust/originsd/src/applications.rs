@@ -88,7 +88,9 @@ impl ApplicationDescriptor {
             "args": self.args.as_ref(),
             "cwd": self.cwd.as_ref().map(|value| value.to_string_lossy()),
         }))
-        .map_err(|error| StoreError::InvalidInput(format!("application descriptor digest failed: {error}")))
+        .map_err(|error| {
+            StoreError::InvalidInput(format!("application descriptor digest failed: {error}"))
+        })
     }
 }
 
@@ -298,11 +300,10 @@ impl Store {
 
     pub fn application_launch_count(&self) -> Result<u64, StoreError> {
         let connection = self.connection()?;
-        let count: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM application_launches",
-            [],
-            |row| row.get(0),
-        )?;
+        let count: i64 =
+            connection.query_row("SELECT COUNT(*) FROM application_launches", [], |row| {
+                row.get(0)
+            })?;
         u64::try_from(count)
             .map_err(|_| StoreError::Corrupt("negative application launch count".to_owned()))
     }
@@ -379,9 +380,7 @@ async fn list_applications(
     headers: HeaderMap,
 ) -> Result<Json<Value>, AppApiError> {
     require_auth(&headers, &state.local_token)?;
-    Ok(Json(
-        json!({"applications": state.registry.projections()}),
-    ))
+    Ok(Json(json!({"applications": state.registry.projections()})))
 }
 
 async fn get_application_launch(
@@ -425,9 +424,7 @@ async fn launch_application(
             "application not found",
         )
     })?;
-    let descriptor_sha256 = application
-        .fingerprint()
-        .map_err(AppApiError::from_store)?;
+    let descriptor_sha256 = application.fingerprint().map_err(AppApiError::from_store)?;
 
     match reserve_launch(
         &state.store,
@@ -643,7 +640,9 @@ fn finish_launch(
         Vec::new(),
     )?;
     let updated = load_launch(&transaction, launch_id)?.ok_or_else(|| {
-        StoreError::Corrupt(format!("application launch {launch_id} disappeared after update"))
+        StoreError::Corrupt(format!(
+            "application launch {launch_id} disappeared after update"
+        ))
     })?;
     transaction.commit()?;
     Ok(updated)
@@ -744,12 +743,8 @@ impl AppApiError {
             StoreError::InvalidInput(message) | StoreError::Contract(message) => {
                 Self::new(StatusCode::BAD_REQUEST, "INVALID_REQUEST", message)
             }
-            StoreError::NotFound(message) => {
-                Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message)
-            }
-            StoreError::Conflict(message) => {
-                Self::new(StatusCode::CONFLICT, "CONFLICT", message)
-            }
+            StoreError::NotFound(message) => Self::new(StatusCode::NOT_FOUND, "NOT_FOUND", message),
+            StoreError::Conflict(message) => Self::new(StatusCode::CONFLICT, "CONFLICT", message),
             StoreError::Corrupt(message) => {
                 Self::new(StatusCode::SERVICE_UNAVAILABLE, "CORRUPT_STATE", message)
             }
@@ -805,8 +800,7 @@ mod tests {
     #[test]
     fn relative_executable_is_rejected() {
         let raw = r#"{"applications":[{"id":"bad","name":"Bad","executable":"relative.exe"}]}"#;
-        let error =
-            ApplicationRegistry::from_json(raw).expect_err("relative executable must fail");
+        let error = ApplicationRegistry::from_json(raw).expect_err("relative executable must fail");
         assert!(error.contains("absolute path"));
     }
 
