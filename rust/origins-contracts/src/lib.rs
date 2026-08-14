@@ -81,6 +81,7 @@ pub fn validate_contract(value: &Value) -> Result<(), ContractError> {
         "event_envelope" => validate_event_envelope(object),
         "session_projection" => validate_session_projection(object),
         "repository_projection" => validate_repository_projection(object),
+        "artifact_projection" => validate_artifact_projection(object),
         other => Err(ContractError::new(
             "UNKNOWN_CONTRACT_TYPE",
             format!("unsupported contract_type: {other}"),
@@ -433,6 +434,60 @@ fn validate_repository_projection(object: &Map<String, Value>) -> Result<(), Con
         return Err(ContractError::new(
             "INVALID_REPOSITORY_STATE",
             "head_ref and branch disagree",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_artifact_projection(object: &Map<String, Value>) -> Result<(), ContractError> {
+    exact_fields(
+        object,
+        &[
+            "contract_type",
+            "schema_version",
+            "artifact_id",
+            "workspace_id",
+            "revision",
+            "content_sha256",
+            "size_bytes",
+            "filename",
+            "media_type",
+            "storage_class",
+            "source_count",
+            "created_at",
+            "updated_at",
+        ],
+    )?;
+    canonical_uuid(object, "artifact_id")?;
+    canonical_uuid(object, "workspace_id")?;
+    if nonnegative_integer(object, "revision", "INVALID_REVISION")? < 1 {
+        return Err(ContractError::new(
+            "INVALID_REVISION",
+            "artifact revision must be at least 1",
+        ));
+    }
+    digest_field(object, "content_sha256", false)?;
+    nonnegative_integer(object, "size_bytes", "INVALID_BYTE_COUNT")?;
+    nonempty_string(object, "filename")?;
+    string(object, "media_type")?;
+    if string(object, "storage_class")? != "local_immutable" {
+        return Err(ContractError::new(
+            "INVALID_STORAGE_CLASS",
+            "storage_class must be local_immutable",
+        ));
+    }
+    if nonnegative_integer(object, "source_count", "INVALID_SOURCE_COUNT")? < 1 {
+        return Err(ContractError::new(
+            "INVALID_SOURCE_COUNT",
+            "source_count must be at least 1",
+        ));
+    }
+    let created = timestamp(object, "created_at")?;
+    let updated = timestamp(object, "updated_at")?;
+    if updated < created {
+        return Err(ContractError::new(
+            "INVALID_TIMESTAMP_ORDER",
+            "updated_at cannot precede created_at",
         ));
     }
     Ok(())
