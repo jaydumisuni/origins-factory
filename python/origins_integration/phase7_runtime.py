@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Mapping
 
 from .capability_evolution import CapabilityEvolutionError, CapabilityEvolutionStore, sha256_json
-from .capability_evolution_approvals import EvolutionApprovalBindings
+from .capability_evolution_approvals import EvolutionApprovalBindings, EvolutionEngineeringApprovalBindings
 from .capability_proposals import CapabilityProposal
 from .engineering import OriginsClient
 from .intelligence_runtime import IntelligenceRuntime
@@ -27,11 +27,13 @@ class Phase7Runtime:
         intelligence: IntelligenceRuntime,
         origins_client: OriginsClient,
         approvals: EvolutionApprovalBindings | None = None,
+        engineering_approvals: EvolutionEngineeringApprovalBindings | None = None,
     ) -> None:
         self.store = store
         self.intelligence = intelligence
         self.origins_client = origins_client
         self.approvals = approvals or EvolutionApprovalBindings(store.path)
+        self.engineering_approvals = engineering_approvals or EvolutionEngineeringApprovalBindings(store.path)
 
     @classmethod
     def from_env(cls) -> "Phase7Runtime":
@@ -46,6 +48,7 @@ class Phase7Runtime:
         return cls(
             store=CapabilityEvolutionStore(path),
             approvals=EvolutionApprovalBindings(path),
+            engineering_approvals=EvolutionEngineeringApprovalBindings(path),
             intelligence=intelligence,
             origins_client=client,
         )
@@ -61,7 +64,9 @@ class Phase7Runtime:
 
     def _project(self, record: dict[str, object]) -> dict[str, object]:
         projected = dict(record)
-        projected["approval_binding"] = self.approvals.get(str(record["evolution_id"]))
+        evolution_id = str(record["evolution_id"])
+        projected["approval_binding"] = self.approvals.get(evolution_id)
+        projected["engineering_approval_binding"] = self.engineering_approvals.get(evolution_id)
         gap = _mapping(record, "gap")
         projected["active_generation"] = self.store.active_generation(str(gap["capability_id"]))
         return projected
@@ -93,8 +98,7 @@ class Phase7Runtime:
         if record.get("state") != "proposal_ready":
             raise CapabilityEvolutionError("approval may be requested only for a proposal-ready evolution")
         proposal = _mapping(record, "proposal")
-        stores = self.intelligence.agentops._stores()
-        service = stores.approval_service()
+        service = self.intelligence.agentops._stores().approval_service()
         existing = self.approvals.get(evolution_id)
         if existing is not None and existing["status"] in {"pending", "approved"}:
             approval_id = str(existing["approval_id"])
@@ -218,16 +222,76 @@ class Phase7Runtime:
             )
         )
 
+    def create_engineering_approval(self, evolution_id: str, payload: Mapping[str, object]) -> dict[str, object]:
+        record = self.store.get(evolution_id)
+        if record.get("state") != "upgrade_operation_ready":
+            raise CapabilityEvolutionError("engineering approval requires a ready child upgrade Operation")
+        subject = _engineering_subject(record, payload)
+        existing = self.engineering_approvals.get(evolution_id)
+        if existing is not None and existing["status"] in {"pending", "approved"}:
+            if existing["subject_sha256"] != sha256_json(subject):
+                raise CapabilityEvolutionError("existing engineering approval is bound to a different candidate request")
+            approval_id = str(existing["approval_id"])
+            state = self.intelligence.agentops._stores().approval_service().get_state(approval_id)
+            return {"owner": "Hunter-AgentOps", "approval": state.public_dict(), "binding": existing}
+        created = self.intelligence.create_approval(
+            {
+                "kind": "engineering",
+                "subject": subject,
+                "reason": "Implement the bounded CodeOps candidate for a confirmed Origins capability gap.",
+                "requested_by": "origins-phase7",
+            }
+        )
+        approval = created.get("approval")
+        request = approval.get("request") if isinstance(approval, dict) else None
+        approval_id = request.get("approval_id") if isinstance(request, dict) else None
+        if not isinstance(approval_id, str) or not approval_id:
+            raise Phase7RuntimeError("AgentOps engineering approval response omitted approval_id")
+        evidence = self.intelligence.agentops._stores().approval_service().get_evidence(approval_id).public_dict()
+        binding = self.engineering_approvals.bind(evolution_id, subject=subject, evidence=evidence)
+        return {**created, "binding": binding, "engineering_subject": subject}
+
+    def decide_engineering_approval(
+        self,
+        evolution_id: str,
+        *,
+        approval_id: str,
+        decision: str,
+        decided_by: str,
+    ) -> dict[str, object]:
+        binding = self.engineering_approvals.get(evolution_id)
+        if binding is None or binding["approval_id"] != approval_id:
+            raise Phase7RuntimeError("AgentOps engineering approval is not the durable binding for this evolution")
+        service = self.intelligence.agentops._stores().approval_service()
+        before = service.get_evidence(approval_id).public_dict()
+        request = before.get("request")
+        metadata = request.get("metadata") if isinstance(request, dict) else None
+        subject = metadata.get("subject") if isinstance(metadata, dict) else None
+        if metadata is None or metadata.get("origins_approval_kind") != "engineering" or not isinstance(subject, dict):
+            raise Phase7RuntimeError("AgentOps engineering approval evidence is malformed")
+        if sha256_json(subject) != binding["subject_sha256"]:
+            raise Phase7RuntimeError("AgentOps engineering approval subject changed after binding")
+        state = service.get_state(approval_id)
+        if state.status == "pending":
+            result = self.intelligence.decide_approval(
+                {"approval_id": approval_id, "decision": decision, "decided_by": decided_by}
+            )
+        elif state.status == decision:
+            result = {"owner": "Hunter-AgentOps", "approval": state.public_dict(), "evidence": before}
+        else:
+            raise Phase7RuntimeError(f"AgentOps engineering approval is already {state.status}")
+        evidence = service.get_evidence(approval_id).public_dict()
+        binding = self.engineering_approvals.bind(evolution_id, subject=subject, evidence=evidence)
+        return {**result, "binding": binding, "engineering_subject": subject}
+
     def implement_candidate(self, evolution_id: str, payload: dict[str, object]) -> dict[str, object]:
         record = self.store.get(evolution_id)
         if record.get("state") != "upgrade_operation_ready":
             raise CapabilityEvolutionError("candidate implementation requires a ready child upgrade Operation")
-        child = _mapping(record, "child_operation")
-        operation_id = str(child["operation_id"])
-        command = dict(payload)
-        command["operation_id"] = operation_id
-        command.setdefault("apply_plan", True)
-        command.setdefault("review", "required")
+        subject = _engineering_subject(record, payload)
+        binding = self.engineering_approvals.require_approved(evolution_id, subject)
+        command = dict(subject)
+        command["approval_id"] = binding["approval_id"]
         result = self.intelligence.engineering_attempt(command)
         evidence = result.get("evidence")
         if not isinstance(evidence, dict):
@@ -317,6 +381,30 @@ class Phase7Runtime:
             )
         )
         return {"evolution": self._project(record), "agentops_evidence": stored}
+
+
+def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, object]) -> dict[str, object]:
+    child = _mapping(record, "child_operation")
+    command = dict(payload)
+    command.pop("approval_id", None)
+    command.pop("owner_approved", None)
+    command.pop("approval_state", None)
+    command["operation_id"] = str(child["operation_id"])
+    command["apply_plan"] = True
+    command.setdefault("review", "required")
+    command.setdefault("client_kind", "terminal")
+    command.setdefault("mode", "quick_edit")
+    command.setdefault("config", "config/code_ops_switcher.example.json")
+    command.setdefault("files", [])
+    command.setdefault("plan", "")
+    command.setdefault("provider_id", "")
+    command.setdefault("required_capability", "")
+    command.setdefault("review_mode", "pull_request")
+    if not isinstance(command.get("repository_id"), str) or not str(command["repository_id"]).strip():
+        raise Phase7RuntimeError("repository_id is required for candidate engineering")
+    if not isinstance(command.get("task"), str) or not str(command["task"]).strip():
+        raise Phase7RuntimeError("task is required for candidate engineering")
+    return command
 
 
 def _mapping(record: Mapping[str, object], field: str) -> Mapping[str, object]:
