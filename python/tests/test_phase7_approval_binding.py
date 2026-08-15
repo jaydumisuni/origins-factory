@@ -5,7 +5,10 @@ from pathlib import Path
 import pytest
 
 from origins_integration.capability_evolution import CapabilityEvolutionError
-from origins_integration.capability_evolution_approvals import EvolutionApprovalBindings
+from origins_integration.capability_evolution_approvals import (
+    EvolutionApprovalBindings,
+    EvolutionEngineeringApprovalBindings,
+)
 
 D = "d" * 64
 
@@ -55,3 +58,34 @@ def test_rejected_binding_can_be_replaced_by_new_request(tmp_path: Path) -> None
     replacement = bindings.bind("evolution-7", evidence("approval-new", "pending"))
     assert replacement["approval_id"] == "approval-new"
     assert replacement["status"] == "pending"
+
+
+def test_engineering_binding_survives_restart_with_exact_subject(tmp_path: Path) -> None:
+    path = tmp_path / "phase7.sqlite"
+    subject = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
+    first = EvolutionEngineeringApprovalBindings(path)
+    first.bind("evolution-7", subject=subject, evidence=evidence("engineering-7", "approved"))
+
+    second = EvolutionEngineeringApprovalBindings(path)
+    recovered = second.require_approved("evolution-7", subject)
+    assert recovered["approval_id"] == "engineering-7"
+    assert recovered["status"] == "approved"
+
+
+def test_engineering_approval_cannot_authorize_changed_subject(tmp_path: Path) -> None:
+    bindings = EvolutionEngineeringApprovalBindings(tmp_path / "phase7.sqlite")
+    original = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
+    changed = {"repository_id": "repo-7", "task": "different edit", "apply_plan": True}
+    bindings.bind("evolution-7", subject=original, evidence=evidence("engineering-7", "approved"))
+    with pytest.raises(CapabilityEvolutionError, match="engineering request changed"):
+        bindings.require_approved("evolution-7", changed)
+
+
+def test_capability_approval_binding_is_not_engineering_approval(tmp_path: Path) -> None:
+    path = tmp_path / "phase7.sqlite"
+    capability = EvolutionApprovalBindings(path)
+    engineering = EvolutionEngineeringApprovalBindings(path)
+    capability.bind("evolution-7", evidence("capability-7", "approved"))
+    subject = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
+    with pytest.raises(CapabilityEvolutionError, match="no durable AgentOps engineering approval"):
+        engineering.require_approved("evolution-7", subject)
