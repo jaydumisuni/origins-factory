@@ -3,6 +3,7 @@ import Phase4App from "./Phase4App";
 import { DEFAULT_API_BASE } from "./api";
 import { pretty, safeText, type JsonRecord } from "./model";
 import { DEFAULT_PHASE5_API_BASE, Phase5Api, type Phase5Health } from "./phase5Api";
+import { requireAuthenticatedOwnerProjection } from "./phase5Model";
 import "./phase5.css";
 
 type Surface = "Core" | "Oracle" | "Logistics" | "Applications";
@@ -10,10 +11,6 @@ const surfaces: Surface[] = ["Core", "Oracle", "Logistics", "Applications"];
 
 function asRecord(value: unknown): JsonRecord | null {
   return typeof value === "object" && value !== null && !Array.isArray(value) ? value as JsonRecord : null;
-}
-
-function records(value: unknown): JsonRecord[] {
-  return Array.isArray(value) ? value.filter((item): item is JsonRecord => asRecord(item) !== null) : [];
 }
 
 function text(record: JsonRecord | null, key: string, fallback = ""): string {
@@ -100,6 +97,7 @@ export default function Phase5App() {
       api.applications(),
       api.artifacts(artifactWorkspaceFilter.trim()),
     ]);
+    requireAuthenticatedOwnerProjection(results);
     const [browserResult, nodeResult, lumiResult, appResult, artifactResult] = results;
     setBrowser(browserResult.status === "fulfilled" ? browserResult.value : { available: false, error: errorText(browserResult.reason) });
     setRemoteNode(nodeResult.status === "fulfilled" ? nodeResult.value : { available: false, error: errorText(nodeResult.reason) });
@@ -133,8 +131,10 @@ export default function Phase5App() {
     try {
       setHealth(await api.health());
       await loadOwners();
-    } catch (cause) { setError(errorText(cause)); }
-    finally { setBusy(false); }
+    } catch (cause) {
+      setConnected(false);
+      setError(errorText(cause));
+    } finally { setBusy(false); }
   }
 
   function disconnect(): void {
