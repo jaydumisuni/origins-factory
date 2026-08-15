@@ -85,6 +85,14 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/child-operation`, { approval_id: approvalId });
   }
 
+  createEngineeringApproval(id: string, payload: JsonRecord): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval`, payload);
+  }
+
+  decideEngineeringApproval(id: string, payload: JsonRecord): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval/decision`, payload);
+  }
+
   implementCandidate(id: string, payload: JsonRecord): Promise<JsonRecord> {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate`, payload);
   }
