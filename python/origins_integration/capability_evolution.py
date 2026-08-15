@@ -239,11 +239,32 @@ class CapabilityEvolutionStore:
         generation = _positive_int(candidate.get("candidate_generation"), "candidate_generation")
         manifest_sha = _digest_value(candidate.get("manifest_sha256"), "manifest_sha256")
         proof_sha = _digest_value(candidate.get("proof_sha256"), "proof_sha256")
+        base_generation = _nonnegative_int(candidate.get("base_generation"), "base_generation")
+        base_manifest_raw = candidate.get("base_manifest_sha256")
+        base_evolution_raw = candidate.get("base_evolution_id")
+        if base_generation == 0:
+            if base_manifest_raw not in {None, ""} or base_evolution_raw not in {None, ""}:
+                raise CapabilityEvolutionError("generation-zero candidate must have an empty active-generation base")
+            base_manifest = None
+            base_evolution = None
+        else:
+            base_manifest = _digest_value(base_manifest_raw, "base_manifest_sha256")
+            if not isinstance(base_evolution_raw, str) or not base_evolution_raw.strip():
+                raise CapabilityEvolutionError("base_evolution_id is required for a nonzero base generation")
+            base_evolution = base_evolution_raw.strip()
+        if generation != base_generation + 1:
+            raise CapabilityEvolutionError("candidate generation must be exactly one generation above its frozen base")
         capability_id = str(_mapping(record, "gap")["capability_id"])
         current = self.active_generation(capability_id)
-        if current is not None and generation <= int(current["generation"]):
-            raise CapabilityEvolutionError("candidate generation must advance the active generation")
+        current_generation = int(current["generation"]) if current is not None else 0
+        current_manifest = str(current["manifest_sha256"]) if current is not None else None
+        current_evolution = str(current["evolution_id"]) if current is not None else None
+        if (base_generation, base_manifest, base_evolution) != (current_generation, current_manifest, current_evolution):
+            raise CapabilityEvolutionError("candidate base generation does not match the current active generation")
         clean = dict(candidate)
+        clean["base_generation"] = base_generation
+        clean["base_manifest_sha256"] = base_manifest
+        clean["base_evolution_id"] = base_evolution
         clean["candidate_generation"] = generation
         clean["manifest_sha256"] = manifest_sha
         clean["proof_sha256"] = proof_sha
@@ -302,6 +323,14 @@ class CapabilityEvolutionStore:
                 (capability_id,),
             ).fetchone()
             previous = dict(row) if row is not None else None
+            base_generation = _nonnegative_int(candidate.get("base_generation"), "base_generation")
+            base_manifest = candidate.get("base_manifest_sha256")
+            base_evolution = candidate.get("base_evolution_id")
+            current_generation = int(previous["generation"]) if previous is not None else 0
+            current_manifest = str(previous["manifest_sha256"]) if previous is not None else None
+            current_evolution = str(previous["evolution_id"]) if previous is not None else None
+            if (base_generation, base_manifest, base_evolution) != (current_generation, current_manifest, current_evolution):
+                raise CapabilityEvolutionError("active generation changed after candidate proof; rebase and re-prove the capability candidate")
             promotion: dict[str, object] = {
                 "decision": decision,
                 "decided_by": decided_by.strip(),
@@ -419,6 +448,12 @@ def _list_of_strings(value: object, field: str) -> list[str]:
 def _positive_int(value: object, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         raise CapabilityEvolutionError(f"{field} must be a positive integer")
+    return value
+
+
+def _nonnegative_int(value: object, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise CapabilityEvolutionError(f"{field} must be a nonnegative integer")
     return value
 
 

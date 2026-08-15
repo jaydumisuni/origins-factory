@@ -92,6 +92,9 @@ def build_reviewed(store: CapabilityEvolutionStore) -> str:
         {
             "repository_id": "repo-7",
             "repository_revision": 8,
+            "base_generation": 0,
+            "base_manifest_sha256": None,
+            "base_evolution_id": None,
             "candidate_generation": 1,
             "manifest": manifest,
             "manifest_sha256": manifest_sha,
@@ -200,6 +203,9 @@ def test_non_pass_sergeant_verdict_blocks_canary(tmp_path: Path) -> None:
         {
             "repository_id": "repo-7",
             "repository_revision": 2,
+            "base_generation": 0,
+            "base_manifest_sha256": None,
+            "base_evolution_id": None,
             "candidate_generation": 1,
             "manifest_sha256": manifest_sha,
             "proof_sha256": F,
@@ -250,3 +256,18 @@ def test_generation_rollback_is_explicit_and_does_not_resume_implicitly(tmp_path
     assert record["resume"] is None
     record = store.resume_mission(evolution_id)
     assert record["state"] == "mission_resumed"
+
+
+def test_stale_candidate_cannot_overwrite_newer_active_generation(tmp_path: Path) -> None:
+    store = CapabilityEvolutionStore(tmp_path / "phase7.sqlite")
+    first = build_reviewed(store)
+    first_candidate = store.get(first)["candidate"]
+    assert isinstance(first_candidate, dict)
+    second = build_reviewed(store)
+    second_candidate = store.get(second)["candidate"]
+    assert isinstance(second_candidate, dict)
+    for evolution_id, candidate in ((first, first_candidate), (second, second_candidate)):
+        store.record_canary(evolution_id, {"mission_id": "mission-7", "attempt_id": "attempt-7", "manifest_sha256": candidate["manifest_sha256"], "outcome": "passed", "authority_expanded": False, "proof_sha256": E})
+    store.decide(first, decision="promote", decided_by="owner")
+    with pytest.raises(CapabilityEvolutionError, match="active generation changed after candidate proof"):
+        store.decide(second, decision="promote", decided_by="owner")

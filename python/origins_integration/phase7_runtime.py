@@ -290,9 +290,14 @@ class Phase7Runtime:
             raise CapabilityEvolutionError("candidate implementation requires a ready child upgrade Operation")
         subject = _engineering_subject(record, payload)
         binding = self.engineering_approvals.require_approved(evolution_id, subject)
+        repository_id = str(subject["repository_id"])
+        pre_repository = self.origins_client.refresh_repository(repository_id)
         command = dict(subject)
         command["approval_id"] = binding["approval_id"]
         result = self.intelligence.engineering_attempt(command)
+        post_repository = self.origins_client.refresh_repository(repository_id)
+        repository_diff = self.origins_client.get_repository_diff(repository_id, kind="unstaged")
+        change_proof = _candidate_change_proof(pre_repository, post_repository, repository_diff)
         evidence = result.get("evidence")
         if not isinstance(evidence, dict):
             raise Phase7RuntimeError("CodeOps engineering result omitted retained evidence")
@@ -304,7 +309,10 @@ class Phase7Runtime:
             raise Phase7RuntimeError("AgentOps engineering evidence omitted canonical evidence_id")
         proposal = _mapping(record, "proposal")
         current = self.store.active_generation(str(proposal["capability_id"]))
-        generation = (int(current["generation"]) if current else 0) + 1
+        base_generation = int(current["generation"]) if current else 0
+        base_manifest_sha256 = str(current["manifest_sha256"]) if current else None
+        base_evolution_id = str(current["evolution_id"]) if current else None
+        generation = base_generation + 1
         manifest = {
             "schema_version": "origins.capability-generation.v1",
             "capability_id": proposal["capability_id"],
@@ -317,20 +325,29 @@ class Phase7Runtime:
             "environment_names": proposal["environment_names"],
             "persistent_lease": proposal["persistent_lease"],
             "delegated_remote_authority": proposal["delegated_remote_authority"],
-            "repository_id": result["repository_id"],
-            "repository_revision": result["repository_revision"],
-            "repository_head_oid": result["repository_head_oid"],
+            "repository_id": repository_id,
+            "repository_revision": post_repository["revision"],
+            "repository_head_oid": post_repository["head_oid"],
+            "repository_status_sha256": post_repository["status_sha256"],
+            "repository_diff_sha256": change_proof["diff_sha256"],
+            "repository_diff_bytes": change_proof["diff_bytes"],
             "codeops_evidence_sha256": sha256_json(evidence),
         }
         manifest_sha = sha256_json(manifest)
         candidate = {
-            "repository_id": result["repository_id"],
-            "repository_revision": result["repository_revision"],
-            "repository_head_oid": result["repository_head_oid"],
+            "repository_id": repository_id,
+            "repository_revision": post_repository["revision"],
+            "repository_head_oid": post_repository["head_oid"],
+            "repository_status_sha256": post_repository["status_sha256"],
+            "repository_diff_sha256": change_proof["diff_sha256"],
+            "repository_diff_bytes": change_proof["diff_bytes"],
+            "base_generation": base_generation,
+            "base_manifest_sha256": base_manifest_sha256,
+            "base_evolution_id": base_evolution_id,
             "candidate_generation": generation,
             "manifest": manifest,
             "manifest_sha256": manifest_sha,
-            "proof_sha256": sha256_json({"engineering": evidence, "review_sha256": result["review_sha256"]}),
+            "proof_sha256": sha256_json({"engineering": evidence, "review_sha256": result["review_sha256"], "change_proof": change_proof}),
             "codeops_evidence_ref": f"agentops:evidence:{evidence_id.strip()}",
         }
         self.store.bind_candidate(evolution_id, candidate)
@@ -402,6 +419,9 @@ def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, obj
     command.setdefault("config", "config/code_ops_switcher.example.json")
     command.setdefault("files", [])
     command.setdefault("plan", "")
+    if not isinstance(command.get("plan"), str) or not str(command["plan"]).strip():
+        raise Phase7RuntimeError("candidate engineering requires a non-empty CodeOps file-edit plan")
+    command["plan"] = str(command["plan"]).strip()
     command.setdefault("provider_id", "")
     command.setdefault("required_capability", "")
     command.setdefault("review_mode", "pull_request")
@@ -410,6 +430,34 @@ def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, obj
     if not isinstance(command.get("task"), str) or not str(command["task"]).strip():
         raise Phase7RuntimeError("task is required for candidate engineering")
     return command
+
+
+def _candidate_change_proof(before: Mapping[str, object], after: Mapping[str, object], diff: Mapping[str, object]) -> dict[str, object]:
+    before_id = str(before.get("repository_id") or "")
+    after_id = str(after.get("repository_id") or "")
+    if not before_id or before_id != after_id:
+        raise Phase7RuntimeError("candidate repository identity changed during engineering")
+    before_status = str(before.get("status_sha256") or "")
+    after_status = str(after.get("status_sha256") or "")
+    if len(before_status) != 64 or len(after_status) != 64:
+        raise Phase7RuntimeError("candidate repository status evidence is malformed")
+    if before_status == after_status:
+        raise Phase7RuntimeError("CodeOps candidate did not change repository status")
+    if diff.get("kind") != "unstaged":
+        raise Phase7RuntimeError("candidate proof requires an unstaged repository diff")
+    if bool(diff.get("truncated")):
+        raise Phase7RuntimeError("candidate repository diff is truncated")
+    diff_bytes = diff.get("complete_bytes")
+    if isinstance(diff_bytes, bool) or not isinstance(diff_bytes, int) or diff_bytes < 1:
+        raise Phase7RuntimeError("candidate engineering must produce a non-empty tracked repository diff")
+    diff_sha = str(diff.get("sha256") or "")
+    if len(diff_sha) != 64:
+        raise Phase7RuntimeError("candidate repository diff SHA-256 is malformed")
+    try:
+        int(diff_sha, 16)
+    except ValueError as exc:
+        raise Phase7RuntimeError("candidate repository diff SHA-256 is malformed") from exc
+    return {"repository_id": after_id, "before_status_sha256": before_status, "after_status_sha256": after_status, "diff_sha256": diff_sha.lower(), "diff_bytes": diff_bytes, "post_revision": after.get("revision"), "post_head_oid": after.get("head_oid")}
 
 
 def _mapping(record: Mapping[str, object], field: str) -> Mapping[str, object]:
