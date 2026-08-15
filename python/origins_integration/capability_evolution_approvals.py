@@ -56,11 +56,18 @@ class EvolutionApprovalBindings:
         approval_id = _required(evidence, "approval_id")
         status = _status(evidence)
         request_digest = _digest(evidence, "request_digest")
-        previous = self.get(evolution_id)
-        _validate_replacement(previous, approval_id, status)
         now = _now()
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT approval_id, status FROM evolution_approval_bindings WHERE evolution_id=?",
+                (evolution_id,),
+            ).fetchone()
+            previous = None if row is None else {
+                "approval_id": str(row["approval_id"]),
+                "status": str(row["status"]),
+            }
+            _validate_replacement(previous, approval_id, status)
             db.execute(
                 "INSERT INTO evolution_approval_bindings(evolution_id,approval_id,status,request_digest,evidence_json,updated_at) "
                 "VALUES(?,?,?,?,?,?) ON CONFLICT(evolution_id) DO UPDATE SET "
@@ -138,14 +145,22 @@ class EvolutionEngineeringApprovalBindings:
         status = _status(evidence)
         request_digest = _digest(evidence, "request_digest")
         subject_sha256 = _sha256_json(subject)
-        previous = self.get(evolution_id)
-        if previous is not None and previous["subject_sha256"] != subject_sha256:
-            if previous["status"] in {"pending", "approved"}:
-                raise CapabilityEvolutionError("cannot change an engineering subject with a pending or approved binding")
-        _validate_replacement(previous, approval_id, status)
         now = _now()
         with self._connect() as db:
             db.execute("BEGIN IMMEDIATE")
+            row = db.execute(
+                "SELECT approval_id, status, subject_sha256 FROM evolution_engineering_approvals WHERE evolution_id=?",
+                (evolution_id,),
+            ).fetchone()
+            previous = None if row is None else {
+                "approval_id": str(row["approval_id"]),
+                "status": str(row["status"]),
+                "subject_sha256": str(row["subject_sha256"]),
+            }
+            if previous is not None and previous["subject_sha256"] != subject_sha256:
+                if previous["status"] in {"pending", "approved"}:
+                    raise CapabilityEvolutionError("cannot change an engineering subject with a pending or approved binding")
+            _validate_replacement(previous, approval_id, status)
             db.execute(
                 "INSERT INTO evolution_engineering_approvals(evolution_id,approval_id,status,subject_sha256,request_digest,evidence_json,updated_at) "
                 "VALUES(?,?,?,?,?,?,?) ON CONFLICT(evolution_id) DO UPDATE SET "

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import importlib
 import os
-import uuid
 from pathlib import Path
 from typing import Mapping
 
@@ -107,6 +106,23 @@ class Phase7Runtime:
                 "approval": service.get_state(approval_id).public_dict(),
                 "binding": existing,
             }
+        recovered_id = _find_pending_owner_approval(
+            service,
+            {
+                "origins_approval_kind": "capability",
+                "evolution_id": evolution_id,
+                "proposal": dict(proposal),
+            },
+        )
+        if recovered_id is not None:
+            evidence = service.get_evidence(recovered_id).public_dict()
+            binding = self.approvals.bind(evolution_id, evidence)
+            return {
+                "owner": "Hunter-AgentOps",
+                "approval": service.get_state(recovered_id).public_dict(),
+                "binding": binding,
+                "recovered_pending": True,
+            }
         request = service.create_request(
             task_title=str(proposal["task_title"]),
             mode="capability_extension",
@@ -178,7 +194,7 @@ class Phase7Runtime:
             raise Phase7RuntimeError("approved AgentOps capability evidence is required")
         if metadata.get("evolution_id") != evolution_id or metadata.get("proposal") != dict(proposal):
             raise Phase7RuntimeError("AgentOps capability approval is not bound to this evolution/proposal")
-        operation_id = f"cap-upgrade-{uuid.uuid4()}"
+        operation_id = f"cap-upgrade-{evolution_id}"
         child_payload = {
             "schema_version": "hunter.agentops.operation-request.v1",
             "operation_id": operation_id,
@@ -234,6 +250,21 @@ class Phase7Runtime:
             approval_id = str(existing["approval_id"])
             state = self.intelligence.agentops._stores().approval_service().get_state(approval_id)
             return {"owner": "Hunter-AgentOps", "approval": state.public_dict(), "binding": existing}
+        service = self.intelligence.agentops._stores().approval_service()
+        recovered_id = _find_pending_owner_approval(
+            service,
+            {"origins_approval_kind": "engineering", "subject": subject},
+        )
+        if recovered_id is not None:
+            evidence = service.get_evidence(recovered_id).public_dict()
+            binding = self.engineering_approvals.bind(evolution_id, subject=subject, evidence=evidence)
+            return {
+                "owner": "Hunter-AgentOps",
+                "approval": service.get_state(recovered_id).public_dict(),
+                "binding": binding,
+                "engineering_subject": subject,
+                "recovered_pending": True,
+            }
         created = self.intelligence.create_approval(
             {
                 "kind": "engineering",
@@ -429,6 +460,29 @@ class Phase7Runtime:
             )
         )
         return {"evolution": self._project(record), "agentops_evidence": stored}
+
+
+def _find_pending_owner_approval(service: object, expected_metadata: Mapping[str, object]) -> str | None:
+    list_pending = getattr(service, "list_pending", None)
+    if not callable(list_pending):
+        raise Phase7RuntimeError("AgentOps approval service does not expose durable pending approvals")
+    matches: list[str] = []
+    for item in list_pending():
+        if not isinstance(item, Mapping):
+            continue
+        request = item.get("request")
+        metadata = request.get("metadata") if isinstance(request, Mapping) else None
+        if not isinstance(metadata, Mapping):
+            continue
+        if any(metadata.get(key) != value for key, value in expected_metadata.items()):
+            continue
+        approval_id = request.get("approval_id")
+        if isinstance(approval_id, str) and approval_id.strip():
+            matches.append(approval_id.strip())
+    unique = list(dict.fromkeys(matches))
+    if len(unique) > 1:
+        raise Phase7RuntimeError("multiple pending AgentOps approvals match the same Phase 7 subject")
+    return unique[0] if unique else None
 
 
 def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, object]) -> dict[str, object]:

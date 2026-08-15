@@ -395,17 +395,25 @@ class CapabilityEvolutionStore:
         self, db: sqlite3.Connection, record: dict[str, object], state: str, now: str
     ) -> None:
         evolution_id = str(record["evolution_id"])
+        expected_revision = _positive_int(record.get("revision"), "revision")
         row = db.execute("SELECT revision FROM evolutions WHERE evolution_id=?", (evolution_id,)).fetchone()
         if row is None:
             raise CapabilityEvolutionError(f"unknown evolution {evolution_id}")
-        revision = int(row["revision"]) + 1
+        current_revision = int(row["revision"])
+        if current_revision != expected_revision:
+            raise CapabilityEvolutionError(
+                f"evolution changed concurrently: expected revision {expected_revision}, current is {current_revision}"
+            )
+        revision = current_revision + 1
         record["state"] = state
         record["updated_at"] = now
         record["revision"] = revision
-        db.execute(
-            "UPDATE evolutions SET state=?, record_json=?, revision=?, updated_at=? WHERE evolution_id=?",
-            (state, _json(record), revision, now, evolution_id),
+        cursor = db.execute(
+            "UPDATE evolutions SET state=?, record_json=?, revision=?, updated_at=? WHERE evolution_id=? AND revision=?",
+            (state, _json(record), revision, now, evolution_id, expected_revision),
         )
+        if cursor.rowcount != 1:
+            raise CapabilityEvolutionError("evolution revision changed during durable update")
 
 
 def _json(value: object) -> str:

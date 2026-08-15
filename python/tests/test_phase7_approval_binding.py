@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from origins_integration.capability_evolution import CapabilityEvolutionError
+from origins_integration.phase7_runtime import Phase7RuntimeError, _find_pending_owner_approval
 from origins_integration.capability_evolution_approvals import (
     EvolutionApprovalBindings,
     EvolutionEngineeringApprovalBindings,
@@ -89,3 +90,55 @@ def test_capability_approval_binding_is_not_engineering_approval(tmp_path: Path)
     subject = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
     with pytest.raises(CapabilityEvolutionError, match="no durable AgentOps engineering approval"):
         engineering.require_approved("evolution-7", subject)
+
+
+class _PendingService:
+    def __init__(self, items: list[dict[str, object]]) -> None:
+        self.items = items
+
+    def list_pending(self) -> list[dict[str, object]]:
+        return self.items
+
+
+def _pending(approval_id: str, metadata: dict[str, object]) -> dict[str, object]:
+    return {"request": {"approval_id": approval_id, "metadata": metadata}, "record": None, "approved": False}
+
+
+def test_pending_owner_approval_recovery_is_exact_and_ambiguous_matches_fail() -> None:
+    expected = {"origins_approval_kind": "capability", "evolution_id": "evolution-7"}
+    service = _PendingService([
+        _pending("other", {"origins_approval_kind": "capability", "evolution_id": "other"}),
+        _pending("match", expected),
+    ])
+    assert _find_pending_owner_approval(service, expected) == "match"
+    duplicate = _PendingService([_pending("a", expected), _pending("b", expected)])
+    with pytest.raises(Phase7RuntimeError, match="multiple pending"):
+        _find_pending_owner_approval(duplicate, expected)
+
+
+def test_concurrent_first_capability_binding_cannot_replace_pending_binding(tmp_path: Path) -> None:
+    import threading
+
+    path = tmp_path / "phase7.sqlite"
+    bindings = EvolutionApprovalBindings(path)
+    start = threading.Barrier(3)
+    errors: list[Exception] = []
+
+    def bind(approval_id: str) -> None:
+        start.wait(timeout=5)
+        try:
+            bindings.bind("evolution-7", evidence(approval_id, "pending"))
+        except Exception as exc:  # expected loser
+            errors.append(exc)
+
+    threads = [threading.Thread(target=bind, args=(approval_id,)) for approval_id in ("approval-a", "approval-b")]
+    for thread in threads:
+        thread.start()
+    start.wait(timeout=5)
+    for thread in threads:
+        thread.join(timeout=5)
+    assert all(not thread.is_alive() for thread in threads)
+    assert len(errors) == 1
+    assert "cannot replace" in str(errors[0])
+    stored = EvolutionApprovalBindings(path).get("evolution-7")
+    assert stored is not None and stored["approval_id"] in {"approval-a", "approval-b"}

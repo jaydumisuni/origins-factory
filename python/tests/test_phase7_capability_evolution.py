@@ -271,3 +271,13 @@ def test_stale_candidate_cannot_overwrite_newer_active_generation(tmp_path: Path
     store.decide(first, decision="promote", decided_by="owner")
     with pytest.raises(CapabilityEvolutionError, match="active generation changed after candidate proof"):
         store.decide(second, decision="promote", decided_by="owner")
+
+
+def test_stale_evolution_record_cannot_overwrite_newer_revision(tmp_path: Path) -> None:
+    store = CapabilityEvolutionStore(tmp_path / "phase7.sqlite")
+    created = store.create_gap(gap_payload())
+    first = store.get(str(created["evolution_id"]))
+    stale = store.get(str(created["evolution_id"]))
+    store._save(first, "gap_confirmed")
+    with pytest.raises(CapabilityEvolutionError, match="changed concurrently"):
+        store._save(stale, "gap_confirmed")

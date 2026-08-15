@@ -272,7 +272,7 @@ export default function Phase7App() {
                   <label>Files, comma-separated<input value={files} onChange={(e) => setFiles(e.target.value)} /></label>
                   <label>Task<input value={task} onChange={(e) => setTask(e.target.value)} /></label>
                 </div>
-                <label>Reviewed implementation plan<textarea value={plan} onChange={(e) => setPlan(e.target.value)} /></label>
+                <label>Reviewed implementation plan path<input value={plan} onChange={(e) => setPlan(e.target.value)} placeholder="relative/path/to/plan.json" /></label>
                 <div className="phase7-actions">
                   {!engineeringApproval && <button disabled={busy} onClick={() => void action(() => api.createEngineeringApproval(selectedId, engineeringIntent()))}>Request engineering approval</button>}
                   {text(engineeringApproval, "status") === "pending" && <>
