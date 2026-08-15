@@ -1,11 +1,11 @@
 # Origins Factory — AI Handoff
 
-**Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
-**Current truth:** `CURRENT_STATE.md`  
-**Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`  
-**Active phase:** Phase 6 — device read-only integration  
-**Branch:** `build/phase6-device-readonly-integration`  
-**PR:** #17, draft  
+**Canonical architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
+**Current truth:** `CURRENT_STATE.md`
+**Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`
+**Active phase:** Phase 6 — device read-only integration
+**Branch:** `build/phase6-device-readonly-integration`
+**PR:** #17, draft
 **Phase-5 proof record:** `proof/phase5-workspace-ui-freeze.md`
 
 ## Recovery order
@@ -75,12 +75,12 @@ TTG Device X-Ray owner facts:
 
 ```text
 health
- doctor
- snapshot
- get_physical_session
- get_operation
- list_events
- verify_journal
+doctor
+snapshot
+get_physical_session
+get_operation
+list_events
+verify_journal
 ```
 
 Any other Gateway command is rejected before network I/O. Do not add session/endpoint/Operation mutation, provider/worker mutation, contract publication, shutdown, lease consumption or executor invocation to Phase 6.
