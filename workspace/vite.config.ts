@@ -5,6 +5,7 @@ const originsdTarget = process.env.VITE_ORIGINSD_PROXY_TARGET ?? "http://127.0.0
 const intelligenceTarget = process.env.VITE_ORIGINS_INTELLIGENCE_PROXY_TARGET ?? "http://127.0.0.1:48710";
 const phase5Target = process.env.VITE_ORIGINS_PHASE5_PROXY_TARGET ?? "http://127.0.0.1:48720";
 const phase6Target = process.env.VITE_ORIGINS_PHASE6_PROXY_TARGET ?? "http://127.0.0.1:48730";
+const phase7Target = process.env.VITE_ORIGINS_PHASE7_PROXY_TARGET ?? "http://127.0.0.1:49327";
 
 export default defineConfig({
   plugins: [react()],
@@ -32,6 +33,11 @@ export default defineConfig({
         target: phase6Target,
         changeOrigin: false,
         rewrite: (path) => path.replace(/^\/origins-phase6/, ""),
+      },
+      "/origins-phase7": {
+        target: phase7Target,
+        changeOrigin: false,
+        rewrite: (path) => path.replace(/^\/origins-phase7/, ""),
       },
     },
   },
