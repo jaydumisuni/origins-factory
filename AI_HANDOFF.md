@@ -5,12 +5,12 @@
 **Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`
 **Active phase:** Phase 6 — device read-only integration
 **Branch:** `build/phase6-device-readonly-integration`
-**PR:** #17, draft
-**Phase-5 proof record:** `proof/phase5-workspace-ui-freeze.md`
+**PR:** #17, promotion candidate
+**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`
 
 ## Recovery order
 
-Read this file, `CURRENT_STATE.md`, the accepted product plan, PR #17/current branch, then the owning Huawei Gateway and TTG Device X-Ray repositories at the recovered revisions below. Recover latest proof before changing implementation. Do not ask the owner to repeat recoverable state.
+Read this file, `CURRENT_STATE.md`, the accepted product plan, PR #17/current branch, then the owning Huawei Gateway and TTG Device X-Ray repositories at the pinned revisions. Recover latest proof before changing implementation. Do not ask the owner to repeat recoverable state.
 
 ## Ownership lock
 
@@ -28,15 +28,15 @@ Origins coordinates and projects these owners. It does not duplicate their engin
 
 ## Merged checkpoint
 
-Phase 5 is merged. PR #16 merged as:
+Phase 5 is merged at:
 
 ```text
 d26bb68a621fb0e98f0a1766cbe3fea19228b2d8
 ```
 
-Do not reopen Phase-5 implementation unless new evidence proves a regression.
+Do not reopen Phase 5 unless new evidence proves a regression.
 
-## Recovered Phase-6 owner revisions
+## Phase-6 owner revisions
 
 ```text
 TECHGUYTOOL-Huawei
@@ -46,32 +46,28 @@ TTG-Device-X-Ray
 34feb55ab937fa865726cbb22c44b09b52084114
 ```
 
-Huawei Gateway owner facts:
+Huawei Gateway facts:
 
-- loopback JSON-lines protocol, default `127.0.0.1:49321`;
-- persistent SQLite physical sessions and Gateway Operations;
-- hash-chained journal and deterministic `doctor`/`snapshot`;
-- restart preserves identity; active Operations recover explicitly;
+- loopback JSON-lines protocol on `127.0.0.1:49321` by default;
+- persistent physical Sessions and Gateway Operations;
+- hash-chained journal;
+- restart preserves identity and active Operations recover explicitly;
 - `device_authority=none`;
 - `xray_authority=read_only`;
-- full EndpointObservation is journalled;
-- accepted shared contracts are journalled as canonical JSON + SHA-256.
+- endpoint observations and accepted shared contracts are recoverable owner truth.
 
-TTG Device X-Ray owner facts:
+TTG Device X-Ray facts:
 
 - read-first only;
-- candidate grouping precedes identity correlation;
-- multi-device ambiguity is `UNSAFE`;
+- ambiguity fails unsafe;
 - profile results retain `write_allowed=false`;
-- bundle schema v2 seals every completed evidence file with SHA-256;
-- optional HMAC signature report is separate from digest integrity;
-- promoted Kirin/VOG capability is replay-supported/read-only only.
+- sealed bundle v2 hashes every evidence file;
+- optional HMAC verification is separate from digest integrity;
+- Kirin/VOG support remains replay/read-only only.
 
-## PR #17 implementation
+## Phase-6 mounted boundary
 
-### Read-only Huawei Gateway mount
-
-`python/origins_integration/device_readonly.py` permits exactly:
+Origins permits exactly these Huawei Gateway commands:
 
 ```text
 health
@@ -83,101 +79,65 @@ list_events
 verify_journal
 ```
 
-Any other Gateway command is rejected before network I/O. Do not add session/endpoint/Operation mutation, provider/worker mutation, contract publication, shutdown, lease consumption or executor invocation to Phase 6.
+Every other command is refused before network I/O. Projection fails closed unless `device_authority=none`, `xray_authority=read_only` and the owner journal verifies.
 
-Projection fails closed unless:
+`ORIGINS_XRAY_BUNDLE_DIR` and optional `ORIGINS_XRAY_SIGNING_KEY_FILE` are server-owned references. Browser callers cannot select paths or keys.
 
-```text
-device_authority == none
-xray_authority == read_only
-journal_valid == true
-```
+Phase-6 HTTP is protected GET-only for `/v1/device`, `/v1/huawei/gateway` and `/v1/xray/bundle`; public `/v1/health` is sanitized; mutation verbs are `405 PHASE6_READ_ONLY`.
 
-Journal projections recover endpoint observations and owner-accepted Device Evidence/Twin, Decision Verdict, Mode Lease, historical Execution Lease/Executor Result, Verification Result and Recovery Plan.
+The top-level Workspace preserves Phase 5 under `Workspace` and adds `XRAY`. XRAY is observational only and exposes no device action control.
 
-### X-Ray sealed-bundle mount
+## Completed Phase-6 proof
 
-`ORIGINS_XRAY_BUNDLE_DIR` is server-owned. Browser callers cannot choose a bundle path.
-
-Origins verifies schema 2.0, `write_allowed=false`, canonical manifest SHA-256, every file path/size/SHA, and signature-report manifest binding. HMAC is considered verified only when a server-side `ORIGINS_XRAY_SIGNING_KEY_FILE` exists and matches. Never return or print the key.
-
-### Phase-6 HTTP service
-
-`python/origins_integration/phase6_server.py`, default loopback port `48730`.
-
-Protected GET only:
+Frozen implementation proof head:
 
 ```text
-/v1/device
-/v1/huawei/gateway
-/v1/xray/bundle
+4e788a584505fc5728a07a1bf73ece1e8a6bfd17
 ```
 
-Sanitized public:
+Evidence:
 
-```text
-/v1/health
-```
+- all seven hosted regression workflows green;
+- Oracle/Kratos backend + reconnect suite: `8 passed`, exit code 0;
+- reconnect preserves physical Session ID, Gateway Operation ID, request SHA and recovery counters while remaining inside the read-only allowlist;
+- isolated system Chrome: `PHASE6_WORKSPACE_UI_OK`, exit code 0;
+- no production credentials used or rendered;
+- no XRAY write controls;
+- `device_authority=none`;
+- `xray_authority=read_only`;
+- X-Ray integrity verified;
+- screenshot SHA-256 `9b5665285ad84d32d229b8dd55fe9bd5c6620b40221b05068e3313acd5bb24af`.
 
-POST/PUT/PATCH/DELETE are hard `405 PHASE6_READ_ONLY`.
+Full record: `proof/phase6-device-readonly-freeze.md`.
 
-### Workspace
+## Accepted truthful nonclaims
 
-`Phase6App` preserves the full Phase-5 workspace under `Workspace` and adds top-level `XRAY`.
-
-XRAY displays owner health, authority, journal, physical sessions, Gateway Operations, endpoint observations, Device Twin/Evidence, verdicts, leases, verification, Recovery Plan and verified X-Ray evidence. It has no device action control.
-
-## Explicit gaps / blocks
-
-### AgentOps ↔ Gateway durable Operation link
-
-Current truth:
+### AgentOps ↔ Huawei Gateway typed link
 
 ```text
 available = false
 reason = AGENTOPS_GATEWAY_LINK_CONTRACT_UNAVAILABLE
 ```
 
-Do not create an Origins-owned mapping table or reinterpret Gateway `request_sha256` as an AgentOps ID without an owning cross-system contract.
+Current AgentOps and Huawei owner contracts do not expose a reversible typed join. Do not create an Origins mapping table or reinterpret hashes as IDs. This belongs to future owner-contract evolution.
 
 ### Device write execution
-
-Current truth:
 
 ```text
 available = false
 reason = PHASE6_DEVICE_WRITE_NOT_AUTHORIZED
 ```
 
-The Huawei repository contains later lease/executor code. That does not authorize Origins Phase 6 to call it.
+Do not mount physical-session mutation, endpoint recording, Gateway Operation mutation/resume, provider/worker mutation, contract publication, Execution Lease consumption, executor invocation or any device write path in Phase 6.
 
-### Remaining acceptance
+### Current physical handset
 
-Phase 6 is not complete yet. Required evidence still includes:
-
-- hosted PR #17 + inherited regression gates;
-- historical VOG handover/recovery recovery;
-- target-host real Gateway read-only proof;
-- restart/reconnect proof preserving exact physical/Gateway Operation state;
-- real sealed X-Ray bundle verification/projection;
-- AgentOps↔Gateway reference-contract resolution;
-- isolated rendered XRAY acceptance;
-- final recovery-head reproof.
-
-## Dedicated proof
-
-```text
-.github/workflows/phase6-device-readonly.yml
-tools/prove_phase6_device_readonly.py
-```
-
-The target-host proof must report `PHASE6_DEVICE_READONLY_OK`, exact source head, authority/journal status, counts and X-Ray integrity without printing secret values.
+Historical VOG/P30 evidence is lineage only and predates sealed-bundle v2. No current attached Huawei target is proven in recovered device/host records. Do not fabricate current-device certification or use this absence to reopen the completed software read-only integration.
 
 ## Exact next action
 
-1. Inspect PR #17 workflow failures/successes; correct evidence-backed failures only.
-2. Recover the historical VOG handover and current target-host owner state.
-3. Prove Gateway/X-Ray read-only integration and restart/reconnect mechanically.
-4. Resolve AgentOps↔Gateway link under owner authority.
-5. Add proof record/update these recovery files only after evidence exists.
-6. Keep PR #17 draft until Phase-6 acceptance is complete.
+1. Re-prove the final recovery/documentation head through all hosted gates and Oracle/Kratos.
+2. Update PR #17 body to the frozen evidence and promote it from draft.
+3. Merge only with an exact-head guard.
+4. Normalize recovery on `main` to the Phase-6 merge checkpoint.
+5. Recover Phase 7 capability-evolution owner contracts before implementation.
