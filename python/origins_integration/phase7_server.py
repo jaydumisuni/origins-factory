@@ -3,6 +3,7 @@ from __future__ import annotations
 import hmac
 import json
 import os
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import urlparse
@@ -28,6 +29,7 @@ def serve_from_env() -> None:
         raise Phase7ServerError("ORIGINS_LOCAL_TOKEN is required")
     port = int(os.environ.get("ORIGINS_PHASE7_PORT", "49327"))
     runtime = Phase7Runtime.from_env()
+    transition_lock = threading.Lock()
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, _format: str, *_args: Any) -> None:
@@ -114,6 +116,7 @@ def serve_from_env() -> None:
             if not self._require_auth():
                 return
             path = urlparse(self.path).path
+            transition_lock.acquire()
             try:
                 body = self._body()
                 if path == "/v1/evolutions/gap":
@@ -180,6 +183,8 @@ def serve_from_env() -> None:
                 ValueError,
             ) as exc:
                 self._conflict(exc)
+            finally:
+                transition_lock.release()
 
         def do_PUT(self) -> None:  # noqa: N802
             self._json(405, {"error": "PHASE7_CONTROLLED_TRANSITIONS_ONLY"})
