@@ -25,7 +25,7 @@ AGENTOPS_ROOT = Path("/home/kratos/Hunter-AgentOps")
 CODEOPS_ROOT = Path("/home/kratos/hunter-codeops")
 SERGEANT_ROOT = Path("/home/kratos/Sergeant")
 CODEOPS_CONFIG = CODEOPS_ROOT / "config" / "code_ops_switcher.example.json"
-DEFAULT_DAEMON = Path("/home/kratos/origins-factory/target/debug/originsd")
+DEFAULT_DAEMON = Path("/home/kratos/origins-factory/rust/target/debug/originsd")
 PROOF_BIND = "127.0.0.1:48777"
 PROOF_URL = f"http://{PROOF_BIND}"
 
