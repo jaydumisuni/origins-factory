@@ -1,4 +1,5 @@
 name: Apply Phase 7 Canary Hardening
+# one-shot trigger after workflow registration
 
 on:
   push:
