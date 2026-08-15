@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import hashlib
 import importlib
-import json
 import os
 import uuid
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Mapping
 
 from .capability_evolution import CapabilityEvolutionError, CapabilityEvolutionStore, sha256_json
+from .capability_evolution_approvals import EvolutionApprovalBindings
 from .capability_proposals import CapabilityProposal
-from .engineering import BridgeError, OriginsClient
-from .intelligence_runtime import IntelligenceMountError, IntelligenceRuntime
+from .engineering import OriginsClient
+from .intelligence_runtime import IntelligenceRuntime
 
 
 class Phase7RuntimeError(RuntimeError):
@@ -27,21 +26,29 @@ class Phase7Runtime:
         store: CapabilityEvolutionStore,
         intelligence: IntelligenceRuntime,
         origins_client: OriginsClient,
+        approvals: EvolutionApprovalBindings | None = None,
     ) -> None:
         self.store = store
         self.intelligence = intelligence
         self.origins_client = origins_client
+        self.approvals = approvals or EvolutionApprovalBindings(store.path)
 
     @classmethod
     def from_env(cls) -> "Phase7Runtime":
         state_raw = os.environ.get("ORIGINS_PHASE7_STATE", "").strip()
         if not state_raw:
             raise Phase7RuntimeError("ORIGINS_PHASE7_STATE is required")
+        path = Path(state_raw).expanduser()
         client = OriginsClient.from_env()
         intelligence = IntelligenceRuntime.from_env()
         if intelligence.origins_client is None:
             intelligence.origins_client = client
-        return cls(store=CapabilityEvolutionStore(Path(state_raw).expanduser()), intelligence=intelligence, origins_client=client)
+        return cls(
+            store=CapabilityEvolutionStore(path),
+            approvals=EvolutionApprovalBindings(path),
+            intelligence=intelligence,
+            origins_client=client,
+        )
 
     def health(self) -> dict[str, object]:
         return {
@@ -52,11 +59,18 @@ class Phase7Runtime:
             "owners": self.intelligence.health().get("owners", []),
         }
 
+    def _project(self, record: dict[str, object]) -> dict[str, object]:
+        projected = dict(record)
+        projected["approval_binding"] = self.approvals.get(str(record["evolution_id"]))
+        gap = _mapping(record, "gap")
+        projected["active_generation"] = self.store.active_generation(str(gap["capability_id"]))
+        return projected
+
     def list(self) -> dict[str, object]:
-        return {"phase": 7, "evolutions": self.store.list()}
+        return {"phase": 7, "evolutions": [self._project(item) for item in self.store.list()]}
 
     def get(self, evolution_id: str) -> dict[str, object]:
-        return self.store.get(evolution_id)
+        return self._project(self.store.get(evolution_id))
 
     def confirm_gap(self, payload: Mapping[str, object]) -> dict[str, object]:
         record = self.store.create_gap(payload)
@@ -72,7 +86,7 @@ class Phase7Runtime:
             risks=("Candidate capability may fail proof or canary and must remain rollback-safe",),
             requested_by="origins-phase7",
         )
-        return self.store.bind_proposal(str(record["evolution_id"]), proposal.as_dict())
+        return self._project(self.store.bind_proposal(str(record["evolution_id"]), proposal.as_dict()))
 
     def create_approval(self, evolution_id: str) -> dict[str, object]:
         record = self.store.get(evolution_id)
@@ -81,6 +95,14 @@ class Phase7Runtime:
         proposal = _mapping(record, "proposal")
         stores = self.intelligence.agentops._stores()
         service = stores.approval_service()
+        existing = self.approvals.get(evolution_id)
+        if existing is not None and existing["status"] in {"pending", "approved"}:
+            approval_id = str(existing["approval_id"])
+            return {
+                "owner": "Hunter-AgentOps",
+                "approval": service.get_state(approval_id).public_dict(),
+                "binding": existing,
+            }
         request = service.create_request(
             task_title=str(proposal["task_title"]),
             mode="capability_extension",
@@ -94,11 +116,29 @@ class Phase7Runtime:
                 "proposal": dict(proposal),
             },
         )
-        return {"owner": "Hunter-AgentOps", "approval": service.get_state(request.approval_id).public_dict()}
+        evidence = service.get_evidence(request.approval_id).public_dict()
+        binding = self.approvals.bind(evolution_id, evidence)
+        return {
+            "owner": "Hunter-AgentOps",
+            "approval": service.get_state(request.approval_id).public_dict(),
+            "binding": binding,
+        }
 
-    def decide_approval(self, evolution_id: str, *, approval_id: str, decision: str, decided_by: str) -> dict[str, object]:
+    def decide_approval(
+        self,
+        evolution_id: str,
+        *,
+        approval_id: str,
+        decision: str,
+        decided_by: str,
+    ) -> dict[str, object]:
         record = self.store.get(evolution_id)
+        if record.get("state") != "proposal_ready":
+            raise CapabilityEvolutionError("approval decision requires a proposal-ready evolution")
         proposal = _mapping(record, "proposal")
+        binding = self.approvals.get(evolution_id)
+        if binding is None or binding["approval_id"] != approval_id:
+            raise Phase7RuntimeError("AgentOps approval ID is not the durable binding for this evolution")
         service = self.intelligence.agentops._stores().approval_service()
         state = service.get_state(approval_id)
         metadata = state.request.metadata
@@ -106,16 +146,28 @@ class Phase7Runtime:
             raise Phase7RuntimeError("AgentOps approval is not bound to this evolution")
         if metadata.get("proposal") != dict(proposal):
             raise Phase7RuntimeError("AgentOps approval proposal binding changed")
-        state = service.decide(approval_id, decision, decided_by)
-        evidence = service.get_evidence(approval_id)
-        return {"owner": "Hunter-AgentOps", "approval": state.public_dict(), "evidence": evidence.public_dict()}
+        if state.status == "pending":
+            state = service.decide(approval_id, decision, decided_by)
+        elif state.status != decision:
+            raise Phase7RuntimeError(f"AgentOps approval is already {state.status}")
+        evidence = service.get_evidence(approval_id).public_dict()
+        binding = self.approvals.bind(evolution_id, evidence)
+        return {
+            "owner": "Hunter-AgentOps",
+            "approval": state.public_dict(),
+            "evidence": evidence,
+            "binding": binding,
+        }
 
     def create_child_upgrade_operation(self, evolution_id: str, approval_id: str) -> dict[str, object]:
         record = self.store.get(evolution_id)
         proposal = _mapping(record, "proposal")
         gap = _mapping(record, "gap")
+        binding = self.approvals.require_approved(evolution_id, approval_id)
         service = self.intelligence.agentops._stores().approval_service()
         evidence = service.get_evidence(approval_id).public_dict()
+        if evidence.get("request_digest") != binding.get("request_digest"):
+            raise Phase7RuntimeError("AgentOps approval digest changed after durable binding")
         request = evidence.get("request")
         metadata = request.get("metadata") if isinstance(request, dict) else None
         if evidence.get("status") != "approved" or not isinstance(metadata, dict):
@@ -153,10 +205,17 @@ class Phase7Runtime:
             "created_at": record["updated_at"],
         }
         result = self.intelligence.agentops._stores().department_operation_service().submit_operation(child_payload)
-        return self.store.bind_child_operation(
-            evolution_id,
-            approval={"status": "approved", "approval_id": approval_id, "evidence_sha256": sha256_json(evidence)},
-            child_operation=result,
+        return self._project(
+            self.store.bind_child_operation(
+                evolution_id,
+                approval={
+                    "status": "approved",
+                    "approval_id": approval_id,
+                    "request_digest": binding["request_digest"],
+                    "evidence_sha256": sha256_json(evidence),
+                },
+                child_operation=result,
+            )
         )
 
     def implement_candidate(self, evolution_id: str, payload: dict[str, object]) -> dict[str, object]:
@@ -194,6 +253,7 @@ class Phase7Runtime:
             "codeops_evidence_sha256": sha256_json(evidence),
         }
         manifest_sha = sha256_json(manifest)
+        agentops_evidence = result.get("agentops_evidence", {})
         candidate = {
             "repository_id": result["repository_id"],
             "repository_revision": result["repository_revision"],
@@ -202,16 +262,16 @@ class Phase7Runtime:
             "manifest": manifest,
             "manifest_sha256": manifest_sha,
             "proof_sha256": sha256_json({"engineering": evidence, "review_sha256": result["review_sha256"]}),
-            "codeops_evidence_ref": f"agentops:evidence:{sha256_json(result.get('agentops_evidence', {}))}",
+            "codeops_evidence_ref": f"agentops:evidence:{sha256_json(agentops_evidence)}",
         }
-        record = self.store.bind_candidate(evolution_id, candidate)
+        self.store.bind_candidate(evolution_id, candidate)
         review = {
-            "verdict": str(result["verdict"]).replace(" ", "_"),
+            "verdict": str(result["verdict"]).replace(" ", "_").upper(),
             "review_sha256": result["review_sha256"],
             "candidate_manifest_sha256": manifest_sha,
             "sergeant_evidence": result["evidence"],
         }
-        return self.store.bind_sergeant_review(evolution_id, review)
+        return self._project(self.store.bind_sergeant_review(evolution_id, review))
 
     def record_canary_from_session(self, evolution_id: str, session_id: str) -> dict[str, object]:
         record = self.store.get(evolution_id)
@@ -236,10 +296,10 @@ class Phase7Runtime:
             "proof_sha256": sha256_json(proof),
             "session_id": session_id,
         }
-        return self.store.record_canary(evolution_id, canary)
+        return self._project(self.store.record_canary(evolution_id, canary))
 
     def decide(self, evolution_id: str, *, decision: str, decided_by: str) -> dict[str, object]:
-        return self.store.decide(evolution_id, decision=decision, decided_by=decided_by)
+        return self._project(self.store.decide(evolution_id, decision=decision, decided_by=decided_by))
 
     def resume(self, evolution_id: str) -> dict[str, object]:
         record = self.store.resume_mission(evolution_id)
@@ -256,7 +316,7 @@ class Phase7Runtime:
                 metadata={"evolution_id": evolution_id, "resume": dict(resume)},
             )
         )
-        return {"evolution": record, "agentops_evidence": stored}
+        return {"evolution": self._project(record), "agentops_evidence": stored}
 
 
 def _mapping(record: Mapping[str, object], field: str) -> Mapping[str, object]:
