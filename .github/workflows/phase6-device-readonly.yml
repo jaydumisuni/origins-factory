@@ -6,6 +6,7 @@ on:
     paths:
       - "CURRENT_STATE.md"
       - "AI_HANDOFF.md"
+      - "proof/phase6-*.md"
       - "python/origins_integration/device_readonly.py"
       - "python/origins_integration/phase6_server.py"
       - "python/tests/test_phase6_*.py"
@@ -18,6 +19,7 @@ on:
     paths:
       - "CURRENT_STATE.md"
       - "AI_HANDOFF.md"
+      - "proof/phase6-*.md"
       - "python/origins_integration/device_readonly.py"
       - "python/origins_integration/phase6_server.py"
       - "python/tests/test_phase6_*.py"
@@ -47,15 +49,17 @@ jobs:
       - name: Install exact Python plane
         run: python -m pip install --disable-pip-version-check -e ./python pytest
 
-      - name: Compile Phase 6 plane and target-host proof
+      - name: Compile Phase 6 plane and target-host proofs
         run: >-
           python -m compileall -q python/origins_integration python/tests
-          && python -m py_compile tools/prove_phase6_device_readonly.py
+          && python -m py_compile
+          tools/prove_phase6_device_readonly.py
+          tools/prove_phase6_workspace_ui.py
 
-      - name: Prove read-only owner boundaries and X-Ray integrity
+      - name: Prove read-only owner boundaries, reconnect, and X-Ray integrity
         env:
           PYTHONPATH: python
-        run: python -m pytest -q python/tests/test_phase6_device_readonly.py
+        run: python -m pytest -q python/tests/test_phase6_*.py
 
       - name: Reject any mounted Gateway mutation command
         env:
