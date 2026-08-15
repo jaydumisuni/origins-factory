@@ -136,6 +136,7 @@ class CapabilityEvolutionStore:
             "proposal": None,
             "approval": None,
             "child_operation": None,
+            "engineering_attempt": None,
             "candidate": None,
             "sergeant_review": None,
             "canary": None,
@@ -222,9 +223,34 @@ class CapabilityEvolutionStore:
         record["child_operation"] = dict(child_operation)
         return self._save(record, "upgrade_operation_ready")
 
-    def bind_candidate(self, evolution_id: str, candidate: Mapping[str, object]) -> dict[str, object]:
+    def begin_engineering(self, evolution_id: str, attempt: Mapping[str, object]) -> dict[str, object]:
         record = self.get(evolution_id)
         _state(record, "upgrade_operation_ready")
+        repository_id = _text(attempt, "repository_id")
+        approval_id = _text(attempt, "approval_id")
+        subject_sha256 = _digest_value(attempt.get("subject_sha256"), "subject_sha256")
+        pre_status = _digest_value(attempt.get("pre_repository_status_sha256"), "pre_repository_status_sha256")
+        pre_head = _text(attempt, "pre_repository_head_oid")
+        pre_revision = _positive_int(attempt.get("pre_repository_revision"), "pre_repository_revision")
+        child = _mapping(record, "child_operation")
+        operation_id = _text(attempt, "operation_id")
+        if operation_id != str(child.get("operation_id") or ""):
+            raise CapabilityEvolutionError("engineering attempt is not bound to the child upgrade Operation")
+        record["engineering_attempt"] = {
+            "operation_id": operation_id,
+            "repository_id": repository_id,
+            "approval_id": approval_id,
+            "subject_sha256": subject_sha256,
+            "pre_repository_status_sha256": pre_status,
+            "pre_repository_head_oid": pre_head,
+            "pre_repository_revision": pre_revision,
+            "started_at": _now(),
+        }
+        return self._save(record, "engineering_started")
+
+    def bind_candidate(self, evolution_id: str, candidate: Mapping[str, object]) -> dict[str, object]:
+        record = self.get(evolution_id)
+        _state(record, "engineering_started")
         required = (
             "repository_id",
             "repository_revision",

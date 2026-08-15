@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import importlib
+import json
 import os
 import re
 import shutil
@@ -180,12 +182,16 @@ class AgentOpsMount:
         failure_type: str = "",
     ) -> dict[str, object]:
         operation_id = str(subject.get("operation_id", "")).strip()
+        canonical_subject = _approval_subject("engineering", subject)
         metadata: dict[str, object] = {
             "operation_id": operation_id,
             "repository_id": str(subject.get("repository_id", "")).strip(),
             "provider_id": str(subject.get("provider_id", "")),
             "mode": str(subject.get("mode", "quick_edit")),
             "apply_plan": bool(subject.get("apply_plan", False)),
+            "subject_sha256": hashlib.sha256(
+                json.dumps(canonical_subject, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            ).hexdigest(),
             "status": status,
         }
         if verdict:

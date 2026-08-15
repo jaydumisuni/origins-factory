@@ -58,6 +58,18 @@ def proposal() -> dict[str, object]:
     }
 
 
+def engineering_attempt() -> dict[str, object]:
+    return {
+        "operation_id": "child-7",
+        "repository_id": "repo-7",
+        "approval_id": "engineering-7",
+        "subject_sha256": "9" * 64,
+        "pre_repository_status_sha256": "8" * 64,
+        "pre_repository_head_oid": "head-before",
+        "pre_repository_revision": 1,
+    }
+
+
 def child(evolution_id: str) -> dict[str, object]:
     return {
         "status": "dry_run",
@@ -87,6 +99,7 @@ def build_reviewed(store: CapabilityEvolutionStore) -> str:
     )
     manifest = {"capability_id": "origins.fixture.transform", "generation": 1, "effects": ["verify"]}
     manifest_sha = sha256_json(manifest)
+    store.begin_engineering(evolution_id, engineering_attempt())
     store.bind_candidate(
         evolution_id,
         {
@@ -198,6 +211,7 @@ def test_non_pass_sergeant_verdict_blocks_canary(tmp_path: Path) -> None:
         child_operation=child(evolution_id),
     )
     manifest_sha = sha256_json({"candidate": 1})
+    store.begin_engineering(evolution_id, engineering_attempt())
     store.bind_candidate(
         evolution_id,
         {

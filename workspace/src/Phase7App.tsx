@@ -264,7 +264,7 @@ export default function Phase7App() {
                 {state === "proposal_ready" && text(approval, "status") === "approved" && <button disabled={busy} onClick={() => void action(() => api.createChildOperation(selectedId, text(approval, "approval_id")))}>Create AgentOps child upgrade Operation</button>}
               </div>
 
-              {state === "upgrade_operation_ready" && <div className="phase7-engineering">
+              {(state === "upgrade_operation_ready" || state === "engineering_started") && <div className="phase7-engineering">
                 <h4>CodeOps candidate request</h4>
                 <div className="phase7-form-grid">
                   <label>Repository ID<input value={repositoryId} onChange={(e) => setRepositoryId(e.target.value)} /></label>
@@ -279,7 +279,7 @@ export default function Phase7App() {
                     <button disabled={busy} onClick={() => void action(() => api.decideEngineeringApproval(selectedId, { approval_id: text(engineeringApproval, "approval_id"), decision: "approved", decided_by: operator }))}>Approve engineering</button>
                     <button className="danger" disabled={busy} onClick={() => void action(() => api.decideEngineeringApproval(selectedId, { approval_id: text(engineeringApproval, "approval_id"), decision: "rejected", decided_by: operator }))}>Reject engineering</button>
                   </>}
-                  {text(engineeringApproval, "status") === "approved" && <button disabled={busy} onClick={() => void action(() => api.implementCandidate(selectedId, engineeringIntent()))}>Run CodeOps + Sergeant</button>}
+                  {text(engineeringApproval, "status") === "approved" && <button disabled={busy} onClick={() => void action(() => api.implementCandidate(selectedId, engineeringIntent()))}>Run / recover CodeOps + Sergeant</button>}
                 </div>
               </div>}
 
