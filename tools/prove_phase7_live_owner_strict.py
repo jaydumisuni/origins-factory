@@ -3,8 +3,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from types import ModuleType
+
+
+REVIEW_FILES = ["capability.py", "tests/test_capability.py"]
 
 
 def _load_base() -> ModuleType:
@@ -13,6 +17,7 @@ def _load_base() -> ModuleType:
     if spec is None or spec.loader is None:
         raise RuntimeError(f"unable to load Phase 7 owner proof: {path}")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -94,6 +99,12 @@ def _strict_init_repo(module: ModuleType, path: Path, *, initial_value: str, rep
     )
 
 
+def _scoped(payload: dict[str, object]) -> dict[str, object]:
+    scoped = dict(payload)
+    scoped["files"] = list(REVIEW_FILES)
+    return scoped
+
+
 def main() -> int:
     module = _load_base()
 
@@ -105,43 +116,48 @@ def main() -> int:
             replacement_value=replacement_value,
         )
 
+    module._init_repo = strict_init_repo
+
+    original_create_engineering_approval = module.Phase7Runtime.create_engineering_approval
+    original_implement_candidate = module.Phase7Runtime.implement_candidate
+
+    def create_engineering_approval(
+        self: object,
+        evolution_id: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return original_create_engineering_approval(self, evolution_id, _scoped(payload))
+
+    def implement_candidate(
+        self: object,
+        evolution_id: str,
+        payload: dict[str, object],
+    ) -> dict[str, object]:
+        return original_implement_candidate(self, evolution_id, _scoped(payload))
+
+    module.Phase7Runtime.create_engineering_approval = create_engineering_approval
+    module.Phase7Runtime.implement_candidate = implement_candidate
+
     original_run_evolution = module._run_evolution
 
     def run_evolution(**kwargs: object) -> dict[str, object]:
-        # The base proof already binds CodeOps and Sergeant to the candidate.
-        # Extend its review scope to the changed test, then use the repository's
-        # actual pytest suite as the canary rather than an ad-hoc assertion.
-        runtime = kwargs["runtime"]
-        evolution_result_holder: dict[str, object] = {}
-        original_submit_process = kwargs["client"].submit_process
+        # Exercise the changed repository through its actual test suite for the
+        # canary rather than using an ad-hoc assertion.
+        client = kwargs["client"]
+        original_submit_process = client.submit_process
 
         def submit_process(**process_kwargs: object) -> dict[str, object]:
             process_kwargs["executable"] = "python3"
             process_kwargs["args"] = ["-m", "pytest", "-q"]
             return original_submit_process(**process_kwargs)
 
-        client = kwargs["client"]
         client.submit_process = submit_process
         try:
-            evolution_result_holder.update(original_run_evolution(**kwargs))
+            return original_run_evolution(**kwargs)
         finally:
             client.submit_process = original_submit_process
-        return evolution_result_holder
 
-    module._init_repo = strict_init_repo
     module._run_evolution = run_evolution
-
-    # EngineeringBridge reviews only the explicit changed-file scope. The base
-    # proof supplies capability.py; include the test file as a second reviewed
-    # changed file without altering production runtime behavior.
-    original_engineering_subject = module.Phase7Runtime.implement_candidate
-
-    def implement_candidate(self: object, evolution_id: str, payload: dict[str, object]) -> dict[str, object]:
-        scoped = dict(payload)
-        scoped["files"] = ["capability.py", "tests/test_capability.py"]
-        return original_engineering_subject(self, evolution_id, scoped)
-
-    module.Phase7Runtime.implement_candidate = implement_candidate
     return int(module.main())
 
 
