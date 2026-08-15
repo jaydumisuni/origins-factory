@@ -32,6 +32,39 @@ jobs:
           cache: npm
           cache-dependency-path: workspace/package-lock.json
 
+      - name: Correct Workspace recovery anchor
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tools/apply_phase7_engineering_recovery.py")
+          text = path.read_text(encoding="utf-8")
+          old = '''def patch_ui() -> None:
+              text = UI.read_text(encoding="utf-8")
+              text = replace_once(
+                  text,
+                  '  const canImplement = selected?.state === "upgrade_operation_ready" && engApproved;\\n',
+                  '  const canImplement = (selected?.state === "upgrade_operation_ready" || selected?.state === "engineering_started") && engApproved;\\n',
+                  "engineering recovery UI state",
+              )
+              text = text.replace("Implement candidate", "Implement / recover candidate", 1)
+              UI.write_text(text, encoding="utf-8")
+          '''
+          new = '''def patch_ui() -> None:
+              text = UI.read_text(encoding="utf-8")
+              text = replace_once(
+                  text,
+                  '              {state === "upgrade_operation_ready" && <div className="phase7-engineering">\\n',
+                  '              {(state === "upgrade_operation_ready" || state === "engineering_started") && <div className="phase7-engineering">\\n',
+                  "engineering recovery UI state",
+              )
+              text = text.replace("Run CodeOps + Sergeant", "Run / recover CodeOps + Sergeant", 1)
+              UI.write_text(text, encoding="utf-8")
+          '''
+          if old not in text:
+              raise SystemExit("stale UI recovery patch block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
+
       - name: Apply engineering recovery
         run: python tools/apply_phase7_engineering_recovery.py
 
