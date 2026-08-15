@@ -58,10 +58,12 @@ jobs:
       - name: Install exact Python plane
         run: python -m pip install --disable-pip-version-check -e ./python pytest
 
-      - name: Compile Phase 5 Python plane and host proof
+      - name: Compile Phase 5 Python plane and host proofs
         run: >-
           python -m compileall -q python/origins_integration python/origins_contracts python/tests
-          && python -m py_compile tools/prove_phase5_oracle_remote.py
+          && python -m py_compile
+          tools/prove_phase5_oracle_remote.py
+          tools/prove_phase5_workspace_ui.py
 
       - name: Run Phase 5 owner and remote-transfer proofs
         env:
