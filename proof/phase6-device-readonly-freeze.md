@@ -1,8 +1,21 @@
 # Phase 6 Device Read-Only Freeze
 
-Status: promotion candidate
+Status: merged
 
 Phase 6 mounts Huawei Gateway and TTG Device X-Ray as read-only specialist owners. It does not claim or expose production device-write authority.
+
+## Merge checkpoint
+
+```text
+PR #17
+9a9f05a984b0ba5fd2edd8e8c0b27b5645117697
+```
+
+Final promotion head:
+
+```text
+284b1145fac5e93edd0235c43a6d395db392e78e
+```
 
 ## Owner revisions
 
@@ -14,24 +27,23 @@ TTG-Device-X-Ray
 34feb55ab937fa865726cbb22c44b09b52084114
 ```
 
-## Implementation proof head
+## Hosted proof
 
-```text
-4e788a584505fc5728a07a1bf73ece1e8a6bfd17
-```
+All seven hosted regression workflows passed at the final promotion head:
 
-At that exact source head:
+- Phase 6 Device Read-Only Integration;
+- Stage-2 Authority Containment;
+- Origins Contract Spine;
+- Origins Daemon Foundation;
+- Origins Phase 3 Workspace;
+- Phase 4 Intelligence Plane;
+- Phase 5 Oracle Lumi Applications.
 
-- all seven hosted regression workflows passed;
-- the Phase-6 dedicated gate compiled both target-host proof tools;
-- the full Phase-6 Python suite passed with reconnect coverage;
-- Workspace TypeScript typecheck, Vitest and production build passed;
-- Gateway mutation denial remained explicit;
-- Stage-2 containment remained green on Windows and Ubuntu.
+The Phase-6 gate compiled both target-host proof tools, ran the complete Phase-6 Python suite including reconnect coverage, denied Gateway mutations, and passed Workspace typecheck, Vitest and production build. Stage-2 containment remained green on Windows and Ubuntu.
 
-## Oracle / Kratos proof
+## Oracle / Kratos exact-head proof
 
-Exact-node execution used Oracle Live on:
+Exact-node execution used `oracle.live.v1` on:
 
 ```text
 kratos-HP-290-G4-Microtower-PC
@@ -41,10 +53,8 @@ No GitHub interactive execution path was used.
 
 ### Reconnect/read-only suite
 
-Oracle command result:
-
 ```text
-8 passed in 2.08s
+8 passed in 2.09s
 exitCode = 0
 timedOut = false
 signal = null
@@ -54,10 +64,9 @@ The reconnect proof creates a new Origins Huawei client against the same owner s
 
 ### Rendered XRAY acceptance
 
-Oracle result:
-
 ```text
 PHASE6_WORKSPACE_UI_OK
+source_head = 284b1145fac5e93edd0235c43a6d395db392e78e
 exitCode = 0
 timedOut = false
 signal = null
@@ -84,11 +93,11 @@ sha256 = 9b5665285ad84d32d229b8dd55fe9bd5c6620b40221b05068e3313acd5bb24af
 
 ## Historical VOG lineage
 
-The recovered VOG/P30 handover remains valid historical read-only lineage: Kirin 980, `NO MAIN VERSION`, unreadable vendor/country/OEMINFO version items, and the preserved allowlisted X-Ray capture. That capture predates sealed-bundle v2 and is therefore not represented as a current v2 bundle.
+The recovered VOG/P30 handover remains valid historical read-only lineage: Kirin 980, `NO MAIN VERSION`, unreadable vendor/country/OEMINFO version items, and the preserved allowlisted X-Ray capture. That capture predates sealed-bundle v2 and is not represented as a current v2 bundle.
 
-No current physical Huawei attachment is proven in the device registry/recovery evidence. Phase 6 therefore makes no current-device certification or write claim. Lack of a currently attached handset does not invalidate the proven software read-only integration.
+No current physical Huawei attachment is proven in the recovered device registry/host evidence. Phase 6 therefore makes no current-device certification or write claim. Lack of a presently attached handset does not invalidate the proven software read-only integration.
 
-## Explicit accepted nonclaims
+## Preserved nonclaims
 
 ### Device write
 
@@ -106,8 +115,8 @@ available = false
 reason = AGENTOPS_GATEWAY_LINK_CONTRACT_UNAVAILABLE
 ```
 
-Neither current owner exposes a reversible typed reference that proves AgentOps Operation X owns Huawei Gateway Operation Y. Origins does not create a shadow mapping table or reinterpret hashes as IDs. This is an owner-contract gap, not a Phase-6 software failure.
+Neither current owner exposes a reversible typed reference that proves AgentOps Operation X owns Huawei Gateway Operation Y. Origins does not create a shadow mapping table or reinterpret hashes as IDs. This remains future owner-contract evolution.
 
-## Promotion decision
+## Final disposition
 
-The Phase-6 read-only integration is complete and promotion-ready with the two nonclaims above preserved as truthful unavailable states. Any future device-write authority or cross-owner semantic/mechanical link requires its own owner-approved contract and proof campaign.
+Phase 6 is merged authority. Reopen it only if new evidence proves a regression or a later approved phase deliberately changes the authority boundary.
