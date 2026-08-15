@@ -101,7 +101,7 @@ def _start_daemon(*, data_dir: Path, workspace_root: Path, token: str) -> Daemon
             "ORIGINS_LOCAL_TOKEN": token,
             "ORIGINS_WORKSPACE_ROOTS": str(workspace_root),
             "ORIGINS_ARTIFACT_ROOTS": str(workspace_root),
-            "PATH": os.pathsep.join([str(Path(sys.executable).resolve().parent), env.get("PATH", "")]),
+            "PATH": os.pathsep.join([str(Path(sys.executable).parent), env.get("PATH", "")]),
         }
     )
     process = subprocess.Popen(
@@ -359,7 +359,7 @@ def main() -> int:
                 "ORIGINS_AGENTOPS_ROOT": str(AGENTOPS_ROOT),
                 "ORIGINS_CODEOPS_CONFIG": str(CODEOPS_CONFIG),
                 "ORIGINS_SERGEANT_COMMAND": "sergeant",
-                "PATH": os.pathsep.join([str(Path(sys.executable).resolve().parent), os.environ.get("PATH", "")]),
+                "PATH": os.pathsep.join([str(Path(sys.executable).parent), os.environ.get("PATH", "")]),
             }
         )
         daemon = _start_daemon(data_dir=data_dir, workspace_root=temp, token=token)
