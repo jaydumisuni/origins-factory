@@ -44,8 +44,7 @@ def serve_from_env() -> None:
 
         def _authorized(self) -> bool:
             supplied = self.headers.get("Authorization", "")
-            expected = f"Bearer {token}"
-            return hmac.compare_digest(supplied, expected)
+            return hmac.compare_digest(supplied, f"Bearer {token}")
 
         def _require_auth(self) -> bool:
             if self._authorized():
@@ -99,8 +98,7 @@ def serve_from_env() -> None:
                 if path == "/v1/evolutions":
                     return self._json(200, runtime.list())
                 if path.startswith("/v1/evolutions/"):
-                    evolution_id = path.removeprefix("/v1/evolutions/")
-                    return self._json(200, runtime.get(evolution_id))
+                    return self._json(200, runtime.get(path.removeprefix("/v1/evolutions/")))
                 self._json(404, {"error": "NOT_FOUND"})
             except (
                 CapabilityEvolutionError,
@@ -140,6 +138,18 @@ def serve_from_env() -> None:
                     )
                 if action == "child-operation":
                     return self._json(201, runtime.create_child_upgrade_operation(evolution_id, _required(body, "approval_id")))
+                if action == "candidate/approval":
+                    return self._json(201, runtime.create_engineering_approval(evolution_id, body))
+                if action == "candidate/approval/decision":
+                    return self._json(
+                        200,
+                        runtime.decide_engineering_approval(
+                            evolution_id,
+                            approval_id=_required(body, "approval_id"),
+                            decision=_required(body, "decision"),
+                            decided_by=_required(body, "decided_by"),
+                        ),
+                    )
                 if action == "candidate":
                     return self._json(200, runtime.implement_candidate(evolution_id, body))
                 if action == "canary":
