@@ -1,218 +1,141 @@
 # Origins Factory — Current State
 
 **Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
-**Merged checkpoint:** Phase 4 / PR #15 / `877a25557cfddb451d154f01e238a55e972040bf`
-**Active phase:** Phase 5 — Oracle, Lumi, applications
-**Branch:** `build/phase5-oracle-lumi-applications`
-**PR:** #16, draft
-**Phase-5 status:** implementation + backend + Workspace UI + target-host acceptance complete; pending owner promotion/merge decision.
-**Proven implementation head:** `655d149622094a9a9a0cd2f306e01f9337b0906a`
+**Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`
+**Active phase:** Phase 6 — device read-only integration
+**Branch:** `build/phase6-device-readonly-integration`
+**PR:** #17, promotion candidate
+**Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`
+**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`
 
 ## Completed authority — do not rebuild
 
-Origins PRs #11–#15, Hunter-AgentOps durable approval/Operation work, CodeOps/Sergeant owner integrations and Oracle terminal exit-status truth are established authority. Phase 3 Workspace is merged at `106cae1172207ce6b1c1d9b9aaeb076e83b3bb3f`; Phase 4 intelligence/assurance is merged at `877a25557cfddb451d154f01e238a55e972040bf`.
+Origins PRs #11–#16 are merged authority. Phase 5 added the proven Oracle, Lumi, native-application, Artifact and Workspace application/browser/logistics surfaces. Origins remains a coordinator/client of specialist owners rather than a replacement for them.
 
 Ownership remains separate:
 
-- Hunter/Pete — intelligence and optional outside reasoning;
-- AgentOps — semantic Operations, approvals and authorization evidence;
+- Hunter/Pete — intelligence and model routing;
+- AgentOps — semantic Operation/approval truth;
 - CodeOps — repository engineering/provider routing;
-- Sergeant — independent review/verdicts;
-- Origins/originsd — Workspace, Repository, Session, native application and Artifact mechanical truth;
+- Sergeant — independent engineering verdicts;
+- Origins/originsd — Workspace/Repository/Session/native application/Artifact mechanical truth;
 - Oracle — browser and reviewed remote workstation transport;
-- Lumi — download acquisition/queue/resume ownership;
-- X-Ray/specialist Gateways — their specialist boundaries.
+- Lumi — acquisition/queue/resume truth;
+- TECHGUYTOOL Huawei Gateway — Huawei physical-session/operation/journal truth;
+- TTG Device X-Ray — read-first device evidence/certification truth.
 
-Do not duplicate owner engines inside Origins. Generalized model/runtime activation remains false.
+## Phase 6 recovered owner authority
 
-## Phase 5 implementation — complete candidate
-
-### Oracle retained browser
-
-The Phase-5 owner plane projects the retained Oracle browser, real `observe / assist / act` authority modes, explicit owner approval before Act, dedicated human takeover and honest unavailable/disconnected state. Public health remains sanitized and browser credentials are not exported.
-
-### Oracle remote Node / file retrieval
-
-Origins mounts Oracle's frozen `oracle.live.v1` workstation/file transport instead of creating another executor.
-
-The backend:
-
-- binds an exact server-configured Oracle Node ID;
-- verifies routing through `node.ping`;
-- checks Node capability inventory;
-- exposes only approved read retrieval using `filesystem.stat`, `filesystem.hash` and `filesystem.download.start`;
-- rejects caller Node/token/destination/upload/write/header/overwrite substitution;
-- validates ORL1 sequence and absolute offset;
-- ACKs/backpressures the stream;
-- enforces bounded transfer size;
-- validates remote/result/close SHA-256 plus byte count;
-- fsyncs and atomically promotes completed bytes;
-- removes partial files after failure;
-- returns a sanitized Oracle receipt and Artifact candidate.
-
-The remote transfer root must also be included in `ORIGINS_ARTIFACT_ROOTS` before native Artifact promotion.
-
-### Lumi / Logistics
-
-Lumi remains owner of destination, request-envelope, cookies/headers, resume and acquisition history. Origins can queue bounded downloads, inspect owner task state and promote only completed Lumi output into an Artifact candidate.
-
-### Native applications
-
-`originsd` owns the application registry and durable/idempotent launcher. The browser chooses only a registered application ID and Workspace. Executable, argv and cwd remain server-owned; no shell or arbitrary launch arguments are accepted. Launch intent is persisted before spawn and child environment is sanitized.
-
-### Artifacts
-
-`originsd` materializes immutable content-addressed Artifacts from regular files under configured roots, preserves provenance, deduplicates exact bytes per Workspace and retrieves by registered Artifact ID. `artifact_projection` remains shared and adversarially validated in Rust, Python and TypeScript.
-
-### Workspace UI
-
-Phase 5 extends the already-proven Phase-4 mission UI instead of replacing it.
-
-First-class Phase-5 surfaces are now:
+### TECHGUYTOOL Huawei
 
 ```text
-Core
-Oracle
-Logistics
-Applications
+repository = jaydumisuni/TECHGUYTOOL-Huawei
+revision = fd3f7bb1587b65faaa7d37e0057683dcb07975ed
+default_gateway = 127.0.0.1:49321
+device_authority = none
+xray_authority = read_only
 ```
 
-Core preserves the Phase-4 Factory/Workspace/Hunter/Armoury/Evidence/Sergeant/Recovery experience.
+The owner persists physical Sessions, Gateway Operations, providers/workers and a hash-chained journal. Restart retains physical/Operation identity and active Operations recover explicitly. Endpoint observations and accepted shared contracts are journalled with canonical owner truth.
 
-Oracle exposes:
-
-- retained browser Session state;
-- Observe/Assist/Act controls;
-- explicit Act approval checkbox;
-- immediate human takeover;
-- exact remote Node truth;
-- approved read-only remote file retrieval;
-- verified transfer → Artifact promotion;
-- truthful remote-application unavailable state.
-
-Logistics exposes:
-
-- Lumi owner state;
-- bounded queue acquisition;
-- task refresh/completion state;
-- Lumi Artifact candidate recovery/promotion;
-- durable Artifact filtering/listing/download by registered Artifact ID.
-
-Applications exposes:
-
-- server-owned registry;
-- Workspace-bound durable launch identity;
-- registered local application launch;
-- explicit no-browser executable/argv/cwd authority;
-- separate truthful remote application attachment status.
-
-The Phase-5 UI now fails closed on authentication truth: it cannot report connected when every protected owner projection rejects, and a refresh that loses all protected owner projections returns to disconnected state.
-
-## Remote application attachment — explicit owner gap
-
-Oracle has not yet frozen/implemented a durable remote native-application attachment Session contract. Origins therefore reports and renders:
+### TTG Device X-Ray
 
 ```text
-remote_application_attachment.available = false
-reason = ORACLE_DESKTOP_APPLICATION_SESSION_CONTRACT_UNAVAILABLE
+repository = jaydumisuni/TTG-Device-X-Ray
+revision = 34feb55ab937fa865726cbb22c44b09b52084114
+write_allowed = false
 ```
 
-Do not substitute generic process launch, pixels or a new Origins remote-desktop engine for that missing owner contract.
+X-Ray remains read-first. Sealed bundle v2 hashes every evidence file, optional HMAC verification is separate from digest integrity, and promoted Kirin/VOG capability carries no loader, partition-write, OEMINFO-write, flashing, reboot, unlock or relock authority.
 
-## Exact proof state
+## Phase 6 implementation
 
-Canonical Phase-5 proof record:
+### Huawei Gateway read-only mount
+
+Origins permits exactly these Gateway commands:
 
 ```text
-proof/phase5-workspace-ui-freeze.md
+health
+doctor
+snapshot
+get_physical_session
+get_operation
+list_events
+verify_journal
 ```
 
-### Hosted exact-head proof
-
-All required workflows passed on implementation head `655d149622094a9a9a0cd2f306e01f9337b0906a`:
+Every other Gateway command is rejected before network I/O. Projection fails closed unless:
 
 ```text
-Phase 5 Oracle Lumi Applications   31865760841  PASS
-Origins Contract Spine             31865760805  PASS
-Origins Daemon Foundation          31865760821  PASS
-Origins Phase 3 Workspace          31865760850  PASS
-Phase 4 Intelligence Plane         31865760860  PASS
-Stage-2 Authority Containment      31865760867  PASS (Ubuntu + Windows)
+device_authority = none
+xray_authority = read_only
+journal_valid = true
 ```
 
-### Oracle/Kratos exact-head remote-file proof
+Journal projection recovers endpoint observations plus Device Evidence/Twin, Decision Verdict, Mode Lease, historical Execution Lease/Executor Result, Verification Result and Recovery Plan. Historical execution evidence is display-only; Phase 6 never consumes an Execution Lease.
 
-Command/result:
+### X-Ray sealed-bundle mount
+
+`ORIGINS_XRAY_BUNDLE_DIR` is server-owned. The browser cannot choose the bundle path. Origins verifies bundle schema 2.0, `write_allowed=false`, canonical manifest SHA-256, contained file paths, file sizes/hashes and signature-manifest binding. A SIGNED label is cryptographically trusted only when the server-side HMAC key reference exists and verifies.
+
+### HTTP and Workspace boundary
+
+`python/origins_integration/phase6_server.py` is loopback-only. Protected routes are GET-only:
 
 ```text
-origins-phase5-remote-file-proof-ui-head-655d149-20260815-0500
+GET /v1/device
+GET /v1/huawei/gateway
+GET /v1/xray/bundle
 ```
 
-PASS:
+`GET /v1/health` is sanitized/public. POST/PUT/PATCH/DELETE return `405 PHASE6_READ_ONLY`.
+
+The Workspace preserves Phase 5 under `Workspace` and adds first-class `XRAY`. XRAY displays owner health, journal, physical Sessions, Gateway Operations/recovery counts, endpoints, Device Twin/Evidence, verdicts, leases, verification, Recovery Plan and sealed X-Ray evidence. It exposes no device action control.
+
+## Phase 6 proof state
+
+Implementation proof head:
 
 ```text
-PHASE5_ORACLE_REMOTE_FILE_OK
-node_id     kratos-HP-290-G4-Microtower-PC
-remote_path /home/kratos/origins-factory/README.md
-bytes       4804
-chunks      1
-sha256      33f70ec221efbf0528be397c916670cbd7bea3d9edfc9ba1d1b514adb6ebb2f9
-artifact_candidate true
-live_token_exposed false
+4e788a584505fc5728a07a1bf73ece1e8a6bfd17
 ```
 
-Transport was `oracle.live.v1`, terminal exit code was 0, no timeout occurred and `githubInteractivePathUsed=false`.
+At that exact head:
 
-### Real-Chrome Workspace UI proof
+- all seven hosted regression workflows passed;
+- Oracle/Kratos Phase-6 backend + reconnect suite passed 8/8;
+- reconnect preserved owner Session ID, Gateway Operation ID, request SHA and recovery counters without mutation;
+- isolated real Chrome returned `PHASE6_WORKSPACE_UI_OK`;
+- XRAY rendered no write controls and no production credentials;
+- X-Ray integrity remained verified;
+- rendered screenshot SHA-256 is `9b5665285ad84d32d229b8dd55fe9bd5c6620b40221b05068e3313acd5bb24af`.
 
-Command/result:
+See `proof/phase6-device-readonly-freeze.md` for the frozen evidence and exact nonclaims.
+
+## Accepted nonclaims — not promotion blockers
+
+### AgentOps ↔ Gateway durable link
 
 ```text
-origins-phase5-workspace-ui-proof-r2-655d149-20260815-0459
+available = false
+reason = AGENTOPS_GATEWAY_LINK_CONTRACT_UNAVAILABLE
 ```
 
-PASS:
+Neither owner currently exposes a reversible typed semantic↔mechanical reference. Origins does not create a shadow mapping database or reinterpret Gateway hashes as AgentOps IDs. A future link belongs under owner-approved contract evolution.
+
+### Device write execution
 
 ```text
-PHASE5_WORKSPACE_UI_OK
-browser system-google-chrome-headless
-production_credentials_used false
-fixture_bearer_rendered false
-oracle_act_requires_explicit_approval true
-remote_application_attachment_available false
+available = false
+reason = PHASE6_DEVICE_WRITE_NOT_AUTHORIZED
 ```
 
-Rendered screenshot hashes:
+Phase 6 does not gain write authority merely because later Huawei lease/executor code exists.
 
-```text
-Oracle       3a8ec8ce64b88ad0b79f519c3efba8c5ad4066594e661de3dcf8e10f22ba427b
-Logistics    7ccf8ea881397b604b2fc3af0ef97af0a1a960d1a8f670d410a3044c485e4c2e
-Applications d02bfa638620fe3295837998351b5aa4e5ab2c8a267241fb18020f488e2f1d7c
-```
+### Current physical Huawei attachment
 
-The production Oracle browser's sensitive-page suppression was respected; visual acceptance used an isolated clean Chrome profile with deterministic loopback fixtures and a non-secret proof bearer.
+Historical VOG/P30 recovery evidence is preserved as lineage and predates X-Ray sealed-bundle v2. No current attached Huawei target is proven in the recovered device registry/host records, so Phase 6 makes no current-device certification or write claim. This does not invalidate the proven software read-only integration.
 
-## Relevant server configuration
+## Promotion boundary
 
-```text
-ORIGINS_LOCAL_TOKEN
-ORIGINS_ORACLE_BROWSER_URL
-ORACLE_PAIRING_TOKEN
-ORIGINS_LUMI_URL
-ORIGINS_APPLICATIONS_JSON
-ORIGINS_ARTIFACT_ROOTS
-ORACLE_LIVE_URL
-ORIGINS_ORACLE_NODE_ID or ORACLE_LIVE_NODE_ID
-ORACLE_LIVE_TOKEN or ORACLE_LIVE_TOKEN_FILE
-ORIGINS_REMOTE_TRANSFER_ROOT
-ORIGINS_ORACLE_MAX_TRANSFER_BYTES
-```
-
-Secrets remain local references. They must not be committed, returned by APIs, echoed by proof tools or accepted from browser request bodies where the owner contract keeps them server-side.
-
-## Exact next action
-
-1. Re-prove the final documentation/proof-record head through the Phase-5 and inherited hosted gates.
-2. Update draft PR #16 with final Phase-5 implementation and acceptance evidence.
-3. Keep PR #16 draft until the owner explicitly chooses promotion/merge.
-4. Do not advance the merged checkpoint or begin a later phase solely because this candidate branch is proven.
+Phase 6 implementation and acceptance evidence are complete. PR #17 is ready for promotion once the final recovery/documentation head re-runs the hosted and target-host proofs. After merge, normalize this file to the Phase-6 merge checkpoint and recover Phase 7 before implementation.
