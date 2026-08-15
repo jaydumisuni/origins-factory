@@ -1,10 +1,10 @@
 # Origins Factory — Current State
 
-**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
-**Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`  
-**Active phase:** Phase 6 — device read-only integration  
-**Branch:** `build/phase6-device-readonly-integration`  
-**PR:** #17, draft  
+**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
+**Merged checkpoint:** Phase 5 / PR #16 / `d26bb68a621fb0e98f0a1766cbe3fea19228b2d8`
+**Active phase:** Phase 6 — device read-only integration
+**Branch:** `build/phase6-device-readonly-integration`
+**PR:** #17, draft
 **Phase-5 proof record:** `proof/phase5-workspace-ui-freeze.md`
 
 ## Completed authority — do not rebuild
@@ -29,7 +29,7 @@ Origins is a client/coordinator. It does not absorb specialist engines.
 
 ### TECHGUYTOOL Huawei
 
-Repository: `jaydumisuni/TECHGUYTOOL-Huawei`  
+Repository: `jaydumisuni/TECHGUYTOOL-Huawei`
 Recovered default-branch revision: `fd3f7bb1587b65faaa7d37e0057683dcb07975ed`
 
 Relevant frozen owner contract:
@@ -45,7 +45,7 @@ Relevant frozen owner contract:
 
 ### TTG Device X-Ray
 
-Repository: `jaydumisuni/TTG-Device-X-Ray`  
+Repository: `jaydumisuni/TTG-Device-X-Ray`
 Recovered default-branch revision: `34feb55ab937fa865726cbb22c44b09b52084114`
 
 Relevant frozen owner contract:
@@ -66,12 +66,12 @@ Relevant frozen owner contract:
 
 ```text
 health
- doctor
- snapshot
- get_physical_session
- get_operation
- list_events
- verify_journal
+doctor
+snapshot
+get_physical_session
+get_operation
+list_events
+verify_journal
 ```
 
 The client refuses every other Gateway command before opening a socket. In particular, Phase 6 does not mount physical-session creation/closure, endpoint recording, Operation creation/transition/resume, provider/worker registration, contract publication, worker mutation or Gateway shutdown.
@@ -175,7 +175,7 @@ Not yet complete on PR #17. Hosted tests/CI, target-host Gateway/X-Ray proof, re
 
 ## Dedicated proof
 
-Workflow: `.github/workflows/phase6-device-readonly.yml`  
+Workflow: `.github/workflows/phase6-device-readonly.yml`
 Target-host proof tool: `tools/prove_phase6_device_readonly.py`
 
 The dedicated gate proves:
