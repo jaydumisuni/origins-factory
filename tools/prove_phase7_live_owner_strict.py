@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -107,6 +108,18 @@ def _scoped(payload: dict[str, object]) -> dict[str, object]:
 
 def main() -> int:
     module = _load_base()
+    pytest_probe = subprocess.run(
+        [sys.executable, "-B", "-c", "import pytest"],
+        check=False,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=15,
+    )
+    if pytest_probe.returncode != 0:
+        raise module.ProofError(
+            f"strict canary interpreter cannot import pytest: {sys.executable}: {pytest_probe.stderr[-500:]}"
+        )
 
     def strict_init_repo(path: Path, *, initial_value: str, replacement_value: str) -> None:
         _strict_init_repo(

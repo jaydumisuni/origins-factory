@@ -273,7 +273,10 @@ def main() -> int:
             if "Activate automatically" in rendered or "Self approve" in rendered:
                 raise RuntimeError("rendered EVOLUTION surface exposes implicit self-authority")
 
-            buttons = cdp.evaluate("[...document.querySelectorAll('.phase7-console button')].map((b)=>b.textContent?.trim()||'')")
+            buttons = cdp.evaluate(
+                "[...document.querySelectorAll('.phase7-switcher button, .phase7-console button')]"
+                ".map((b)=>b.textContent?.trim()||'')"
+            )
             if not isinstance(buttons, list):
                 raise RuntimeError("could not inspect EVOLUTION controls")
             required_buttons = {"Workspace", "EVOLUTION", "Refresh", "Disconnect", "Confirm gap + compile proposal", "Promote Generation", "Rollback candidate"}

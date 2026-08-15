@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -89,25 +90,49 @@ def _sha(value: object) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
-def _wait_health(timeout: float = 12.0) -> None:
+def _ensure_proof_port_free() -> None:
+    host, raw_port = PROOF_BIND.rsplit(":", 1)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind((host, int(raw_port)))
+    except OSError as exc:
+        raise ProofError(f"Phase 7 proof port is already in use: {PROOF_BIND}") from exc
+
+
+def _wait_health(process: subprocess.Popen[bytes], token: str, timeout: float = 12.0) -> None:
     deadline = time.monotonic() + timeout
     last = ""
     while time.monotonic() < deadline:
+        exit_code = process.poll()
+        if exit_code is not None:
+            raise ProofError(f"originsd exited before becoming healthy: {exit_code}")
         try:
             with urllib.request.urlopen(f"{PROOF_URL}/v1/health", timeout=0.5) as response:
                 payload = json.loads(response.read().decode("utf-8"))
                 if response.status == 200 and payload.get("ok") is True:
-                    return
+                    auth_request = urllib.request.Request(
+                        f"{PROOF_URL}/v1/capabilities",
+                        headers={"Authorization": f"Bearer {token}"},
+                    )
+                    with urllib.request.urlopen(auth_request, timeout=0.5) as authenticated:
+                        auth_payload = json.loads(authenticated.read().decode("utf-8"))
+                    if authenticated.status == 200 and isinstance(auth_payload.get("capabilities"), list):
+                        if process.poll() is not None:
+                            raise ProofError("originsd exited after health while a foreign listener remained")
+                        return
+        except ProofError:
+            raise
         except Exception as exc:  # proof polling only
             last = type(exc).__name__
         time.sleep(0.05)
-    raise ProofError(f"originsd did not become healthy: {last}")
+    raise ProofError(f"originsd did not become healthy and authenticated: {last}")
 
 
 def _start_daemon(*, data_dir: Path, workspace_root: Path, token: str) -> Daemon:
     daemon_path = Path(os.environ.get("ORIGINS_PHASE7_DAEMON", str(DEFAULT_DAEMON))).resolve()
     if not daemon_path.is_file():
         raise ProofError(f"originsd binary unavailable: {daemon_path}")
+    _ensure_proof_port_free()
     env = os.environ.copy()
     env.update(
         {
@@ -129,7 +154,7 @@ def _start_daemon(*, data_dir: Path, workspace_root: Path, token: str) -> Daemon
     )
     daemon = Daemon(process)
     try:
-        _wait_health()
+        _wait_health(process, token)
     except Exception:
         daemon.stop()
         raise

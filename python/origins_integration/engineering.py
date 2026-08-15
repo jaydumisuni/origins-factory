@@ -213,7 +213,7 @@ class OriginsClient:
         repository_id: str,
         *,
         kind: str = "unstaged",
-        limit: int = 512 * 1024,
+        limit: int = 8 * 1024 * 1024,
     ) -> dict[str, Any]:
         query = urllib.parse.urlencode({"kind": kind, "limit": limit})
         return self._json(

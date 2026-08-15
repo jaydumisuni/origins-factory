@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping
@@ -16,7 +17,7 @@ class EvolutionApprovalBindings:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS evolution_approval_bindings (
@@ -34,7 +35,7 @@ class EvolutionApprovalBindings:
         return _connect(self.path)
 
     def get(self, evolution_id: str) -> dict[str, object] | None:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             row = db.execute(
                 "SELECT evolution_id, approval_id, status, request_digest, evidence_json, updated_at "
                 "FROM evolution_approval_bindings WHERE evolution_id=?",
@@ -57,7 +58,7 @@ class EvolutionApprovalBindings:
         status = _status(evidence)
         request_digest = _digest(evidence, "request_digest")
         now = _now()
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT approval_id, status FROM evolution_approval_bindings WHERE evolution_id=?",
@@ -97,7 +98,7 @@ class EvolutionEngineeringApprovalBindings:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute(
                 """
                 CREATE TABLE IF NOT EXISTS evolution_engineering_approvals (
@@ -116,7 +117,7 @@ class EvolutionEngineeringApprovalBindings:
         return _connect(self.path)
 
     def get(self, evolution_id: str) -> dict[str, object] | None:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             row = db.execute(
                 "SELECT evolution_id, approval_id, status, subject_sha256, request_digest, evidence_json, updated_at "
                 "FROM evolution_engineering_approvals WHERE evolution_id=?",
@@ -146,7 +147,7 @@ class EvolutionEngineeringApprovalBindings:
         request_digest = _digest(evidence, "request_digest")
         subject_sha256 = _sha256_json(subject)
         now = _now()
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT approval_id, status, subject_sha256 FROM evolution_engineering_approvals WHERE evolution_id=?",

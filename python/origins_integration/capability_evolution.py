@@ -4,6 +4,7 @@ import hashlib
 import json
 import sqlite3
 import uuid
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -94,7 +95,7 @@ class CapabilityEvolutionStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS evolutions (
@@ -146,7 +147,7 @@ class CapabilityEvolutionStore:
             "updated_at": now,
             "revision": 1,
         }
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
             db.execute(
                 "INSERT INTO evolutions(evolution_id, capability_id, state, record_json, revision, updated_at) VALUES(?,?,?,?,?,?)",
@@ -156,7 +157,7 @@ class CapabilityEvolutionStore:
         return record
 
     def get(self, evolution_id: str) -> dict[str, object]:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             row = db.execute(
                 "SELECT record_json FROM evolutions WHERE evolution_id=?", (evolution_id,)
             ).fetchone()
@@ -168,12 +169,12 @@ class CapabilityEvolutionStore:
         return value
 
     def list(self) -> list[dict[str, object]]:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             rows = db.execute("SELECT record_json FROM evolutions ORDER BY updated_at DESC").fetchall()
         return [json.loads(str(row["record_json"])) for row in rows]
 
     def active_generation(self, capability_id: str) -> dict[str, object] | None:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             row = db.execute(
                 "SELECT capability_id, generation, manifest_sha256, evolution_id, updated_at FROM active_generations WHERE capability_id=?",
                 (capability_id,),
@@ -349,7 +350,7 @@ class CapabilityEvolutionStore:
         candidate = _mapping(record, "candidate")
         capability_id = str(_mapping(record, "gap")["capability_id"])
         now = _now()
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
             row = db.execute(
                 "SELECT generation, manifest_sha256, evolution_id FROM active_generations WHERE capability_id=?",
@@ -411,7 +412,7 @@ class CapabilityEvolutionStore:
         return self._save(record, "mission_resumed")
 
     def _save(self, record: dict[str, object], state: str) -> dict[str, object]:
-        with self._connect() as db:
+        with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
             self._save_in_transaction(db, record, state, _now())
             db.commit()

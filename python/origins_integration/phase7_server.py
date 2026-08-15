@@ -45,8 +45,9 @@ def serve_from_env() -> None:
             self.wfile.write(body)
 
         def _authorized(self) -> bool:
-            supplied = self.headers.get("Authorization", "")
-            return hmac.compare_digest(supplied, f"Bearer {token}")
+            supplied = self.headers.get("Authorization", "").encode("latin-1", "replace")
+            expected = f"Bearer {token}".encode("utf-8")
+            return hmac.compare_digest(supplied, expected)
 
         def _require_auth(self) -> bool:
             if self._authorized():
@@ -116,9 +117,13 @@ def serve_from_env() -> None:
             if not self._require_auth():
                 return
             path = urlparse(self.path).path
-            transition_lock.acquire()
             try:
                 body = self._body()
+            except (Phase7ServerError, ValueError) as exc:
+                self._conflict(exc)
+                return
+            transition_lock.acquire()
+            try:
                 if path == "/v1/evolutions/gap":
                     return self._json(201, runtime.confirm_gap(body))
                 if not path.startswith("/v1/evolutions/"):
