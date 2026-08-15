@@ -58,6 +58,7 @@ def validate_contract(value: Any) -> dict[str, Any]:
         "event_envelope": _validate_event_envelope,
         "session_projection": _validate_session_projection,
         "repository_projection": _validate_repository_projection,
+        "artifact_projection": _validate_artifact_projection,
     }
     validator = validators.get(contract_type)
     if validator is None:
@@ -325,6 +326,45 @@ def _validate_repository_projection(value: dict[str, Any]) -> None:
             raise ContractError("INVALID_REPOSITORY_STATE", "attached repository requires OID and symbolic branch")
     if head_ref and branch and head_ref != f"refs/heads/{branch}":
         raise ContractError("INVALID_REPOSITORY_STATE", "head_ref and branch disagree")
+
+
+def _validate_artifact_projection(value: dict[str, Any]) -> None:
+    _exact_fields(
+        value,
+        {
+            "contract_type",
+            "schema_version",
+            "artifact_id",
+            "workspace_id",
+            "revision",
+            "content_sha256",
+            "size_bytes",
+            "filename",
+            "media_type",
+            "storage_class",
+            "source_count",
+            "created_at",
+            "updated_at",
+        },
+    )
+    _uuid(value, "artifact_id")
+    _uuid(value, "workspace_id")
+    revision = _nonnegative_integer(value, "revision", "INVALID_REVISION")
+    if revision < 1:
+        raise ContractError("INVALID_REVISION", "artifact revision must be at least 1")
+    _digest(value, "content_sha256", allow_empty=False)
+    _nonnegative_integer(value, "size_bytes", "INVALID_BYTE_COUNT")
+    _nonempty_string(value, "filename")
+    _string(value, "media_type")
+    if _string(value, "storage_class") != "local_immutable":
+        raise ContractError("INVALID_STORAGE_CLASS", "storage_class must be local_immutable")
+    source_count = _nonnegative_integer(value, "source_count", "INVALID_SOURCE_COUNT")
+    if source_count < 1:
+        raise ContractError("INVALID_SOURCE_COUNT", "source_count must be at least 1")
+    created = _timestamp(value, "created_at")
+    updated = _timestamp(value, "updated_at")
+    if updated < created:
+        raise ContractError("INVALID_TIMESTAMP_ORDER", "updated_at cannot precede created_at")
 
 
 def _validate_numbers(value: Any, path: str = "$") -> None:
