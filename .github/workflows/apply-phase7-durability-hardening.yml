@@ -35,6 +35,44 @@ jobs:
       - name: Apply durability hardening
         run: python tools/apply_phase7_durability_hardening.py
 
+      - name: Correct concurrency regression probe
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("python/tests/test_phase7_approval_binding.py")
+          text = path.read_text(encoding="utf-8")
+          marker = "def test_concurrent_first_capability_binding_cannot_replace_pending_binding"
+          index = text.index(marker)
+          text = text[:index] + '''def test_concurrent_first_capability_binding_cannot_replace_pending_binding(tmp_path: Path) -> None:
+              import threading
+
+              path = tmp_path / "phase7.sqlite"
+              bindings = EvolutionApprovalBindings(path)
+              start = threading.Barrier(3)
+              errors: list[Exception] = []
+
+              def bind(approval_id: str) -> None:
+                  start.wait(timeout=5)
+                  try:
+                      bindings.bind("evolution-7", evidence(approval_id, "pending"))
+                  except Exception as exc:  # expected loser
+                      errors.append(exc)
+
+              threads = [threading.Thread(target=bind, args=(approval_id,)) for approval_id in ("approval-a", "approval-b")]
+              for thread in threads:
+                  thread.start()
+              start.wait(timeout=5)
+              for thread in threads:
+                  thread.join(timeout=5)
+              assert all(not thread.is_alive() for thread in threads)
+              assert len(errors) == 1
+              assert "cannot replace" in str(errors[0])
+              stored = EvolutionApprovalBindings(path).get("evolution-7")
+              assert stored is not None and stored["approval_id"] in {"approval-a", "approval-b"}
+          '''
+          path.write_text(text, encoding="utf-8")
+          PY
+
       - name: Verify Python hardening
         run: |
           python -m py_compile \
