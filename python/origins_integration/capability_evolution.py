@@ -305,7 +305,14 @@ class CapabilityEvolutionStore:
         record["canary"] = clean
         return self._save(record, "canary_passed")
 
-    def decide(self, evolution_id: str, *, decision: str, decided_by: str) -> dict[str, object]:
+    def decide(
+        self,
+        evolution_id: str,
+        *,
+        decision: str,
+        decided_by: str,
+        candidate_revalidation: Mapping[str, object] | None = None,
+    ) -> dict[str, object]:
         record = self.get(evolution_id)
         _state(record, "canary_passed")
         decision = decision.strip().lower()
@@ -336,6 +343,7 @@ class CapabilityEvolutionStore:
                 "decided_by": decided_by.strip(),
                 "decided_at": now,
                 "previous_generation": previous,
+                "candidate_revalidation": dict(candidate_revalidation) if candidate_revalidation is not None else None,
             }
             if decision == "promote":
                 generation = _positive_int(candidate.get("candidate_generation"), "candidate_generation")

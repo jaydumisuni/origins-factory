@@ -148,7 +148,7 @@ def main() -> int:
 
         def submit_process(**process_kwargs: object) -> dict[str, object]:
             process_kwargs["executable"] = "python3"
-            process_kwargs["args"] = ["-m", "pytest", "-q"]
+            process_kwargs["args"] = ["-B", "-m", "pytest", "-q", "-p", "no:cacheprovider"]
             return original_submit_process(**process_kwargs)
 
         client.submit_process = submit_process

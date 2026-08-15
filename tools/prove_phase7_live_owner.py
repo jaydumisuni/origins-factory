@@ -69,6 +69,21 @@ def _git_head(path: Path) -> str:
     return _run(["git", "rev-parse", "HEAD"], cwd=path)
 
 
+def _assert_tracked_clean(name: str, path: Path) -> None:
+    for args in (["git", "diff", "--quiet"], ["git", "diff", "--cached", "--quiet"]):
+        result = subprocess.run(args, cwd=path, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        if result.returncode != 0:
+            raise ProofError(f"{name} checkout has tracked changes and cannot be used as exact proof")
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _sha(value: object) -> str:
     data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
     return hashlib.sha256(data).hexdigest()
@@ -320,8 +335,11 @@ def main() -> int:
     source_root = Path(__file__).resolve().parents[1]
     source_head = _git_head(source_root)
     expected_head = os.environ.get("ORIGINS_PHASE7_EXPECTED_HEAD", "").strip()
-    if expected_head and source_head != expected_head:
+    if not expected_head:
+        raise ProofError("ORIGINS_PHASE7_EXPECTED_HEAD is required for exact-host proof")
+    if source_head != expected_head:
         raise ProofError(f"source head mismatch: expected {expected_head}, got {source_head}")
+    _assert_tracked_clean("origins-factory", source_root)
 
     owner_heads = {
         "agentops": _git_head(AGENTOPS_ROOT),
@@ -335,6 +353,8 @@ def main() -> int:
     }
     if owner_heads != expected_owner_heads:
         raise ProofError(f"owner provenance mismatch: {owner_heads!r}")
+    for name, path in (("Hunter-AgentOps", AGENTOPS_ROOT), ("hunter-codeops", CODEOPS_ROOT), ("Sergeant", SERGEANT_ROOT)):
+        _assert_tracked_clean(name, path)
     if not CODEOPS_CONFIG.is_file():
         raise ProofError(f"CodeOps config unavailable: {CODEOPS_CONFIG}")
 
@@ -449,6 +469,7 @@ def main() -> int:
             "proof": "PHASE7_LIVE_OWNER_OK",
             "source_head": source_head,
             "owner_heads": owner_heads,
+            "originsd_sha256": _file_sha256(Path(os.environ.get("ORIGINS_PHASE7_DAEMON", str(DEFAULT_DAEMON))).resolve()),
             "workspace_id_preserved": True,
             "agentops_child_operation_undispatched": True,
             "codeops_real_plan_applied": True,

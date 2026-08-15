@@ -366,13 +366,13 @@ class Phase7Runtime:
         repository_id = str(candidate.get("repository_id") or "")
         if not repository_id:
             raise Phase7RuntimeError("candidate repository_id is missing")
-        repository = self.origins_client.refresh_repository(repository_id)
-        repository_diff = self.origins_client.get_repository_diff(repository_id, kind="unstaged")
         session = self.origins_client.wait_session(session_id)
-        canary_binding = _validate_canary_binding(gap, candidate, session, repository, repository_diff)
-        output = self.origins_client.get_session_output(session_id)
         if session.get("state") != "completed" or session.get("exit_code") != 0 or bool(session.get("output_truncated")):
             raise Phase7RuntimeError("canary Session must complete successfully without truncation")
+        output = self.origins_client.get_session_output(session_id)
+        repository = self.origins_client.refresh_repository(repository_id)
+        repository_diff = self.origins_client.get_repository_diff(repository_id, kind="unstaged")
+        canary_binding = _validate_canary_binding(gap, candidate, session, repository, repository_diff)
         proof = {
             "session_id": session_id,
             "session_stdout_sha256": session.get("stdout_sha256"),
@@ -392,7 +392,26 @@ class Phase7Runtime:
         return self._project(self.store.record_canary(evolution_id, canary))
 
     def decide(self, evolution_id: str, *, decision: str, decided_by: str) -> dict[str, object]:
-        return self._project(self.store.decide(evolution_id, decision=decision, decided_by=decided_by))
+        normalized = decision.strip().lower()
+        candidate_revalidation: dict[str, object] | None = None
+        if normalized == "promote":
+            record = self.store.get(evolution_id)
+            gap = _mapping(record, "gap")
+            candidate = _mapping(record, "candidate")
+            repository_id = str(candidate.get("repository_id") or "")
+            if not repository_id:
+                raise Phase7RuntimeError("candidate repository_id is missing")
+            repository = self.origins_client.refresh_repository(repository_id)
+            repository_diff = self.origins_client.get_repository_diff(repository_id, kind="unstaged")
+            candidate_revalidation = _validate_candidate_repository(gap, candidate, repository, repository_diff)
+        return self._project(
+            self.store.decide(
+                evolution_id,
+                decision=normalized,
+                decided_by=decided_by,
+                candidate_revalidation=candidate_revalidation,
+            )
+        )
 
     def resume(self, evolution_id: str) -> dict[str, object]:
         record = self.store.resume_mission(evolution_id)
@@ -439,25 +458,22 @@ def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, obj
     return command
 
 
-def _validate_canary_binding(
+def _validate_candidate_repository(
     gap: Mapping[str, object],
     candidate: Mapping[str, object],
-    session: Mapping[str, object],
     repository: Mapping[str, object],
     diff: Mapping[str, object],
 ) -> dict[str, object]:
     candidate_repository_id = str(candidate.get("repository_id") or "")
     repository_id = str(repository.get("repository_id") or "")
     if not candidate_repository_id or repository_id != candidate_repository_id:
-        raise Phase7RuntimeError("canary Repository identity does not match the reviewed candidate")
+        raise Phase7RuntimeError("candidate Repository identity does not match the reviewed candidate")
     workspace_id = str(gap.get("workspace_id") or "")
     if not workspace_id or repository.get("workspace_id") != workspace_id:
         raise Phase7RuntimeError("candidate Repository is not owned by the original Mission Workspace")
-    if session.get("workspace_id") != workspace_id:
-        raise Phase7RuntimeError("canary Session is not owned by the original Mission Workspace")
     worktree_root = str(repository.get("worktree_root") or "")
-    if not worktree_root or session.get("workspace_root") != worktree_root:
-        raise Phase7RuntimeError("canary Session did not execute in the reviewed candidate worktree")
+    if not worktree_root:
+        raise Phase7RuntimeError("candidate Repository worktree is missing")
     expected_head = str(candidate.get("repository_head_oid") or "")
     if not expected_head or repository.get("head_oid") != expected_head:
         raise Phase7RuntimeError("candidate Repository HEAD changed after review")
@@ -465,7 +481,7 @@ def _validate_canary_binding(
     if len(expected_status) != 64 or repository.get("status_sha256") != expected_status:
         raise Phase7RuntimeError("candidate Repository status changed after review")
     if diff.get("kind") != "unstaged" or bool(diff.get("truncated")):
-        raise Phase7RuntimeError("canary requires the complete reviewed unstaged candidate diff")
+        raise Phase7RuntimeError("candidate requires the complete reviewed unstaged diff")
     expected_diff = str(candidate.get("repository_diff_sha256") or "")
     expected_bytes = candidate.get("repository_diff_bytes")
     if len(expected_diff) != 64 or diff.get("sha256") != expected_diff:
@@ -483,6 +499,22 @@ def _validate_canary_binding(
         "repository_diff_sha256": expected_diff,
         "repository_diff_bytes": expected_bytes,
     }
+
+
+def _validate_canary_binding(
+    gap: Mapping[str, object],
+    candidate: Mapping[str, object],
+    session: Mapping[str, object],
+    repository: Mapping[str, object],
+    diff: Mapping[str, object],
+) -> dict[str, object]:
+    binding = _validate_candidate_repository(gap, candidate, repository, diff)
+    workspace_id = str(binding["workspace_id"])
+    if session.get("workspace_id") != workspace_id:
+        raise Phase7RuntimeError("canary Session is not owned by the original Mission Workspace")
+    if session.get("workspace_root") != binding["worktree_root"]:
+        raise Phase7RuntimeError("canary Session did not execute in the reviewed candidate worktree")
+    return binding
 
 
 def _candidate_change_proof(before: Mapping[str, object], after: Mapping[str, object], diff: Mapping[str, object]) -> dict[str, object]:
