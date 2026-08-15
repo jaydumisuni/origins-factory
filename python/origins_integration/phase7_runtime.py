@@ -185,7 +185,7 @@ class Phase7Runtime:
             "domain": "origins",
             "operation_type": "capability_upgrade",
             "action": "prepare_candidate",
-            "mode": "capability_extension",
+            "mode": "code_ops",
             "risk": "medium",
             "required_gate": "owner_approval_required",
             "target": str(proposal["capability_id"]),
