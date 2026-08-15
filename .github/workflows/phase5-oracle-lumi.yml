@@ -20,6 +20,7 @@ on:
       - "rust/originsd/Cargo.toml"
       - "typescript/contracts.ts"
       - "tools/prove_phase5_*.py"
+      - "workspace/**"
       - ".github/workflows/phase5-oracle-lumi.yml"
   push:
     branches:
@@ -32,13 +33,14 @@ on:
       - "rust/**"
       - "typescript/contracts.ts"
       - "tools/prove_phase5_*.py"
+      - "workspace/**"
       - ".github/workflows/phase5-oracle-lumi.yml"
 
 permissions:
   contents: read
 
 jobs:
-  pre-ui-proof:
+  backend-proof:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -47,15 +49,6 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-
-      - name: Enforce pre-UI hold boundary
-        shell: bash
-        run: |
-          set -euo pipefail
-          if git diff --name-only origin/main...HEAD | grep -q '^workspace/'; then
-            echo "Phase 5 pre-UI proof refuses Workspace UI changes."
-            exit 1
-          fi
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
@@ -101,3 +94,35 @@ jobs:
 
       - name: Repository whitespace gate
         run: git diff --check origin/main...HEAD
+
+  workspace-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: workspace
+    steps:
+      - name: Check out reviewed revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node 24
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: workspace/package-lock.json
+
+      - name: Install Workspace dependencies
+        run: npm ci
+
+      - name: Typecheck Phase 5 Workspace
+        run: npm run typecheck
+
+      - name: Run Workspace tests
+        run: npm test
+
+      - name: Build Workspace production bundle
+        run: npm run build
