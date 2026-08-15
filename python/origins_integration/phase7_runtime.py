@@ -296,6 +296,12 @@ class Phase7Runtime:
         evidence = result.get("evidence")
         if not isinstance(evidence, dict):
             raise Phase7RuntimeError("CodeOps engineering result omitted retained evidence")
+        agentops_evidence = result.get("agentops_evidence")
+        if not isinstance(agentops_evidence, dict):
+            raise Phase7RuntimeError("AgentOps engineering evidence is missing")
+        evidence_id = agentops_evidence.get("evidence_id")
+        if not isinstance(evidence_id, str) or not evidence_id.strip():
+            raise Phase7RuntimeError("AgentOps engineering evidence omitted canonical evidence_id")
         proposal = _mapping(record, "proposal")
         current = self.store.active_generation(str(proposal["capability_id"]))
         generation = (int(current["generation"]) if current else 0) + 1
@@ -317,7 +323,6 @@ class Phase7Runtime:
             "codeops_evidence_sha256": sha256_json(evidence),
         }
         manifest_sha = sha256_json(manifest)
-        agentops_evidence = result.get("agentops_evidence", {})
         candidate = {
             "repository_id": result["repository_id"],
             "repository_revision": result["repository_revision"],
@@ -326,7 +331,7 @@ class Phase7Runtime:
             "manifest": manifest,
             "manifest_sha256": manifest_sha,
             "proof_sha256": sha256_json({"engineering": evidence, "review_sha256": result["review_sha256"]}),
-            "codeops_evidence_ref": f"agentops:evidence:{sha256_json(agentops_evidence)}",
+            "codeops_evidence_ref": f"agentops:evidence:{evidence_id.strip()}",
         }
         self.store.bind_candidate(evolution_id, candidate)
         review = {
