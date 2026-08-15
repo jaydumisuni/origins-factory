@@ -363,7 +363,13 @@ class Phase7Runtime:
         record = self.store.get(evolution_id)
         gap = _mapping(record, "gap")
         candidate = _mapping(record, "candidate")
+        repository_id = str(candidate.get("repository_id") or "")
+        if not repository_id:
+            raise Phase7RuntimeError("candidate repository_id is missing")
+        repository = self.origins_client.refresh_repository(repository_id)
+        repository_diff = self.origins_client.get_repository_diff(repository_id, kind="unstaged")
         session = self.origins_client.wait_session(session_id)
+        canary_binding = _validate_canary_binding(gap, candidate, session, repository, repository_diff)
         output = self.origins_client.get_session_output(session_id)
         if session.get("state") != "completed" or session.get("exit_code") != 0 or bool(session.get("output_truncated")):
             raise Phase7RuntimeError("canary Session must complete successfully without truncation")
@@ -371,6 +377,7 @@ class Phase7Runtime:
             "session_id": session_id,
             "session_stdout_sha256": session.get("stdout_sha256"),
             "session_stderr_sha256": session.get("stderr_sha256"),
+            "candidate_binding": canary_binding,
             "output": output,
         }
         canary = {
@@ -430,6 +437,52 @@ def _engineering_subject(record: Mapping[str, object], payload: Mapping[str, obj
     if not isinstance(command.get("task"), str) or not str(command["task"]).strip():
         raise Phase7RuntimeError("task is required for candidate engineering")
     return command
+
+
+def _validate_canary_binding(
+    gap: Mapping[str, object],
+    candidate: Mapping[str, object],
+    session: Mapping[str, object],
+    repository: Mapping[str, object],
+    diff: Mapping[str, object],
+) -> dict[str, object]:
+    candidate_repository_id = str(candidate.get("repository_id") or "")
+    repository_id = str(repository.get("repository_id") or "")
+    if not candidate_repository_id or repository_id != candidate_repository_id:
+        raise Phase7RuntimeError("canary Repository identity does not match the reviewed candidate")
+    workspace_id = str(gap.get("workspace_id") or "")
+    if not workspace_id or repository.get("workspace_id") != workspace_id:
+        raise Phase7RuntimeError("candidate Repository is not owned by the original Mission Workspace")
+    if session.get("workspace_id") != workspace_id:
+        raise Phase7RuntimeError("canary Session is not owned by the original Mission Workspace")
+    worktree_root = str(repository.get("worktree_root") or "")
+    if not worktree_root or session.get("workspace_root") != worktree_root:
+        raise Phase7RuntimeError("canary Session did not execute in the reviewed candidate worktree")
+    expected_head = str(candidate.get("repository_head_oid") or "")
+    if not expected_head or repository.get("head_oid") != expected_head:
+        raise Phase7RuntimeError("candidate Repository HEAD changed after review")
+    expected_status = str(candidate.get("repository_status_sha256") or "")
+    if len(expected_status) != 64 or repository.get("status_sha256") != expected_status:
+        raise Phase7RuntimeError("candidate Repository status changed after review")
+    if diff.get("kind") != "unstaged" or bool(diff.get("truncated")):
+        raise Phase7RuntimeError("canary requires the complete reviewed unstaged candidate diff")
+    expected_diff = str(candidate.get("repository_diff_sha256") or "")
+    expected_bytes = candidate.get("repository_diff_bytes")
+    if len(expected_diff) != 64 or diff.get("sha256") != expected_diff:
+        raise Phase7RuntimeError("candidate Repository diff changed after review")
+    if isinstance(expected_bytes, bool) or not isinstance(expected_bytes, int) or expected_bytes < 1:
+        raise Phase7RuntimeError("candidate Repository diff byte count is malformed")
+    if diff.get("complete_bytes") != expected_bytes:
+        raise Phase7RuntimeError("candidate Repository diff size changed after review")
+    return {
+        "repository_id": candidate_repository_id,
+        "workspace_id": workspace_id,
+        "worktree_root": worktree_root,
+        "repository_head_oid": expected_head,
+        "repository_status_sha256": expected_status,
+        "repository_diff_sha256": expected_diff,
+        "repository_diff_bytes": expected_bytes,
+    }
 
 
 def _candidate_change_proof(before: Mapping[str, object], after: Mapping[str, object], diff: Mapping[str, object]) -> dict[str, object]:
