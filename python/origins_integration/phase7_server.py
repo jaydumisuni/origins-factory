@@ -8,6 +8,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .capability_evolution import CapabilityEvolutionError
+from .engineering import BridgeError
+from .intelligence_runtime import IntelligenceApprovalError, IntelligenceMountError, IntelligenceRequestError
 from .phase7_runtime import Phase7Runtime, Phase7RuntimeError
 
 MAX_BODY = 256 * 1024
@@ -73,6 +75,9 @@ def serve_from_env() -> None:
                 raise Phase7ServerError(f"client cannot assert authority fields: {', '.join(sorted(forbidden))}")
             return value
 
+        def _conflict(self, exc: Exception) -> None:
+            self._json(409, {"error": type(exc).__name__, "detail": str(exc)})
+
         def do_GET(self) -> None:  # noqa: N802
             path = urlparse(self.path).path
             if path == "/v1/health":
@@ -97,8 +102,15 @@ def serve_from_env() -> None:
                     evolution_id = path.removeprefix("/v1/evolutions/")
                     return self._json(200, runtime.get(evolution_id))
                 self._json(404, {"error": "NOT_FOUND"})
-            except (CapabilityEvolutionError, Phase7RuntimeError, IntelligenceError) as exc:
-                self._json(409, {"error": type(exc).__name__, "detail": str(exc)})
+            except (
+                CapabilityEvolutionError,
+                Phase7RuntimeError,
+                IntelligenceMountError,
+                IntelligenceRequestError,
+                IntelligenceApprovalError,
+                BridgeError,
+            ) as exc:
+                self._conflict(exc)
 
         def do_POST(self) -> None:  # noqa: N802
             if not self._require_auth():
@@ -146,8 +158,18 @@ def serve_from_env() -> None:
                         raise Phase7ServerError("resume accepts no client state")
                     return self._json(200, runtime.resume(evolution_id))
                 self._json(404, {"error": "NOT_FOUND"})
-            except (CapabilityEvolutionError, Phase7RuntimeError, Phase7ServerError, KeyError, ValueError) as exc:
-                self._json(409, {"error": type(exc).__name__, "detail": str(exc)})
+            except (
+                CapabilityEvolutionError,
+                Phase7RuntimeError,
+                Phase7ServerError,
+                IntelligenceMountError,
+                IntelligenceRequestError,
+                IntelligenceApprovalError,
+                BridgeError,
+                KeyError,
+                ValueError,
+            ) as exc:
+                self._conflict(exc)
 
         def do_PUT(self) -> None:  # noqa: N802
             self._json(405, {"error": "PHASE7_CONTROLLED_TRANSITIONS_ONLY"})
@@ -156,10 +178,6 @@ def serve_from_env() -> None:
         do_DELETE = do_PUT
 
     ThreadingHTTPServer((host, port), Handler).serve_forever()
-
-
-class IntelligenceError(RuntimeError):
-    """Compatibility catch for mounted-owner runtime failures."""
 
 
 def _required(payload: dict[str, object], field: str) -> str:
