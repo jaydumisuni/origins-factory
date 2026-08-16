@@ -7,8 +7,14 @@ on:
       - "CURRENT_STATE.md"
       - "AI_HANDOFF.md"
       - "proof/phase7-*.md"
+      - "python/origins_integration/agentops_mcp.py"
       - "python/origins_integration/capability_evolution.py"
+      - "python/origins_integration/capability_evolution_approvals.py"
+      - "python/origins_integration/phase7_agentops.py"
+      - "python/origins_integration/phase7_mcp_state.py"
       - "python/origins_integration/phase7_runtime.py"
+      - "python/origins_integration/phase7_runtime_authority.py"
+      - "python/origins_integration/phase7_runtime_mcp.py"
       - "python/origins_integration/phase7_server.py"
       - "python/tests/test_phase7_*.py"
       - "tools/prove_phase7_*.py"
@@ -20,8 +26,14 @@ on:
       - "CURRENT_STATE.md"
       - "AI_HANDOFF.md"
       - "proof/phase7-*.md"
+      - "python/origins_integration/agentops_mcp.py"
       - "python/origins_integration/capability_evolution.py"
+      - "python/origins_integration/capability_evolution_approvals.py"
+      - "python/origins_integration/phase7_agentops.py"
+      - "python/origins_integration/phase7_mcp_state.py"
       - "python/origins_integration/phase7_runtime.py"
+      - "python/origins_integration/phase7_runtime_authority.py"
+      - "python/origins_integration/phase7_runtime_mcp.py"
       - "python/origins_integration/phase7_server.py"
       - "python/tests/test_phase7_*.py"
       - "tools/prove_phase7_*.py"
@@ -58,18 +70,39 @@ jobs:
       - name: Prove controlled capability evolution
         run: python -m pytest -q python/tests/test_phase7_*.py
 
-      - name: Prove authority is not self-expanded
+      - name: Prove AgentOps authority stays behind MCP/RPC
         run: |
           python - <<'PY'
           from pathlib import Path
-          text = Path("python/origins_integration/phase7_runtime.py").read_text(encoding="utf-8")
+          runtime = Path("python/origins_integration/phase7_runtime_mcp.py").read_text(encoding="utf-8")
+          authority = Path("python/origins_integration/phase7_runtime_authority.py").read_text(encoding="utf-8")
           server = Path("python/origins_integration/phase7_server.py").read_text(encoding="utf-8")
-          if '"runtime_authority_expansion": False' not in text:
+          client = Path("python/origins_integration/agentops_mcp.py").read_text(encoding="utf-8")
+          if '"runtime_authority_expansion": False' not in runtime:
               raise SystemExit("Phase 7 does not pin runtime authority expansion false")
-          for forbidden in ("owner_approved", "approval_state", "self_approve", "runtime_authority_activated"):
-              if forbidden not in server:
-                  raise SystemExit(f"Phase 7 server is missing client authority rejection for {forbidden}")
-          print("PHASE7_NO_SELF_AUTHORITY_OK")
+          if '"agentops_transport": "mcp/rpc"' not in runtime:
+              raise SystemExit("Phase 7 does not publish MCP/RPC AgentOps transport truth")
+          if '"agentops_service_credential_is_owner_authorization": False' not in runtime:
+              raise SystemExit("Phase 7 does not deny service-credential owner authority")
+          for forbidden in (".agentops._stores", ".decide_approval(", "record_engineering_attempt("):
+              if forbidden in runtime or forbidden in authority:
+                  raise SystemExit(f"Phase 7 runtime restored direct AgentOps authority: {forbidden}")
+          if "decide_approval" in client or "decide_engineering_approval" in client:
+              raise SystemExit("Origins AgentOps MCP client exposes approval decision authority")
+          for route in ('action == "approval/decision"', 'action == "candidate/approval/decision"'):
+              if route in server:
+                  raise SystemExit(f"Phase 7 server still implements a decision route: {route}")
+          for required in (
+              '"owner_approved"', '"approval_state"', '"self_approve"', '"runtime_authority_activated"',
+              '"agentops_decision"', '"engineering_approval_decision"',
+          ):
+              if required not in server:
+                  raise SystemExit(f"Phase 7 server is missing client authority rejection for {required}")
+          if "runtime.create_child_upgrade_operation(evolution_id)" not in server:
+              raise SystemExit("child operation still accepts client approval identity")
+          if "runtime.implement_candidate(evolution_id)" not in server:
+              raise SystemExit("candidate execution still accepts client-approved subject data")
+          print("PHASE7_AGENTOPS_MCP_AUTHORITY_OK")
           PY
 
       - name: Repository whitespace gate
