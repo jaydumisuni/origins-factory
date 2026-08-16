@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-# Compatibility export: Phase 7 implementation lives in the MCP/RPC runtime module.
-# Keeping this module name preserves existing imports without retaining the obsolete
-# direct AgentOps state/decision implementation.
+# Compatibility export: the public Phase 7 runtime derives all AgentOps authorization
+# state from durable MCP-backed bindings. Mechanical helpers remain in the MCP core.
+from .phase7_runtime_authority import Phase7Runtime, Phase7RuntimeError
 from .phase7_runtime_mcp import (
-    Phase7Runtime,
-    Phase7RuntimeError,
     _candidate_change_proof,
     _engineering_subject,
     _mapping,
