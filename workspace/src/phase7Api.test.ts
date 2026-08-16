@@ -9,15 +9,23 @@ function response(status: number, body: unknown): Response {
 }
 
 describe("Phase7Api", () => {
-  it("keeps public health unauthenticated", async () => {
+  it("keeps public health unauthenticated and exposes MCP truth", async () => {
     const spy = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).has("authorization")).toBe(false);
-      return response(200, { ok: true, runtime_authority_expansion: false, model_self_approval: false });
+      return response(200, {
+        ok: true,
+        runtime_authority_expansion: false,
+        model_self_approval: false,
+        agentops_transport: "mcp/rpc",
+        agentops_service_credential_is_owner_authorization: false,
+      });
     });
     globalThis.fetch = spy as typeof fetch;
     const health = await new Phase7Api({ baseUrl: "/origins-phase7/", token: "" }).health();
     expect(health.runtime_authority_expansion).toBe(false);
     expect(health.model_self_approval).toBe(false);
+    expect(health.agentops_transport).toBe("mcp/rpc");
+    expect(health.agentops_service_credential_is_owner_authorization).toBe(false);
   });
 
   it("requires bearer for protected evolution state", async () => {
@@ -39,7 +47,29 @@ describe("Phase7Api", () => {
     await api.confirmGap({ mission_id: "m1", capability_id: "cap" });
   });
 
-  it("uses explicit owner decision endpoints", async () => {
+  it("uses request and refresh endpoints for AgentOps approvals, never decision endpoints", async () => {
+    const calls: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : null });
+      return response(200, { ok: true });
+    }) as typeof fetch;
+    const api = new Phase7Api({ baseUrl: "/origins-phase7", token: "proof-token" });
+    await api.createApproval("evo 7");
+    await api.refreshApproval("evo 7");
+    await api.createEngineeringApproval("evo 7", { repository_id: "repo-7", task: "bounded", plan: "plan.json" });
+    await api.refreshEngineeringApproval("evo 7");
+
+    expect(calls.map((item) => item.url)).toEqual([
+      "/origins-phase7/v1/evolutions/evo%207/approval",
+      "/origins-phase7/v1/evolutions/evo%207/approval/refresh",
+      "/origins-phase7/v1/evolutions/evo%207/candidate/approval",
+      "/origins-phase7/v1/evolutions/evo%207/candidate/approval/refresh",
+    ]);
+    expect("decideApproval" in api).toBe(false);
+    expect("decideEngineeringApproval" in api).toBe(false);
+  });
+
+  it("keeps Generation promotion as an explicit Origins decision", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       calls.push({ url: String(input), body: init?.body ? JSON.parse(String(init.body)) : null });
