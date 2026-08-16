@@ -9,8 +9,8 @@ from typing import Any
 from urllib.parse import urlparse
 
 from .capability_evolution import CapabilityEvolutionError
-from .engineering import BridgeError
-from .intelligence_runtime import IntelligenceApprovalError, IntelligenceMountError, IntelligenceRequestError
+from .phase7_agentops import Phase7AgentOpsError
+from .phase7_mcp_state import Phase7McpStateError
 from .phase7_runtime import Phase7Runtime, Phase7RuntimeError
 
 MAX_BODY = 256 * 1024
@@ -72,7 +72,14 @@ def serve_from_env() -> None:
                 raise Phase7ServerError("request body must be JSON") from exc
             if not isinstance(value, dict):
                 raise Phase7ServerError("request JSON root must be an object")
-            forbidden = {"owner_approved", "approval_state", "self_approve", "runtime_authority_activated"} & set(value)
+            forbidden = {
+                "owner_approved",
+                "approval_state",
+                "self_approve",
+                "runtime_authority_activated",
+                "agentops_decision",
+                "engineering_approval_decision",
+            } & set(value)
             if forbidden:
                 raise Phase7ServerError(f"client cannot assert authority fields: {', '.join(sorted(forbidden))}")
             return value
@@ -92,6 +99,10 @@ def serve_from_env() -> None:
                         "phase": 7,
                         "runtime_authority_expansion": health["runtime_authority_expansion"],
                         "model_self_approval": health["model_self_approval"],
+                        "agentops_transport": health["agentops_transport"],
+                        "agentops_service_credential_is_owner_authorization": health[
+                            "agentops_service_credential_is_owner_authorization"
+                        ],
                     },
                 )
                 return
@@ -103,14 +114,7 @@ def serve_from_env() -> None:
                 if path.startswith("/v1/evolutions/"):
                     return self._json(200, runtime.get(path.removeprefix("/v1/evolutions/")))
                 self._json(404, {"error": "NOT_FOUND"})
-            except (
-                CapabilityEvolutionError,
-                Phase7RuntimeError,
-                IntelligenceMountError,
-                IntelligenceRequestError,
-                IntelligenceApprovalError,
-                BridgeError,
-            ) as exc:
+            except (CapabilityEvolutionError, Phase7RuntimeError, Phase7AgentOpsError, Phase7McpStateError) as exc:
                 self._conflict(exc)
 
         def do_POST(self) -> None:  # noqa: N802
@@ -133,31 +137,26 @@ def serve_from_env() -> None:
                     return self._json(404, {"error": "NOT_FOUND"})
                 evolution_id, action = parts[2], "/".join(parts[3:])
                 if action == "approval":
+                    if body:
+                        raise Phase7ServerError("capability approval request accepts no client authority state")
                     return self._json(201, runtime.create_approval(evolution_id))
-                if action == "approval/decision":
-                    return self._json(
-                        200,
-                        runtime.decide_approval(
-                            evolution_id,
-                            approval_id=_required(body, "approval_id"),
-                            decision=_required(body, "decision"),
-                            decided_by=_required(body, "decided_by"),
-                        ),
-                    )
+                if action == "approval/refresh":
+                    if body:
+                        raise Phase7ServerError("capability approval refresh accepts no client authority state")
+                    return self._json(200, runtime.refresh_approval(evolution_id))
+                if action in {"approval/decision", "candidate/approval/decision"}:
+                    return self._json(404, {"error": "AGENTOPS_DECISION_AUTHORITY_NOT_EXPOSED"})
                 if action == "child-operation":
-                    return self._json(201, runtime.create_child_upgrade_operation(evolution_id, _required(body, "approval_id")))
+                    return self._json(
+                        201,
+                        runtime.create_child_upgrade_operation(evolution_id, _required(body, "approval_id")),
+                    )
                 if action == "candidate/approval":
                     return self._json(201, runtime.create_engineering_approval(evolution_id, body))
-                if action == "candidate/approval/decision":
-                    return self._json(
-                        200,
-                        runtime.decide_engineering_approval(
-                            evolution_id,
-                            approval_id=_required(body, "approval_id"),
-                            decision=_required(body, "decision"),
-                            decided_by=_required(body, "decided_by"),
-                        ),
-                    )
+                if action == "candidate/approval/refresh":
+                    if body:
+                        raise Phase7ServerError("engineering approval refresh accepts no client authority state")
+                    return self._json(200, runtime.refresh_engineering_approval(evolution_id))
                 if action == "candidate":
                     return self._json(200, runtime.implement_candidate(evolution_id, body))
                 if action == "canary":
@@ -179,11 +178,9 @@ def serve_from_env() -> None:
             except (
                 CapabilityEvolutionError,
                 Phase7RuntimeError,
+                Phase7AgentOpsError,
+                Phase7McpStateError,
                 Phase7ServerError,
-                IntelligenceMountError,
-                IntelligenceRequestError,
-                IntelligenceApprovalError,
-                BridgeError,
                 KeyError,
                 ValueError,
             ) as exc:
