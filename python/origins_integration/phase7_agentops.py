@@ -15,7 +15,8 @@ class Phase7AgentOpsCoordinator:
     """Phase 7 projection of AgentOps-owned approval and external-operation state.
 
     Origins may request and observe owner state, but this coordinator deliberately has
-    no approval-decision method.
+    no approval-decision method. Capability synthesis remains owner-approved semantic
+    work; isolated CodeOps candidate construction uses AgentOps' review_required gate.
     """
 
     def __init__(
@@ -159,8 +160,11 @@ class Phase7AgentOpsCoordinator:
                 "request_key": f"origins:phase7:{evolution_id}:engineering:{subject_digest}",
                 "task_title": str(subject.get("task") or "Origins Phase 7 engineering approval"),
                 "mode": "engineering_apply",
-                "gate": "owner_approval_required",
-                "reason": "Implement the bounded CodeOps candidate for a confirmed Origins capability gap.",
+                "gate": "review_required",
+                "reason": (
+                    "Review the exact isolated CodeOps candidate request for a confirmed Origins capability gap. "
+                    "Candidate construction is reversible and does not activate runtime authority."
+                ),
                 "requested_by": "origins-phase7",
                 "target": f"{operation_id}:{repository_id}",
                 "metadata": {
@@ -169,6 +173,8 @@ class Phase7AgentOpsCoordinator:
                     "subject_sha256": subject_digest,
                     "operation_id": operation_id,
                     "repository_id": repository_id,
+                    "runtime_authority_expansion": False,
+                    "candidate_only": True,
                 },
             },
         )
@@ -244,34 +250,54 @@ class Phase7AgentOpsCoordinator:
         return dict(operation)
 
     @staticmethod
+    def _validate_decided_evidence(evidence: Mapping[str, object]) -> None:
+        if evidence.get("status") != "approved":
+            return
+        record = evidence.get("record")
+        if not isinstance(record, Mapping) or record.get("decision") != "approved":
+            raise Phase7AgentOpsError("approved AgentOps evidence omitted its approval record")
+        if not str(record.get("decided_by") or "").strip():
+            raise Phase7AgentOpsError("approved AgentOps evidence omitted approver identity")
+
+    @classmethod
     def _validate_capability_evidence(
+        cls,
         evolution_id: str,
         proposal: Mapping[str, object],
         evidence: Mapping[str, object],
     ) -> None:
         request = evidence.get("request")
         metadata = request.get("metadata") if isinstance(request, Mapping) else None
-        if not isinstance(metadata, Mapping):
+        if not isinstance(request, Mapping) or not isinstance(metadata, Mapping):
             raise Phase7AgentOpsError("AgentOps capability approval metadata is malformed")
+        if request.get("gate") != "owner_approval_required":
+            raise Phase7AgentOpsError("AgentOps capability approval gate changed")
         if metadata.get("origins_approval_kind") != "capability" or metadata.get("evolution_id") != evolution_id:
             raise Phase7AgentOpsError("AgentOps capability approval is not bound to this evolution")
         if metadata.get("proposal_sha256") != sha256_json(proposal):
             raise Phase7AgentOpsError("AgentOps capability approval proposal digest changed")
+        cls._validate_decided_evidence(evidence)
 
-    @staticmethod
+    @classmethod
     def _validate_engineering_evidence(
+        cls,
         evolution_id: str,
         subject: Mapping[str, object],
         evidence: Mapping[str, object],
     ) -> None:
         request = evidence.get("request")
         metadata = request.get("metadata") if isinstance(request, Mapping) else None
-        if not isinstance(metadata, Mapping):
+        if not isinstance(request, Mapping) or not isinstance(metadata, Mapping):
             raise Phase7AgentOpsError("AgentOps engineering approval metadata is malformed")
+        if request.get("gate") != "review_required":
+            raise Phase7AgentOpsError("AgentOps engineering approval gate changed")
         if metadata.get("origins_approval_kind") != "engineering" or metadata.get("evolution_id") != evolution_id:
             raise Phase7AgentOpsError("AgentOps engineering approval is not bound to this evolution")
         if metadata.get("subject_sha256") != sha256_json(subject):
             raise Phase7AgentOpsError("AgentOps engineering approval subject digest changed")
+        if metadata.get("candidate_only") is not True or metadata.get("runtime_authority_expansion") is not False:
+            raise Phase7AgentOpsError("AgentOps engineering approval lost its candidate-only authority boundary")
+        cls._validate_decided_evidence(evidence)
 
     @staticmethod
     def _validate_upgrade_operation(
