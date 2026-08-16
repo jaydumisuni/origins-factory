@@ -101,6 +101,12 @@ export default function Phase7App() {
       if (publicHealth.runtime_authority_expansion !== false || publicHealth.model_self_approval !== false) {
         throw new Error("Phase 7 authority invariants are not safe");
       }
+      if (
+        publicHealth.agentops_transport !== "mcp/rpc"
+        || publicHealth.agentops_service_credential_is_owner_authorization !== false
+      ) {
+        throw new Error("Phase 7 AgentOps MCP/RPC authority boundary is not safe");
+      }
       if (!token.trim()) {
         setError("Phase 7 service is reachable. Enter the local bearer token for protected evolution state.");
         return;
@@ -204,9 +210,9 @@ export default function Phase7App() {
       </section>
 
       {error && <div className="banner error phase7-banner">{error}</div>}
-      <div className="phase7-lock"><b>NO SELF-AUTHORITY</b><span>Models cannot confirm their own gap, approve capability or engineering requests, activate a Generation, or widen runtime authority. Promotion never grants a lease by itself.</span></div>
+      <div className="phase7-lock"><b>NO SELF-AUTHORITY</b><span>Models and Origins cannot decide AgentOps approvals. Origins requests and observes them over MCP/RPC. Promotion never grants a lease by itself.</span></div>
 
-      {!connected ? <main className="phase7-main"><section className="card"><h3>Public authority truth</h3><JsonPanel value={health ?? { runtime_authority_expansion: false, model_self_approval: false }} /></section></main> : <main className="phase7-main phase7-layout">
+      {!connected ? <main className="phase7-main"><section className="card"><h3>Public authority truth</h3><JsonPanel value={health ?? { runtime_authority_expansion: false, model_self_approval: false, agentops_transport: "mcp/rpc", agentops_service_credential_is_owner_authorization: false }} /></section></main> : <main className="phase7-main phase7-layout">
         <aside className="phase7-sidebar">
           <div className="phase7-sidehead"><b>Evolutions</b><span>{evolutions.length}</span></div>
           {evolutions.map((item) => {
@@ -254,13 +260,14 @@ export default function Phase7App() {
 
             <article className="card">
               <h3>Owner-gated progression</h3>
-              <label>Decision identity<input value={operator} onChange={(e) => setOperator(e.target.value)} /></label>
+              <label>Promotion decision identity<input value={operator} onChange={(e) => setOperator(e.target.value)} /></label>
               <div className="phase7-actions">
                 {state === "proposal_ready" && !approval && <button disabled={busy} onClick={() => void action(() => api.createApproval(selectedId))}>Request capability approval</button>}
                 {state === "proposal_ready" && text(approval, "status") === "pending" && <>
-                  <button disabled={busy} onClick={() => void action(() => api.decideApproval(selectedId, { approval_id: text(approval, "approval_id"), decision: "approved", decided_by: operator }))}>Approve capability</button>
-                  <button className="danger" disabled={busy} onClick={() => void action(() => api.decideApproval(selectedId, { approval_id: text(approval, "approval_id"), decision: "rejected", decided_by: operator }))}>Reject capability</button>
+                  <button disabled={busy} onClick={() => void action(() => api.refreshApproval(selectedId))}>Refresh AgentOps approval</button>
+                  <span className="muted">Approve or reject in the AgentOps owner surface. Origins only observes owner state.</span>
                 </>}
+                {state === "proposal_ready" && text(approval, "status") === "rejected" && <div className="banner warn embedded">AgentOps rejected this capability request. Start a new evidence-backed evolution to request different semantics.</div>}
                 {state === "proposal_ready" && text(approval, "status") === "approved" && <button disabled={busy} onClick={() => void action(() => api.createChildOperation(selectedId, text(approval, "approval_id")))}>Create AgentOps child upgrade Operation</button>}
               </div>
 
@@ -276,9 +283,10 @@ export default function Phase7App() {
                 <div className="phase7-actions">
                   {!engineeringApproval && <button disabled={busy} onClick={() => void action(() => api.createEngineeringApproval(selectedId, engineeringIntent()))}>Request engineering approval</button>}
                   {text(engineeringApproval, "status") === "pending" && <>
-                    <button disabled={busy} onClick={() => void action(() => api.decideEngineeringApproval(selectedId, { approval_id: text(engineeringApproval, "approval_id"), decision: "approved", decided_by: operator }))}>Approve engineering</button>
-                    <button className="danger" disabled={busy} onClick={() => void action(() => api.decideEngineeringApproval(selectedId, { approval_id: text(engineeringApproval, "approval_id"), decision: "rejected", decided_by: operator }))}>Reject engineering</button>
+                    <button disabled={busy} onClick={() => void action(() => api.refreshEngineeringApproval(selectedId))}>Refresh AgentOps engineering approval</button>
+                    <span className="muted">Engineering approval is decided by AgentOps owner authority, not this Workspace.</span>
                   </>}
+                  {text(engineeringApproval, "status") === "rejected" && <div className="banner warn embedded">AgentOps rejected this engineering request. Origins will not run CodeOps.</div>}
                   {text(engineeringApproval, "status") === "approved" && <button disabled={busy} onClick={() => void action(() => api.implementCandidate(selectedId, engineeringIntent()))}>Run / recover CodeOps + Sergeant</button>}
                 </div>
               </div>}
