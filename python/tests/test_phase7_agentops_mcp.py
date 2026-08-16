@@ -14,7 +14,13 @@ from origins_integration.phase7_agentops import Phase7AgentOpsCoordinator, Phase
 D = "d" * 64
 
 
-def approval_evidence(approval_id: str, status: str, metadata: dict[str, object]) -> dict[str, object]:
+def approval_evidence(
+    approval_id: str,
+    status: str,
+    metadata: dict[str, object],
+    *,
+    gate: str,
+) -> dict[str, object]:
     return {
         "approval_id": approval_id,
         "status": status,
@@ -23,8 +29,15 @@ def approval_evidence(approval_id: str, status: str, metadata: dict[str, object]
         "metadata_digest": "e" * 64,
         "record_digest": "" if status == "pending" else "f" * 64,
         "ledger_event_digest": "1" * 64,
-        "request": {"approval_id": approval_id, "metadata": metadata},
-        "record": None if status == "pending" else {"decision": status},
+        "request": {
+            "approval_id": approval_id,
+            "gate": gate,
+            "metadata": metadata,
+        },
+        "record": None if status == "pending" else {
+            "decision": status,
+            "decided_by": "phase7-test-owner",
+        },
     }
 
 
@@ -43,7 +56,12 @@ class FakeMcp:
         metadata = dict(args.get("metadata") or {})
         evidence = self.approvals.setdefault(
             approval_id,
-            approval_evidence(approval_id, "pending", metadata),
+            approval_evidence(
+                approval_id,
+                "pending",
+                metadata,
+                gate=str(args["gate"]),
+            ),
         )
         return {"ok": True, "approval": {"status": evidence["status"]}, "evidence": dict(evidence)}
 
@@ -92,6 +110,12 @@ class FakeMcp:
         )
         return {"ok": True, "operationRef": operation["operation_ref"], "operation": dict(operation)}
 
+    def approve(self, approval_id: str, *, decided_by: str = "phase7-test-owner") -> None:
+        evidence = self.approvals[approval_id]
+        evidence["status"] = "approved"
+        evidence["record_digest"] = "f" * 64
+        evidence["record"] = {"decision": "approved", "decided_by": decided_by}
+
 
 def coordinator(tmp_path: Path, mcp: FakeMcp) -> Phase7AgentOpsCoordinator:
     db = tmp_path / "phase7.sqlite"
@@ -120,6 +144,16 @@ def gap() -> dict[str, object]:
     }
 
 
+def engineering_subject() -> dict[str, object]:
+    return {
+        "operation_id": "ext-phase7-0001",
+        "repository_id": "repo-7",
+        "task": "bounded change",
+        "plan": "plans/change.json",
+        "apply_plan": True,
+    }
+
+
 def test_coordinator_exposes_no_approval_decision_method(tmp_path: Path) -> None:
     owner = coordinator(tmp_path, FakeMcp())
     assert not hasattr(owner, "decide_approval")
@@ -139,7 +173,7 @@ def test_capability_request_refresh_and_child_operation_observe_owner_state(tmp_
             evolution_id="evolution-7", proposal=proposal(), gap=gap(), approval_id=approval_id
         )
 
-    mcp.approvals[approval_id]["status"] = "approved"
+    mcp.approve(approval_id)
     refreshed = owner.refresh_capability_approval(evolution_id="evolution-7", proposal=proposal())
     assert refreshed["binding"]["status"] == "approved"
 
@@ -152,19 +186,17 @@ def test_capability_request_refresh_and_child_operation_observe_owner_state(tmp_
     assert child["operation_id"] == "ext-phase7-0001"
 
 
-def test_engineering_request_refresh_is_digest_bound(tmp_path: Path) -> None:
+def test_engineering_request_uses_review_gate_and_refresh_is_digest_bound(tmp_path: Path) -> None:
     mcp = FakeMcp()
     owner = coordinator(tmp_path, mcp)
-    subject = {
-        "operation_id": "ext-phase7-0001",
-        "repository_id": "repo-7",
-        "task": "bounded change",
-        "plan": "plans/change.json",
-        "apply_plan": True,
-    }
+    subject = engineering_subject()
     requested = owner.request_engineering_approval(evolution_id="evolution-7", subject=subject)
     approval_id = str(requested["binding"]["approval_id"])
-    mcp.approvals[approval_id]["status"] = "approved"
+    assert mcp.request_calls[-1]["gate"] == "review_required"
+    assert mcp.request_calls[-1]["metadata"]["candidate_only"] is True
+    assert mcp.request_calls[-1]["metadata"]["runtime_authority_expansion"] is False
+
+    mcp.approve(approval_id, decided_by="reviewer-7")
     refreshed = owner.refresh_engineering_approval(evolution_id="evolution-7", subject=subject)
     assert refreshed["binding"]["status"] == "approved"
 
@@ -173,12 +205,34 @@ def test_engineering_request_refresh_is_digest_bound(tmp_path: Path) -> None:
         owner.refresh_engineering_approval(evolution_id="evolution-7", subject=changed)
 
 
+def test_wrong_agentops_gate_fails_closed(tmp_path: Path) -> None:
+    mcp = FakeMcp()
+    owner = coordinator(tmp_path, mcp)
+    requested = owner.request_engineering_approval(evolution_id="evolution-7", subject=engineering_subject())
+    approval_id = str(requested["binding"]["approval_id"])
+    mcp.approvals[approval_id]["request"]["gate"] = "owner_approval_required"
+    with pytest.raises(Phase7AgentOpsError, match="engineering approval gate changed"):
+        owner.refresh_engineering_approval(evolution_id="evolution-7", subject=engineering_subject())
+
+
+def test_approved_evidence_requires_approver_identity(tmp_path: Path) -> None:
+    mcp = FakeMcp()
+    owner = coordinator(tmp_path, mcp)
+    requested = owner.request_engineering_approval(evolution_id="evolution-7", subject=engineering_subject())
+    approval_id = str(requested["binding"]["approval_id"])
+    evidence = mcp.approvals[approval_id]
+    evidence["status"] = "approved"
+    evidence["record"] = {"decision": "approved", "decided_by": ""}
+    with pytest.raises(Phase7AgentOpsError, match="omitted approver identity"):
+        owner.refresh_engineering_approval(evolution_id="evolution-7", subject=engineering_subject())
+
+
 def test_external_operation_finalize_is_agentops_owned(tmp_path: Path) -> None:
     mcp = FakeMcp()
     owner = coordinator(tmp_path, mcp)
     requested = owner.request_capability_approval(evolution_id="evolution-7", proposal=proposal(), gap=gap())
     approval_id = str(requested["binding"]["approval_id"])
-    mcp.approvals[approval_id]["status"] = "approved"
+    mcp.approve(approval_id)
     child = owner.start_upgrade_operation(
         evolution_id="evolution-7", proposal=proposal(), gap=gap(), approval_id=approval_id
     )
