@@ -83,8 +83,8 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/approval/refresh`, {});
   }
 
-  createChildOperation(id: string, approvalId: string): Promise<JsonRecord> {
-    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/child-operation`, { approval_id: approvalId });
+  createChildOperation(id: string): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/child-operation`, {});
   }
 
   createEngineeringApproval(id: string, payload: JsonRecord): Promise<JsonRecord> {
@@ -95,8 +95,8 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval/refresh`, {});
   }
 
-  implementCandidate(id: string, payload: JsonRecord): Promise<JsonRecord> {
-    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate`, payload);
+  implementCandidate(id: string): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate`, {});
   }
 
   recordCanary(id: string, sessionId: string): Promise<JsonRecord> {
