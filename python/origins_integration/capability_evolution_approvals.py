@@ -106,12 +106,19 @@ class EvolutionEngineeringApprovalBindings:
                     approval_id TEXT NOT NULL,
                     status TEXT NOT NULL,
                     subject_sha256 TEXT NOT NULL,
+                    subject_json TEXT NOT NULL,
                     request_digest TEXT NOT NULL,
                     evidence_json TEXT NOT NULL,
                     updated_at TEXT NOT NULL
                 )
                 """
             )
+            columns = {
+                str(row["name"])
+                for row in db.execute("PRAGMA table_info(evolution_engineering_approvals)").fetchall()
+            }
+            if "subject_json" not in columns:
+                db.execute("ALTER TABLE evolution_engineering_approvals ADD COLUMN subject_json TEXT NOT NULL DEFAULT '{}'")
 
     def _connect(self) -> sqlite3.Connection:
         return _connect(self.path)
@@ -119,17 +126,22 @@ class EvolutionEngineeringApprovalBindings:
     def get(self, evolution_id: str) -> dict[str, object] | None:
         with closing(self._connect()) as connection, connection as db:
             row = db.execute(
-                "SELECT evolution_id, approval_id, status, subject_sha256, request_digest, evidence_json, updated_at "
+                "SELECT evolution_id, approval_id, status, subject_sha256, subject_json, request_digest, evidence_json, updated_at "
                 "FROM evolution_engineering_approvals WHERE evolution_id=?",
                 (evolution_id,),
             ).fetchone()
         if row is None:
             return None
+        subject = _decode_object(row["subject_json"], "stored engineering approval subject")
+        subject_sha256 = str(row["subject_sha256"])
+        if subject and _sha256_json(subject) != subject_sha256:
+            raise CapabilityEvolutionError("stored engineering approval subject digest mismatch")
         return {
             "evolution_id": str(row["evolution_id"]),
             "approval_id": str(row["approval_id"]),
             "status": str(row["status"]),
-            "subject_sha256": str(row["subject_sha256"]),
+            "subject_sha256": subject_sha256,
+            "subject": subject,
             "request_digest": str(row["request_digest"]),
             "evidence": _decode_evidence(row["evidence_json"]),
             "updated_at": str(row["updated_at"]),
@@ -145,7 +157,10 @@ class EvolutionEngineeringApprovalBindings:
         approval_id = _required(evidence, "approval_id")
         status = _status(evidence)
         request_digest = _digest(evidence, "request_digest")
-        subject_sha256 = _sha256_json(subject)
+        clean_subject = json.loads(json.dumps(dict(subject), sort_keys=True))
+        if not isinstance(clean_subject, dict) or not clean_subject:
+            raise CapabilityEvolutionError("engineering approval subject must be a non-empty object")
+        subject_sha256 = _sha256_json(clean_subject)
         now = _now()
         with closing(self._connect()) as connection, connection as db:
             db.execute("BEGIN IMMEDIATE")
@@ -163,11 +178,21 @@ class EvolutionEngineeringApprovalBindings:
                     raise CapabilityEvolutionError("cannot change an engineering subject with a pending or approved binding")
             _validate_replacement(previous, approval_id, status)
             db.execute(
-                "INSERT INTO evolution_engineering_approvals(evolution_id,approval_id,status,subject_sha256,request_digest,evidence_json,updated_at) "
-                "VALUES(?,?,?,?,?,?,?) ON CONFLICT(evolution_id) DO UPDATE SET "
+                "INSERT INTO evolution_engineering_approvals(evolution_id,approval_id,status,subject_sha256,subject_json,request_digest,evidence_json,updated_at) "
+                "VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(evolution_id) DO UPDATE SET "
                 "approval_id=excluded.approval_id,status=excluded.status,subject_sha256=excluded.subject_sha256,"
-                "request_digest=excluded.request_digest,evidence_json=excluded.evidence_json,updated_at=excluded.updated_at",
-                (evolution_id, approval_id, status, subject_sha256, request_digest, _json(evidence), now),
+                "subject_json=excluded.subject_json,request_digest=excluded.request_digest,"
+                "evidence_json=excluded.evidence_json,updated_at=excluded.updated_at",
+                (
+                    evolution_id,
+                    approval_id,
+                    status,
+                    subject_sha256,
+                    _json(clean_subject),
+                    request_digest,
+                    _json(evidence),
+                    now,
+                ),
             )
             db.commit()
         binding = self.get(evolution_id)
@@ -193,11 +218,15 @@ def _connect(path: Path) -> sqlite3.Connection:
     return db
 
 
-def _decode_evidence(value: object) -> dict[str, object]:
+def _decode_object(value: object, label: str) -> dict[str, object]:
     decoded = json.loads(str(value))
     if not isinstance(decoded, dict):
-        raise CapabilityEvolutionError("stored AgentOps approval evidence is corrupt")
+        raise CapabilityEvolutionError(f"{label} is corrupt")
     return decoded
+
+
+def _decode_evidence(value: object) -> dict[str, object]:
+    return _decode_object(value, "stored AgentOps approval evidence")
 
 
 def _validate_replacement(previous: dict[str, object] | None, approval_id: str, status: str) -> None:
