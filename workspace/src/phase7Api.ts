@@ -83,7 +83,7 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/approval/refresh`, {});
   }
 
-  createChildOperation(id: string): Promise<JsonRecord> {
+  createChildOperation(id: string, _legacyApprovalId?: string): Promise<JsonRecord> {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/child-operation`, {});
   }
 
@@ -95,7 +95,7 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval/refresh`, {});
   }
 
-  implementCandidate(id: string): Promise<JsonRecord> {
+  implementCandidate(id: string, _legacyPayload?: JsonRecord): Promise<JsonRecord> {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate`, {});
   }
 
