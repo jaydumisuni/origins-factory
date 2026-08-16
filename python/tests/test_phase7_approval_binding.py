@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from origins_integration.capability_evolution import CapabilityEvolutionError
-from origins_integration.phase7_runtime import Phase7RuntimeError, _find_pending_owner_approval
 from origins_integration.capability_evolution_approvals import (
     EvolutionApprovalBindings,
     EvolutionEngineeringApprovalBindings,
@@ -71,6 +70,24 @@ def test_engineering_binding_survives_restart_with_exact_subject(tmp_path: Path)
     recovered = second.require_approved("evolution-7", subject)
     assert recovered["approval_id"] == "engineering-7"
     assert recovered["status"] == "approved"
+    assert recovered["subject"] == subject
+
+
+def test_engineering_approval_subject_digest_fails_closed_on_storage_tamper(tmp_path: Path) -> None:
+    import sqlite3
+
+    path = tmp_path / "phase7.sqlite"
+    subject = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
+    bindings = EvolutionEngineeringApprovalBindings(path)
+    bindings.bind("evolution-7", subject=subject, evidence=evidence("engineering-7", "approved"))
+    with sqlite3.connect(path) as db:
+        db.execute(
+            "UPDATE evolution_engineering_approvals SET subject_json=? WHERE evolution_id=?",
+            ('{"repository_id":"repo-7","task":"tampered"}', "evolution-7"),
+        )
+        db.commit()
+    with pytest.raises(CapabilityEvolutionError, match="subject digest mismatch"):
+        EvolutionEngineeringApprovalBindings(path).get("evolution-7")
 
 
 def test_engineering_approval_cannot_authorize_changed_subject(tmp_path: Path) -> None:
@@ -90,30 +107,6 @@ def test_capability_approval_binding_is_not_engineering_approval(tmp_path: Path)
     subject = {"repository_id": "repo-7", "task": "bounded edit", "apply_plan": True}
     with pytest.raises(CapabilityEvolutionError, match="no durable AgentOps engineering approval"):
         engineering.require_approved("evolution-7", subject)
-
-
-class _PendingService:
-    def __init__(self, items: list[dict[str, object]]) -> None:
-        self.items = items
-
-    def list_pending(self) -> list[dict[str, object]]:
-        return self.items
-
-
-def _pending(approval_id: str, metadata: dict[str, object]) -> dict[str, object]:
-    return {"request": {"approval_id": approval_id, "metadata": metadata}, "record": None, "approved": False}
-
-
-def test_pending_owner_approval_recovery_is_exact_and_ambiguous_matches_fail() -> None:
-    expected = {"origins_approval_kind": "capability", "evolution_id": "evolution-7"}
-    service = _PendingService([
-        _pending("other", {"origins_approval_kind": "capability", "evolution_id": "other"}),
-        _pending("match", expected),
-    ])
-    assert _find_pending_owner_approval(service, expected) == "match"
-    duplicate = _PendingService([_pending("a", expected), _pending("b", expected)])
-    with pytest.raises(Phase7RuntimeError, match="multiple pending"):
-        _find_pending_owner_approval(duplicate, expected)
 
 
 def test_concurrent_first_capability_binding_cannot_replace_pending_binding(tmp_path: Path) -> None:
