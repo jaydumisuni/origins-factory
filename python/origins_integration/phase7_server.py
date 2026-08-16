@@ -84,6 +84,10 @@ def serve_from_env() -> None:
                 raise Phase7ServerError(f"client cannot assert authority fields: {', '.join(sorted(forbidden))}")
             return value
 
+        def _empty(self, body: dict[str, object], label: str) -> None:
+            if body:
+                raise Phase7ServerError(f"{label} accepts no client authority or execution state")
+
         def _conflict(self, exc: Exception) -> None:
             self._json(409, {"error": type(exc).__name__, "detail": str(exc)})
 
@@ -137,28 +141,24 @@ def serve_from_env() -> None:
                     return self._json(404, {"error": "NOT_FOUND"})
                 evolution_id, action = parts[2], "/".join(parts[3:])
                 if action == "approval":
-                    if body:
-                        raise Phase7ServerError("capability approval request accepts no client authority state")
+                    self._empty(body, "capability approval request")
                     return self._json(201, runtime.create_approval(evolution_id))
                 if action == "approval/refresh":
-                    if body:
-                        raise Phase7ServerError("capability approval refresh accepts no client authority state")
+                    self._empty(body, "capability approval refresh")
                     return self._json(200, runtime.refresh_approval(evolution_id))
                 if action in {"approval/decision", "candidate/approval/decision"}:
                     return self._json(404, {"error": "AGENTOPS_DECISION_AUTHORITY_NOT_EXPOSED"})
                 if action == "child-operation":
-                    return self._json(
-                        201,
-                        runtime.create_child_upgrade_operation(evolution_id, _required(body, "approval_id")),
-                    )
+                    self._empty(body, "child-operation creation")
+                    return self._json(201, runtime.create_child_upgrade_operation(evolution_id))
                 if action == "candidate/approval":
                     return self._json(201, runtime.create_engineering_approval(evolution_id, body))
                 if action == "candidate/approval/refresh":
-                    if body:
-                        raise Phase7ServerError("engineering approval refresh accepts no client authority state")
+                    self._empty(body, "engineering approval refresh")
                     return self._json(200, runtime.refresh_engineering_approval(evolution_id))
                 if action == "candidate":
-                    return self._json(200, runtime.implement_candidate(evolution_id, body))
+                    self._empty(body, "candidate execution")
+                    return self._json(200, runtime.implement_candidate(evolution_id))
                 if action == "canary":
                     return self._json(200, runtime.record_canary_from_session(evolution_id, _required(body, "session_id")))
                 if action == "decision":
@@ -171,8 +171,7 @@ def serve_from_env() -> None:
                         ),
                     )
                 if action == "resume":
-                    if body:
-                        raise Phase7ServerError("resume accepts no client state")
+                    self._empty(body, "resume")
                     return self._json(200, runtime.resume(evolution_id))
                 self._json(404, {"error": "NOT_FOUND"})
             except (
