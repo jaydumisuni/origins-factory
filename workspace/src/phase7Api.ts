@@ -6,6 +6,8 @@ export interface Phase7Health extends JsonRecord {
   phase?: number;
   runtime_authority_expansion?: boolean;
   model_self_approval?: boolean;
+  agentops_transport?: string;
+  agentops_service_credential_is_owner_authorization?: boolean;
 }
 
 export class Phase7ApiError extends Error {
@@ -77,8 +79,8 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/approval`, {});
   }
 
-  decideApproval(id: string, payload: JsonRecord): Promise<JsonRecord> {
-    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/approval/decision`, payload);
+  refreshApproval(id: string): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/approval/refresh`, {});
   }
 
   createChildOperation(id: string, approvalId: string): Promise<JsonRecord> {
@@ -89,8 +91,8 @@ export class Phase7Api {
     return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval`, payload);
   }
 
-  decideEngineeringApproval(id: string, payload: JsonRecord): Promise<JsonRecord> {
-    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval/decision`, payload);
+  refreshEngineeringApproval(id: string): Promise<JsonRecord> {
+    return this.request("POST", `/v1/evolutions/${encodeURIComponent(id)}/candidate/approval/refresh`, {});
   }
 
   implementCandidate(id: string, payload: JsonRecord): Promise<JsonRecord> {
