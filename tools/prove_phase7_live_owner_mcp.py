@@ -29,7 +29,7 @@ from phase7_live_proof_support import (
 
 AGENTOPS_HEAD = "0eeb69027aec9d70303e724129ebf5585f373ca1"
 CODEOPS_HEAD = "348f133cb72ab6d18a7959d4a954158f7b881068"
-SERGEANT_HEAD = "ee4a152e25ae5965edbae32c9a50d6f2cc6c48d2"
+SERGEANT_HEAD = "22879a8c47df379d19fb8537c79b745750df4077"
 AGENTOPS_ROOT = Path(os.environ.get("ORIGINS_PHASE7_AGENTOPS_ROOT", "/home/kratos/Hunter-AgentOps"))
 CODEOPS_ROOT = Path(os.environ.get("ORIGINS_PHASE7_CODEOPS_ROOT", "/home/kratos/hunter-codeops"))
 SERGEANT_ROOT = Path(os.environ.get("ORIGINS_PHASE7_SERGEANT_ROOT", "/home/kratos/Sergeant"))
