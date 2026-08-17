@@ -5,7 +5,9 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import socket
+import stat
 import subprocess
 import sys
 import tarfile
@@ -29,14 +31,43 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def tree_digest(root: Path) -> str:
+    if root.is_symlink() or not root.is_dir():
+        raise ProofError(f"release tree is not a regular directory: {root}")
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+        relative = path.relative_to(root).as_posix().encode("utf-8")
+        if path.is_symlink():
+            raise ProofError(f"release tree contains symlink: {path}")
+        mode = stat.S_IMODE(path.stat().st_mode)
+        if path.is_dir():
+            digest.update(b"D\0" + relative + b"\0" + f"{mode:o}".encode("ascii") + b"\0")
+        elif path.is_file():
+            digest.update(b"F\0" + relative + b"\0" + f"{mode:o}".encode("ascii") + b"\0")
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            digest.update(b"\0")
+        else:
+            raise ProofError(f"release tree contains unsupported entry: {path}")
+    return digest.hexdigest()
+
+
 def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
     members = archive.getmembers()
     if not members:
         raise ProofError("release archive is empty")
+    seen: set[str] = set()
     for member in members:
         path = PurePosixPath(member.name)
+        normalized = path.as_posix()
+        if not path.parts or normalized in {"", "."}:
+            raise ProofError("release archive contains an empty member path")
         if path.is_absolute() or ".." in path.parts:
             raise ProofError(f"release archive contains unsafe path: {member.name}")
+        if normalized in seen:
+            raise ProofError(f"release archive contains duplicate path: {normalized}")
+        seen.add(normalized)
         if member.issym() or member.islnk():
             raise ProofError(f"release archive contains a link: {member.name}")
         if not member.isfile() and not member.isdir():
@@ -47,7 +78,7 @@ def safe_members(archive: tarfile.TarFile) -> list[tarfile.TarInfo]:
 def extract_archive(archive_path: Path, destination: Path) -> Path:
     with tarfile.open(archive_path, "r:gz") as archive:
         members = safe_members(archive)
-        top = {PurePosixPath(member.name).parts[0] for member in members if PurePosixPath(member.name).parts}
+        top = {PurePosixPath(member.name).parts[0] for member in members}
         if len(top) != 1:
             raise ProofError(f"release archive must contain exactly one top-level release root: {sorted(top)!r}")
         archive.extractall(destination, members=members, filter="data")
@@ -60,7 +91,7 @@ def extract_archive(archive_path: Path, destination: Path) -> Path:
 def verify_checksum(archive: Path, checksum: Path) -> str:
     text = checksum.read_text(encoding="utf-8").strip()
     parts = text.split()
-    if len(parts) != 2 or parts[1] != archive.name:
+    if len(parts) != 2 or parts[1] != archive.name or re.fullmatch(r"[0-9a-f]{64}", parts[0]) is None:
         raise ProofError("release checksum sidecar is malformed or names another archive")
     actual = sha256_file(archive)
     if parts[0] != actual:
@@ -76,39 +107,77 @@ def verify_manifest(release_root: Path, *, expected_head: str) -> dict[str, obje
         raise ProofError("release manifest is unavailable or invalid JSON") from exc
     if not isinstance(manifest, dict):
         raise ProofError("release manifest must be an object")
+    expected_top = {
+        "schema_version",
+        "product",
+        "product_version",
+        "release_id",
+        "status",
+        "source",
+        "target",
+        "build_environment",
+        "artifacts",
+        "runtime",
+        "ownership",
+        "claim_boundary",
+    }
+    if set(manifest) != expected_top:
+        raise ProofError("release manifest top-level contract changed")
     if manifest.get("schema_version") != "origins.release.v1":
         raise ProofError("release manifest schema changed")
     if manifest.get("product") != "origins-factory" or manifest.get("status") != "candidate":
         raise ProofError("release candidate identity/status changed")
-    if manifest.get("release_id") != release_root.name:
-        raise ProofError("release archive root does not match manifest release_id")
+    version = manifest.get("product_version")
+    if not isinstance(version, str) or re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version) is None:
+        raise ProofError("release product version is invalid")
+    expected_release_id = f"origins-factory-{version}-linux-x86_64-{expected_head[:12]}"
+    if manifest.get("release_id") != expected_release_id or release_root.name != expected_release_id:
+        raise ProofError("release archive root/release_id is not bound to version and source head")
     source = manifest.get("source")
     if source != {"repository": "jaydumisuni/origins-factory", "commit": expected_head, "clean": True}:
         raise ProofError("release source provenance changed")
     if manifest.get("target") != {"os": "linux", "arch": "x86_64", "libc": "gnu"}:
         raise ProofError("release target changed")
     build = manifest.get("build_environment")
-    if not isinstance(build, dict) or set(build) != {"rustc", "cargo", "python", "node", "npm"}:
+    expected_build_keys = {"rustc", "cargo", "python", "pip", "setuptools", "node", "npm", "glibc"}
+    if not isinstance(build, dict) or set(build) != expected_build_keys:
         raise ProofError("release build provenance is incomplete")
     if not all(isinstance(value, str) and value.strip() for value in build.values()):
         raise ProofError("release build provenance contains empty values")
+    if not str(build["glibc"]).startswith("glibc "):
+        raise ProofError("release GNU libc provenance is malformed")
     runtime = manifest.get("runtime")
-    if not isinstance(runtime, dict):
-        raise ProofError("release runtime contract is missing")
-    if runtime.get("default_bind") != "127.0.0.1:48700" or runtime.get("loopback_only") is not True:
-        raise ProofError("release loopback runtime boundary changed")
-    if runtime.get("data_dir_external_to_release") is not True:
-        raise ProofError("release no longer requires external persistent data")
-    health = runtime.get("health")
-    if health != {
-        "method": "GET",
-        "path": "/v1/health",
-        "auth_required": False,
-        "expected": {"ok": True, "service": "originsd"},
-    }:
-        raise ProofError("release health contract changed")
+    expected_runtime = {
+        "default_bind": "127.0.0.1:48700",
+        "loopback_only": True,
+        "data_dir_external_to_release": True,
+        "health": {
+            "method": "GET",
+            "path": "/v1/health",
+            "auth_required": False,
+            "expected": {"ok": True, "service": "originsd"},
+        },
+        "python_requires": ">=3.10",
+        "python_dependencies": ["websockets==16.1.1"],
+        "activation_owner": "consumer",
+        "rollback_owner": "consumer",
+    }
+    if runtime != expected_runtime:
+        raise ProofError("release runtime contract changed")
+    expected_claims = {
+        "prime_component_format_claimed",
+        "prime_installation_claimed",
+        "builder_final_release_proven",
+        "ptah_prime_native_proven",
+        "production_release_accepted",
+        "runtime_authority_expansion",
+    }
     claims = manifest.get("claim_boundary")
-    if not isinstance(claims, dict) or not claims or any(value is not False for value in claims.values()):
+    if (
+        not isinstance(claims, dict)
+        or set(claims) != expected_claims
+        or any(value is not False for value in claims.values())
+    ):
         raise ProofError("release candidate widened an explicitly false claim")
     ownership = manifest.get("ownership")
     if ownership != {
@@ -131,8 +200,9 @@ def verify_artifacts(release_root: Path, manifest: dict[str, object]) -> dict[st
         "python-plane": "python-wheel",
         "workspace": "static-web-bundle",
     }
+    expected_fields = {"id", "kind", "path", "sha256", "size_bytes"}
     for item in raw:
-        if not isinstance(item, dict):
+        if not isinstance(item, dict) or set(item) != expected_fields:
             raise ProofError("release artifact entry is malformed")
         artifact_id = item.get("id")
         relative_text = item.get("path")
@@ -157,11 +227,17 @@ def verify_artifacts(release_root: Path, manifest: dict[str, object]) -> dict[st
 def verify_python_wheel(wheel: Path, *, version: str) -> None:
     try:
         with zipfile.ZipFile(wheel) as package:
-            names = package.namelist()
-            for name in names:
-                path = PurePosixPath(name)
+            infos = package.infolist()
+            names = [info.filename for info in infos]
+            if len(names) != len(set(names)):
+                raise ProofError("Python wheel contains duplicate paths")
+            for info in infos:
+                path = PurePosixPath(info.filename)
                 if path.is_absolute() or ".." in path.parts:
                     raise ProofError("Python wheel contains unsafe path")
+                mode = (info.external_attr >> 16) & 0xFFFF
+                if stat.S_ISLNK(mode):
+                    raise ProofError("Python wheel contains a symlink")
             metadata_names = [name for name in names if name.endswith(".dist-info/METADATA")]
             if len(metadata_names) != 1:
                 raise ProofError("Python wheel has invalid metadata layout")
@@ -175,6 +251,9 @@ def verify_python_wheel(wheel: Path, *, version: str) -> None:
 def verify_workspace_bundle(bundle: Path, destination: Path) -> None:
     with tarfile.open(bundle, "r:gz") as archive:
         members = safe_members(archive)
+        top = {PurePosixPath(member.name).parts[0] for member in members}
+        if top != {"workspace"}:
+            raise ProofError("Workspace bundle has an unexpected top-level layout")
         archive.extractall(destination, members=members, filter="data")
     index = destination / "workspace" / "index.html"
     if not index.is_file():
@@ -216,6 +295,7 @@ def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict
     if data_dir.is_relative_to(release_root):
         raise ProofError("runtime data directory is inside the immutable release root")
 
+    release_before = tree_digest(release_root)
     first_health: dict[str, object] | None = None
     second_health: dict[str, object] | None = None
     for attempt in range(2):
@@ -244,9 +324,12 @@ def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict
                 process.terminate()
                 try:
                     process.wait(timeout=8)
-                except subprocess.TimeoutExpired:
+                except subprocess.TimeoutExpired as exc:
                     process.kill()
                     process.wait(timeout=5)
+                    raise ProofError("released originsd did not shut down cleanly") from exc
+        if process.returncode != 0:
+            raise ProofError(f"released originsd shutdown returned {process.returncode}")
         if attempt == 0:
             first_health = health
         else:
@@ -259,16 +342,19 @@ def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict
         raise ProofError("released originsd did not persist its external database")
     if not token.is_file() or token.stat().st_size <= 0:
         raise ProofError("released originsd did not persist its external local token")
-    if (release_root / ".origins").exists():
-        raise ProofError("released originsd wrote mutable state into the release root")
     journal = second_health.get("journal")
     if not isinstance(journal, dict) or journal.get("ok") is not True:
         raise ProofError("released originsd journal is not valid after restart")
+    release_after = tree_digest(release_root)
+    if release_after != release_before:
+        raise ProofError("released originsd mutated immutable release bytes during runtime proof")
     return {
         "restart_health": True,
         "database_external": True,
         "local_token_external": True,
         "journal_ok": True,
+        "release_tree_immutable": True,
+        "release_tree_sha256": release_before,
     }
 
 
@@ -282,6 +368,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
+    if re.fullmatch(r"[0-9a-f]{40}", args.expected_head) is None:
+        raise ProofError("expected head must be an exact 40-character lowercase Git SHA")
     archive = args.archive.resolve()
     checksum = args.checksum.resolve()
     archive_sha = verify_checksum(archive, checksum)
