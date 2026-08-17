@@ -183,7 +183,7 @@ def _run_evolution(
     if candidate.get("engineering_result_ref", "").startswith("agentops:evidence:"):
         raise ProofError("Origins restored direct AgentOps engineering evidence ownership")
 
-    canary_args = ["-m", "pytest", "-q"] if strict else [
+    canary_args = ["-B", "-m", "pytest", "-q", "-p", "no:cacheprovider"] if strict else [
         "-c",
         (
             "from pathlib import Path; ns={}; "
@@ -194,7 +194,7 @@ def _run_evolution(
     accepted = client.submit_process(
         workspace_id=workspace_id,
         workspace_root=str(repo),
-        executable=sys.executable if strict else "python3",
+        executable="python3",
         args=canary_args,
         timeout_seconds=45,
         max_output_bytes=128 * 1024,

@@ -83,11 +83,17 @@ def sha(value: object) -> str:
 
 def _ensure_proof_port_free() -> None:
     host, raw_port = PROOF_BIND.rsplit(":", 1)
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.bind((host, int(raw_port)))
-    except OSError as exc:
-        raise ProofError(f"Phase 7 proof port is already in use: {PROOF_BIND}") from exc
+    deadline = time.monotonic() + 70.0
+    last: OSError | None = None
+    while time.monotonic() < deadline:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.bind((host, int(raw_port)))
+            return
+        except OSError as exc:
+            last = exc
+            time.sleep(0.05)
+    raise ProofError(f"Phase 7 proof port is already in use: {PROOF_BIND}") from last
 
 
 def _wait_health(process: subprocess.Popen[bytes], token: str, timeout: float = 12.0) -> None:
