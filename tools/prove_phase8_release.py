@@ -80,6 +80,8 @@ def verify_manifest(release_root: Path, *, expected_head: str) -> dict[str, obje
         raise ProofError("release manifest schema changed")
     if manifest.get("product") != "origins-factory" or manifest.get("status") != "candidate":
         raise ProofError("release candidate identity/status changed")
+    if manifest.get("release_id") != release_root.name:
+        raise ProofError("release archive root does not match manifest release_id")
     source = manifest.get("source")
     if source != {"repository": "jaydumisuni/origins-factory", "commit": expected_head, "clean": True}:
         raise ProofError("release source provenance changed")
@@ -252,18 +254,21 @@ def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict
     if first_health is None or second_health is None:
         raise ProofError("runtime health proof did not complete twice")
     database = data_dir / "origins.sqlite3"
-    token = data_dir / "local-token"
+    token = data_dir / "local-token.txt"
     if not database.is_file() or database.stat().st_size <= 0:
         raise ProofError("released originsd did not persist its external database")
     if not token.is_file() or token.stat().st_size <= 0:
         raise ProofError("released originsd did not persist its external local token")
     if (release_root / ".origins").exists():
         raise ProofError("released originsd wrote mutable state into the release root")
+    journal = second_health.get("journal")
+    if not isinstance(journal, dict) or journal.get("ok") is not True:
+        raise ProofError("released originsd journal is not valid after restart")
     return {
         "restart_health": True,
         "database_external": True,
         "local_token_external": True,
-        "journal_ok": bool(second_health.get("journal", {}).get("ok")) if isinstance(second_health.get("journal"), dict) else False,
+        "journal_ok": True,
     }
 
 
