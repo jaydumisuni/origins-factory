@@ -202,6 +202,25 @@ class OriginsClient:
             {"workspace_id": workspace_id, "path": path},
         )
 
+    def refresh_repository(self, repository_id: str) -> dict[str, Any]:
+        stored = self.get_repository(repository_id)
+        workspace_id = _required_string(stored, "workspace_id")
+        worktree_root = _required_string(stored, "worktree_root")
+        return self.inspect_repository(workspace_id, worktree_root)
+
+    def get_repository_diff(
+        self,
+        repository_id: str,
+        *,
+        kind: str = "unstaged",
+        limit: int = 8 * 1024 * 1024,
+    ) -> dict[str, Any]:
+        query = urllib.parse.urlencode({"kind": kind, "limit": limit})
+        return self._json(
+            "GET",
+            f"/v1/repositories/{urllib.parse.quote(repository_id)}/diff?{query}",
+        )
+
     def submit_process(
         self,
         *,
