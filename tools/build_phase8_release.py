@@ -121,12 +121,42 @@ def require_regular_tree(root: Path) -> None:
             raise ReleaseError(f"release tree contains unsupported entry: {path}")
 
 
+def copy_tracked_subtree(root: Path, prefix: str, destination: Path) -> None:
+    listed = subprocess.run(
+        ["git", "ls-files", "-z", "--", prefix],
+        cwd=root,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if listed.returncode != 0:
+        raise ReleaseError(f"failed to enumerate tracked {prefix} files: {listed.stderr.decode(errors='replace')}")
+    paths = [item.decode("utf-8") for item in listed.stdout.split(b"\0") if item]
+    if not paths:
+        raise ReleaseError(f"tracked source subtree is empty: {prefix}")
+    prefix_path = PurePosixPath(prefix)
+    for relative_text in paths:
+        relative = PurePosixPath(relative_text)
+        try:
+            child = relative.relative_to(prefix_path)
+        except ValueError as exc:
+            raise ReleaseError(f"tracked path escaped {prefix}: {relative_text}") from exc
+        source = root.joinpath(*relative.parts)
+        if source.is_symlink() or not source.is_file():
+            raise ReleaseError(f"tracked release input is not a regular file: {relative_text}")
+        target = destination.joinpath(*child.parts)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, target)
+        target.chmod(0o644)
+
+
 def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
     info.uid = 0
     info.gid = 0
     info.uname = ""
     info.gname = ""
     info.mtime = 0
+    info.pax_headers = {}
     if info.isfile():
         executable = bool(info.mode & stat.S_IXUSR)
         info.mode = 0o755 if executable else 0o644
@@ -153,9 +183,15 @@ def copy_file(source: Path, destination: Path, *, executable: bool = False) -> N
 
 
 def build_artifacts(root: Path, scratch: Path) -> tuple[Path, Path, Path]:
-    run(["cargo", "build", "--release", "--locked", "-p", "originsd"], cwd=root / "rust")
-    originsd = root / "rust" / "target" / "release" / "originsd"
+    rust_target = scratch / "rust-target"
+    run(
+        ["cargo", "build", "--release", "--locked", "-p", "originsd", "--target-dir", str(rust_target)],
+        cwd=root / "rust",
+    )
+    originsd = rust_target / "release" / "originsd"
 
+    python_source = scratch / "python-source"
+    copy_tracked_subtree(root, "python", python_source)
     wheel_dir = scratch / "wheel"
     wheel_dir.mkdir(parents=True)
     run(
@@ -170,17 +206,22 @@ def build_artifacts(root: Path, scratch: Path) -> tuple[Path, Path, Path]:
             "--wheel-dir",
             str(wheel_dir),
         ],
-        cwd=root / "python",
+        cwd=python_source,
     )
     wheels = sorted(wheel_dir.glob("*.whl"))
     if len(wheels) != 1:
         raise ReleaseError(f"expected exactly one Python wheel, found {[p.name for p in wheels]!r}")
 
-    run(["npm", "ci"], cwd=root / "workspace")
-    run(["npm", "run", "build"], cwd=root / "workspace")
-    workspace_dist = root / "workspace" / "dist"
+    workspace_source = scratch / "workspace-source"
+    copy_tracked_subtree(root, "workspace", workspace_source)
+    run(["npm", "ci"], cwd=workspace_source)
+    tsc = workspace_source / "node_modules" / ".bin" / "tsc"
+    vite = workspace_source / "node_modules" / ".bin" / "vite"
+    run([str(tsc), "-b", "--pretty", "false"], cwd=workspace_source)
+    workspace_dist = scratch / "workspace-dist"
+    run([str(vite), "build", "--outDir", str(workspace_dist), "--emptyOutDir"], cwd=workspace_source)
     if not (workspace_dist / "index.html").is_file():
-        raise ReleaseError("Workspace production build did not produce dist/index.html")
+        raise ReleaseError("Workspace production build did not produce index.html")
     require_regular_tree(workspace_dist)
     require_clean_git(root)
     return originsd, wheels[0], workspace_dist
