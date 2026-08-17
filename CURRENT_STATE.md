@@ -1,11 +1,11 @@
 # Origins Factory — Current State
 
-**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
-**Merged checkpoint:** Phase 7 / PR #19 / `2f93f79f78502959fd09b50350b878ab659fee84`  
-**Active phase:** Phase 8 — Custom OS consumption and later Ptah  
-**Implementation status:** Phase 7 shipped and proven; Phase 8 not started  
-**Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`  
-**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`  
+**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
+**Merged checkpoint:** Phase 7 / PR #19 / `2f93f79f78502959fd09b50350b878ab659fee84`
+**Active phase:** Phase 8 — Custom OS consumption and later Ptah
+**Implementation status:** Phase 7 shipped and proven; Phase 8 not started
+**Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`
+**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`
 **Phase-7 proof:** `proof/phase7-capability-evolution-freeze.md`
 
 ## Completed authority — do not rebuild
