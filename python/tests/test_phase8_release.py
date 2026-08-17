@@ -28,8 +28,11 @@ def _build_tools() -> dict[str, str]:
         "rustc": "rustc 1.75.0",
         "cargo": "cargo 1.75.0",
         "python": "3.12.0",
+        "pip": "pip 26.0.1",
+        "setuptools": "setuptools 82.0.0",
         "node": "v24.0.0",
         "npm": "11.0.0",
+        "glibc": "glibc 2.39",
     }
 
 
@@ -147,10 +150,13 @@ def test_manifest_keeps_prime_builder_ptah_nonclaims() -> None:
     assert set(manifest["claim_boundary"].values()) == {False}
 
 
-def test_schema_pins_candidate_claim_boundary() -> None:
+def test_schema_pins_candidate_claim_boundary_and_full_build_provenance() -> None:
     schema = json.loads((ROOT / "release" / "origins-release-v1.schema.json").read_text(encoding="utf-8"))
     assert "build_environment" in schema["required"]
     assert schema["properties"]["target"]["properties"]["os"]["const"] == "linux"
+    build = schema["properties"]["build_environment"]
+    assert set(build["required"]) == set(_build_tools())
+    assert build["additionalProperties"] is False
     claims = schema["properties"]["claim_boundary"]["properties"]
     assert claims
     assert all(item.get("const") is False for item in claims.values())
@@ -223,6 +229,18 @@ def test_archive_verifier_rejects_path_traversal(tmp_path: Path) -> None:
             proof.safe_members(archive)
 
 
+def test_archive_verifier_rejects_duplicate_paths(tmp_path: Path) -> None:
+    archive_path = tmp_path / "duplicate.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for payload in (b"first", b"second"):
+            info = tarfile.TarInfo("release/file")
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+    with tarfile.open(archive_path, "r:gz") as archive:
+        with pytest.raises(proof.ProofError, match="duplicate path"):
+            proof.safe_members(archive)
+
+
 def test_checksum_verifier_rejects_wrong_digest_and_name(tmp_path: Path) -> None:
     archive = tmp_path / "release.tar.gz"
     archive.write_bytes(b"release")
@@ -237,3 +255,17 @@ def test_checksum_verifier_rejects_wrong_digest_and_name(tmp_path: Path) -> None
     )
     with pytest.raises(proof.ProofError, match="malformed or names another"):
         proof.verify_checksum(archive, sidecar)
+
+
+def test_tree_digest_changes_on_byte_or_mode_mutation(tmp_path: Path) -> None:
+    root = tmp_path / "release"
+    root.mkdir()
+    binary = root / "originsd"
+    binary.write_bytes(b"one")
+    binary.chmod(0o755)
+    original = proof.tree_digest(root)
+    binary.write_bytes(b"two")
+    assert proof.tree_digest(root) != original
+    binary.write_bytes(b"one")
+    binary.chmod(0o644)
+    assert proof.tree_digest(root) != original
