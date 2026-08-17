@@ -7,7 +7,7 @@ on:
       - "release/**"
       - "tools/build_phase8_release.py"
       - "tools/prove_phase8_release.py"
-      - "tools/test_phase8_release.py"
+      - "python/tests/test_phase8_release.py"
       - "rust/**"
       - "python/**"
       - "workspace/**"
@@ -18,7 +18,7 @@ on:
       - "release/**"
       - "tools/build_phase8_release.py"
       - "tools/prove_phase8_release.py"
-      - "tools/test_phase8_release.py"
+      - "python/tests/test_phase8_release.py"
       - "rust/**"
       - "python/**"
       - "workspace/**"
@@ -59,14 +59,14 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Prepare Python wheel backend
-        run: python -m pip install --disable-pip-version-check "setuptools>=75"
+      - name: Prepare Python release test/build environment
+        run: python -m pip install --disable-pip-version-check "setuptools>=75" pytest
 
-      - name: Compile release tooling
-        run: python -m py_compile tools/build_phase8_release.py tools/prove_phase8_release.py tools/test_phase8_release.py
+      - name: Compile release tooling and tests
+        run: python -m py_compile tools/build_phase8_release.py tools/prove_phase8_release.py python/tests/test_phase8_release.py
 
-      - name: Run release contract and adversarial tests
-        run: python -m unittest -v tools/test_phase8_release.py
+      - name: Run canonical release contract and adversarial tests
+        run: python -m pytest -q python/tests/test_phase8_release.py
 
       - name: Build exact-head portable candidate outside source checkout
         shell: bash
