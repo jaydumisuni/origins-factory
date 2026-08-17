@@ -1,11 +1,11 @@
 # Origins Factory — Phase 7 Capability Evolution Freeze
 
-**Status:** SHIPPED / PROVEN  
-**Phase:** 7 — Capability evolution  
-**PR:** #19  
-**Frozen candidate:** `2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e`  
-**Merge checkpoint:** `2f93f79f78502959fd09b50350b878ab659fee84`  
-**Construction archive:** `archive/phase7-capability-evolution-construction`  
+**Status:** SHIPPED / PROVEN
+**Phase:** 7 — Capability evolution
+**PR:** #19
+**Frozen candidate:** `2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e`
+**Merge checkpoint:** `2f93f79f78502959fd09b50350b878ab659fee84`
+**Construction archive:** `archive/phase7-capability-evolution-construction`
 **Execution standard:** `ttg.tenfold.v1`
 
 ## Authority preserved
