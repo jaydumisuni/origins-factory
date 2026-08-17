@@ -12,6 +12,7 @@
     "status",
     "source",
     "target",
+    "build_environment",
     "artifacts",
     "runtime",
     "ownership",
@@ -41,6 +42,18 @@
         "os": {"const": "linux"},
         "arch": {"const": "x86_64"},
         "libc": {"const": "gnu"}
+      }
+    },
+    "build_environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rustc", "cargo", "python", "node", "npm"],
+      "properties": {
+        "rustc": {"type": "string", "minLength": 1},
+        "cargo": {"type": "string", "minLength": 1},
+        "python": {"type": "string", "minLength": 1},
+        "node": {"type": "string", "minLength": 1},
+        "npm": {"type": "string", "minLength": 1}
       }
     },
     "artifacts": {
