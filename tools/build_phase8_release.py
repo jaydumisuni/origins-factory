@@ -5,7 +5,6 @@ import argparse
 import gzip
 import hashlib
 import json
-import os
 import platform
 import shutil
 import stat
@@ -61,6 +60,15 @@ def require_clean_git(root: Path) -> None:
         raise ReleaseError(f"release source has untracked files: {untracked.splitlines()[:8]!r}")
 
 
+def require_output_boundary(root: Path, output: Path) -> None:
+    root = root.resolve()
+    output = output.resolve()
+    if output == root or output.is_relative_to(root):
+        raise ReleaseError("release output must be outside the source checkout")
+    if output.exists() and any(output.iterdir()):
+        raise ReleaseError("release output directory must be empty")
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -85,12 +93,32 @@ def component_versions(root: Path) -> dict[str, str]:
     return versions
 
 
+def build_environment(root: Path) -> dict[str, str]:
+    return {
+        "rustc": run(["rustc", "--version"], cwd=root),
+        "cargo": run(["cargo", "--version"], cwd=root),
+        "python": platform.python_version(),
+        "node": run(["node", "--version"], cwd=root),
+        "npm": run(["npm", "--version"], cwd=root),
+    }
+
+
 def require_target() -> None:
     if sys.platform != "linux":
         raise ReleaseError("Phase 8A release candidate currently supports Linux only")
     machine = platform.machine().lower()
     if machine not in {"x86_64", "amd64"}:
         raise ReleaseError(f"Phase 8A release candidate requires x86_64, got {machine!r}")
+
+
+def require_regular_tree(root: Path) -> None:
+    if not root.is_dir() or root.is_symlink():
+        raise ReleaseError(f"release tree is not a regular directory: {root}")
+    for path in root.rglob("*"):
+        if path.is_symlink():
+            raise ReleaseError(f"release tree contains symlink: {path}")
+        if not path.is_file() and not path.is_dir():
+            raise ReleaseError(f"release tree contains unsupported entry: {path}")
 
 
 def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
@@ -108,6 +136,7 @@ def _tar_filter(info: tarfile.TarInfo) -> tarfile.TarInfo:
 
 
 def deterministic_tar_gz(source_dir: Path, destination: Path, *, arcname: str) -> None:
+    require_regular_tree(source_dir)
     destination.parent.mkdir(parents=True, exist_ok=True)
     with destination.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as gz:
@@ -116,8 +145,8 @@ def deterministic_tar_gz(source_dir: Path, destination: Path, *, arcname: str) -
 
 
 def copy_file(source: Path, destination: Path, *, executable: bool = False) -> None:
-    if not source.is_file() or source.stat().st_size <= 0:
-        raise ReleaseError(f"release artifact missing or empty: {source}")
+    if source.is_symlink() or not source.is_file() or source.stat().st_size <= 0:
+        raise ReleaseError(f"release artifact missing, symlinked or empty: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(source, destination)
     destination.chmod(0o755 if executable else 0o644)
@@ -152,6 +181,8 @@ def build_artifacts(root: Path, scratch: Path) -> tuple[Path, Path, Path]:
     workspace_dist = root / "workspace" / "dist"
     if not (workspace_dist / "index.html").is_file():
         raise ReleaseError("Workspace production build did not produce dist/index.html")
+    require_regular_tree(workspace_dist)
+    require_clean_git(root)
     return originsd, wheels[0], workspace_dist
 
 
@@ -174,6 +205,7 @@ def create_manifest(
     version: str,
     source_commit: str,
     release_id: str,
+    build_tools: dict[str, str],
     artifacts: list[dict[str, object]],
 ) -> dict[str, object]:
     return {
@@ -184,6 +216,7 @@ def create_manifest(
         "status": "candidate",
         "source": {"repository": REPOSITORY, "commit": source_commit, "clean": True},
         "target": {"os": TARGET_OS, "arch": TARGET_ARCH, "libc": TARGET_LIBC},
+        "build_environment": dict(build_tools),
         "artifacts": artifacts,
         "runtime": {
             "default_bind": DEFAULT_BIND,
@@ -223,10 +256,10 @@ def write_json(path: Path, value: object) -> None:
 
 def assemble_release(
     *,
-    root: Path,
     output_dir: Path,
     source_commit: str,
     version: str,
+    build_tools: dict[str, str],
     originsd: Path,
     wheel: Path,
     workspace_dist: Path,
@@ -253,6 +286,7 @@ def assemble_release(
         version=version,
         source_commit=source_commit,
         release_id=release_id,
+        build_tools=build_tools,
         artifacts=artifacts,
     )
     manifest_path = package_root / "RELEASE_MANIFEST.json"
@@ -278,22 +312,24 @@ def main(argv: Iterable[str] | None = None) -> int:
     root = args.repo_root.resolve()
     output = args.output.resolve()
     require_target()
+    require_output_boundary(root, output)
     require_clean_git(root)
     source_commit = git_head(root)
     if args.expected_head and source_commit != args.expected_head:
         raise ReleaseError(f"source head mismatch: expected {args.expected_head}, got {source_commit}")
     versions = component_versions(root)
     version = versions["originsd"]
+    build_tools = build_environment(root)
     output.mkdir(parents=True, exist_ok=True)
 
     with tempfile.TemporaryDirectory(prefix="origins-phase8-release-") as scratch_text:
         scratch = Path(scratch_text)
         originsd, wheel, workspace_dist = build_artifacts(root, scratch)
         package_root, archive_path, checksum_path = assemble_release(
-            root=root,
             output_dir=output,
             source_commit=source_commit,
             version=version,
+            build_tools=build_tools,
             originsd=originsd,
             wheel=wheel,
             workspace_dist=workspace_dist,
@@ -303,6 +339,7 @@ def main(argv: Iterable[str] | None = None) -> int:
         "proof": "PHASE8_PORTABLE_RELEASE_CANDIDATE_OK",
         "source_head": source_commit,
         "component_versions": versions,
+        "build_environment": build_tools,
         "release_root": str(package_root),
         "archive": str(archive_path),
         "archive_sha256": sha256_file(archive_path),
