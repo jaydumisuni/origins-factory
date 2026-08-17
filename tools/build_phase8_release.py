@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import gzip
 import hashlib
+import importlib.metadata
 import json
 import platform
 import shutil
@@ -93,13 +94,28 @@ def component_versions(root: Path) -> dict[str, str]:
     return versions
 
 
+def _distribution_version(name: str) -> str:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError as exc:
+        raise ReleaseError(f"required Python build distribution is unavailable: {name}") from exc
+
+
 def build_environment(root: Path) -> dict[str, str]:
+    libc_name, libc_version = platform.libc_ver()
+    if libc_name.lower() != "glibc" or not libc_version:
+        raise ReleaseError(
+            f"Phase 8A GNU release requires observable glibc build provenance, got {libc_name!r} {libc_version!r}"
+        )
     return {
         "rustc": run(["rustc", "--version"], cwd=root),
         "cargo": run(["cargo", "--version"], cwd=root),
         "python": platform.python_version(),
+        "pip": f"pip {_distribution_version('pip')}",
+        "setuptools": f"setuptools {_distribution_version('setuptools')}",
         "node": run(["node", "--version"], cwd=root),
         "npm": run(["npm", "--version"], cwd=root),
+        "glibc": f"glibc {libc_version}",
     }
 
 
