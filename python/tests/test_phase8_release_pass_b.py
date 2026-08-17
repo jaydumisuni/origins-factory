@@ -140,6 +140,14 @@ def test_pass_b_rejects_runtime_dependency_expansion(tmp_path: Path) -> None:
 
 def test_pass_b_rejects_extra_artifact_authority(tmp_path: Path) -> None:
     manifest = _manifest()
+    release_root = tmp_path / str(manifest["release_id"])
+    release_root.mkdir()
+    for item, payload in zip(manifest["artifacts"], (b"o", b"p", b"w"), strict=True):
+        artifact = release_root / str(item["path"])
+        artifact.parent.mkdir(parents=True, exist_ok=True)
+        artifact.write_bytes(payload)
+        item["sha256"] = proof.sha256_file(artifact)
+        item["size_bytes"] = artifact.stat().st_size
     manifest["artifacts"].append(
         {
             "id": "prime-installer",
@@ -149,8 +157,6 @@ def test_pass_b_rejects_extra_artifact_authority(tmp_path: Path) -> None:
             "size_bytes": 1,
         }
     )
-    release_root = tmp_path / str(manifest["release_id"])
-    release_root.mkdir()
     with pytest.raises(proof.ProofError, match="identity/kind changed"):
         proof.verify_artifacts(release_root, manifest)
 
