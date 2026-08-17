@@ -1,19 +1,26 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
-import os
 import tarfile
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "tools" / "build_phase8_release.py"
-SPEC = importlib.util.spec_from_file_location("build_phase8_release", SCRIPT)
-assert SPEC is not None and SPEC.loader is not None
-release = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(release)
+
+
+def _load_module(name: str, path: Path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+release = _load_module("build_phase8_release", ROOT / "tools" / "build_phase8_release.py")
+proof = _load_module("prove_phase8_release", ROOT / "tools" / "prove_phase8_release.py")
 
 
 def _build_tools() -> dict[str, str]:
@@ -104,13 +111,35 @@ def test_manifest_keeps_prime_builder_ptah_nonclaims() -> None:
         release_id="origins-factory-0.1.0-linux-x86_64-aaaaaaaaaaaa",
         build_tools=_build_tools(),
         artifacts=[
-            {"id": "originsd", "kind": "native-binary", "path": "bin/originsd", "sha256": "1" * 64, "size_bytes": 1},
-            {"id": "python-plane", "kind": "python-wheel", "path": "python/a.whl", "sha256": "2" * 64, "size_bytes": 1},
-            {"id": "workspace", "kind": "static-web-bundle", "path": "workspace/workspace.tar.gz", "sha256": "3" * 64, "size_bytes": 1},
+            {
+                "id": "originsd",
+                "kind": "native-binary",
+                "path": "bin/originsd",
+                "sha256": "1" * 64,
+                "size_bytes": 1,
+            },
+            {
+                "id": "python-plane",
+                "kind": "python-wheel",
+                "path": "python/a.whl",
+                "sha256": "2" * 64,
+                "size_bytes": 1,
+            },
+            {
+                "id": "workspace",
+                "kind": "static-web-bundle",
+                "path": "workspace/workspace.tar.gz",
+                "sha256": "3" * 64,
+                "size_bytes": 1,
+            },
         ],
     )
     assert manifest["schema_version"] == "origins.release.v1"
-    assert manifest["source"] == {"repository": "jaydumisuni/origins-factory", "commit": "a" * 40, "clean": True}
+    assert manifest["source"] == {
+        "repository": "jaydumisuni/origins-factory",
+        "commit": "a" * 40,
+        "clean": True,
+    }
     assert manifest["target"] == {"os": "linux", "arch": "x86_64", "libc": "gnu"}
     assert manifest["build_environment"] == _build_tools()
     assert manifest["runtime"]["health"]["path"] == "/v1/health"
@@ -180,3 +209,31 @@ def test_assemble_refuses_existing_release_identity(tmp_path: Path) -> None:
     release.assemble_release(**kwargs)
     with pytest.raises(release.ReleaseError, match="already exists"):
         release.assemble_release(**kwargs)
+
+
+def test_archive_verifier_rejects_path_traversal(tmp_path: Path) -> None:
+    archive_path = tmp_path / "bad.tar.gz"
+    with tarfile.open(archive_path, "w:gz") as archive:
+        payload = b"bad"
+        info = tarfile.TarInfo("../escape")
+        info.size = len(payload)
+        archive.addfile(info, io.BytesIO(payload))
+    with tarfile.open(archive_path, "r:gz") as archive:
+        with pytest.raises(proof.ProofError, match="unsafe path"):
+            proof.safe_members(archive)
+
+
+def test_checksum_verifier_rejects_wrong_digest_and_name(tmp_path: Path) -> None:
+    archive = tmp_path / "release.tar.gz"
+    archive.write_bytes(b"release")
+    sidecar = tmp_path / "release.sha256"
+    sidecar.write_text(f"{'0' * 64}  {archive.name}\n", encoding="utf-8")
+    with pytest.raises(proof.ProofError, match="does not match"):
+        proof.verify_checksum(archive, sidecar)
+
+    sidecar.write_text(
+        f"{proof.sha256_file(archive)}  another.tar.gz\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(proof.ProofError, match="malformed or names another"):
+        proof.verify_checksum(archive, sidecar)
