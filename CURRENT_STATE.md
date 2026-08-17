@@ -1,15 +1,16 @@
 # Origins Factory — Current State
 
 **Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
-**Merged checkpoint:** Phase 6 / PR #17 / `9a9f05a984b0ba5fd2edd8e8c0b27b5645117697`
-**Active phase:** Phase 7 — capability evolution recovery
-**Implementation status:** Phase 7 not started
+**Merged checkpoint:** Phase 7 / PR #19 / `2f93f79f78502959fd09b50350b878ab659fee84`
+**Active phase:** Phase 8 — Custom OS consumption and later Ptah
+**Implementation status:** Phase 7 shipped and proven; Phase 8 not started
 **Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`
 **Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`
+**Phase-7 proof:** `proof/phase7-capability-evolution-freeze.md`
 
 ## Completed authority — do not rebuild
 
-Origins PRs #11–#17 are merged authority. Phase 6 is now part of `main` and closes the canonical device read-only integration vertical.
+Origins PRs #11–#19 are merged authority. Phase 7 is now part of `main` and closes the canonical controlled capability-evolution vertical.
 
 Ownership remains separate:
 
@@ -17,13 +18,94 @@ Ownership remains separate:
 - AgentOps — semantic Operation/approval truth;
 - CodeOps — repository engineering/provider routing;
 - Sergeant — independent engineering verdicts;
-- Origins/originsd — Workspace/Repository/Session/native application/Artifact mechanical truth;
+- Origins/originsd — Workspace/Repository/Session/native application/Artifact, canary, Generation, rollback and Mission-resume mechanical truth;
 - Oracle — browser and reviewed remote workstation transport;
 - Lumi — acquisition/queue/resume truth;
 - TECHGUYTOOL Huawei Gateway — Huawei physical-session/operation/journal truth;
 - TTG Device X-Ray — read-first device evidence/certification truth.
 
 Origins coordinates and projects these owners. It does not absorb specialist engines.
+
+## Phase 7 merged authority
+
+PR #19 merged at:
+
+```text
+2f93f79f78502959fd09b50350b878ab659fee84
+```
+
+Frozen exact candidate:
+
+```text
+2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e
+```
+
+Construction history is preserved at:
+
+```text
+archive/phase7-capability-evolution-construction
+```
+
+Owner revisions used by the exact-host proof:
+
+```text
+Hunter-AgentOps
+0eeb69027aec9d70303e724129ebf5585f373ca1
+
+hunter-codeops
+348f133cb72ab6d18a7959d4a954158f7b881068
+
+Sergeant
+22879a8c47df379d19fb8537c79b745750df4077
+```
+
+Phase 7 now provides:
+
+- evidence-backed capability-gap confirmation;
+- AgentOps-owned durable capability approval observed over MCP/RPC;
+- AgentOps-owned child capability-upgrade external Operation with no approval-triggered execution dispatch;
+- durable exact engineering-subject binding;
+- isolated/reversible CodeOps candidate construction under `review_required`;
+- independent Sergeant `PASS / NEEDS WORK / BLOCK` verdict binding;
+- canary Generation proof against the original Mission/Attempt;
+- explicit promote/rollback Generation decision;
+- persistent active-generation coordination;
+- exact pre-upgrade Mission resume token/state preservation across originsd restart;
+- loopback Phase-7 API and Workspace EVOLUTION surface that do not accept client-reasserted approval IDs or engineering subjects.
+
+Authority remains bounded:
+
+```text
+capability gate = owner_approval_required
+engineering gate = review_required
+engineering candidate_only = true
+runtime_authority_expansion = false
+AgentOps transport = mcp/rpc
+AgentOps decision tools exposed by Origins = false
+```
+
+The AgentOps MCP credential authenticates the local service caller only. Origins never treats it as owner authorization.
+
+## Phase 7 proof checkpoint
+
+All eight existing hosted Origins regression workflows passed against frozen candidate `2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e`, including Phase 7 Capability Evolution and Stage-2 Authority Containment.
+
+A separate adversarial branch differed from the frozen candidate by exactly one tests-only file and passed:
+
+```text
+12 passed in 0.10s
+```
+
+The frozen exact-host KRATOS proof returned:
+
+```text
+PHASE7_LIVE_OWNER_MCP_OK
+exitCode = 0
+```
+
+It proved real AgentOps MCP/RPC coordination, pinned CodeOps and Sergeant executable provenance, real CodeOps plan application, Sergeant `PASS` on both promote and rollback campaigns, canary Session recovery across originsd restart, exact Mission resume, no model self-approval, no production credentials and no runtime authority expansion.
+
+Full record: `proof/phase7-capability-evolution-freeze.md`.
 
 ## Phase 6 merged authority
 
@@ -106,7 +188,16 @@ available = false
 reason = PHASE6_DEVICE_WRITE_NOT_AUTHORIZED
 ```
 
-Phase 6 does not gain write authority because later Huawei lease/executor code exists.
+Phase 7 does not grant physical-device write authority or activate the dormant Stage-2 runtime merely because capability evolution exists.
+
+### Ptah runtime
+
+```text
+available = false
+reason = PTAH_RUNTIME_NOT_AUTHORIZED
+```
+
+Phase 8 may consume accepted Ptah vocabulary and later replace interim Providers only where separately authorised and proven. It must not silently rebuild or activate Ptah runtime.
 
 ### Current physical Huawei attachment
 
@@ -114,4 +205,12 @@ Historical VOG/P30 recovery evidence remains lineage and predates sealed-bundle 
 
 ## Exact next action
 
-Recover Phase 7 capability-evolution authority and evidence before implementation. Do not reopen Phase 6 unless new evidence proves a regression.
+Recover the **Phase 8 — Custom OS consumption and later Ptah** implementation authority before changing source:
+
+1. identify the canonical custom-OS repository, release/packaging owner and current integration state;
+2. recover any existing Origins packaging/install/launcher contracts and do not duplicate them;
+3. define the smallest pinned-release consumption boundary that installs/launches Origins without copying its source into the OS;
+4. preserve Origins as an independently versioned product with exact release provenance, rollback and health proof;
+5. keep Ptah runtime unavailable until a separate authorised/proven Provider replacement exists.
+
+Do not reopen Phases 1–7 unless new reproducible evidence proves a regression.
