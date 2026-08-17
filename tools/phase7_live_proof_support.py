@@ -172,7 +172,37 @@ def init_repo(path: Path, *, initial_value: str, replacement_value: str, strict:
             "[project]\nname='origins-phase7-proof'\nversion='0.0.0'\nrequires-python='>=3.10'\n",
             encoding="utf-8",
         )
-        tracked.extend(["tests/test_capability.py", "pyproject.toml"])
+        (path / "README.md").write_text(
+            "# Origins Phase 7 Proof\n\n"
+            "Disposable exact-host repository used to verify controlled capability evolution.\n",
+            encoding="utf-8",
+        )
+        workflows = path / ".github" / "workflows"
+        workflows.mkdir(parents=True)
+        (workflows / "ci.yml").write_text(
+            "name: Phase 7 proof fixture\n\n"
+            "on:\n"
+            "  push:\n"
+            "  pull_request:\n\n"
+            "jobs:\n"
+            "  test:\n"
+            "    runs-on: ubuntu-latest\n"
+            "    steps:\n"
+            "      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n"
+            "      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065\n"
+            "        with:\n"
+            "          python-version: '3.12'\n"
+            "      - run: python -m pytest -q\n",
+            encoding="utf-8",
+        )
+        tracked.extend(
+            [
+                "tests/test_capability.py",
+                "pyproject.toml",
+                "README.md",
+                ".github/workflows/ci.yml",
+            ]
+        )
     run(["git", "init", "-b", "main"], cwd=path)
     run(["git", "config", "user.name", "Origins Phase 7 Proof"], cwd=path)
     run(["git", "config", "user.email", "origins-phase7-proof@invalid.local"], cwd=path)
