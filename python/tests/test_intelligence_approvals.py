@@ -228,7 +228,7 @@ def test_engineering_attempt_evidence_is_compact_owner_schema() -> None:
     mount, stores, temporary = mounted_agentops()
     try:
         stored = mount.record_engineering_attempt(
-            subject={"operation_id": "op-42", "repository_id": "repo-7", "provider_id": "local-coder", "mode": "quick_edit", "apply_plan": False},
+            subject={"operation_id": "op-42", "repository_id": "repo-7", "provider_id": "local-coder", "mode": "quick_edit", "apply_plan": True},
             status="completed",
             verdict="PASS",
             recommendation="complete_candidate",
