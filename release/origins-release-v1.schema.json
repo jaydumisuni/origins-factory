@@ -47,13 +47,16 @@
     "build_environment": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["rustc", "cargo", "python", "node", "npm"],
+      "required": ["rustc", "cargo", "python", "pip", "setuptools", "node", "npm", "glibc"],
       "properties": {
         "rustc": {"type": "string", "minLength": 1},
         "cargo": {"type": "string", "minLength": 1},
         "python": {"type": "string", "minLength": 1},
+        "pip": {"type": "string", "minLength": 1},
+        "setuptools": {"type": "string", "minLength": 1},
         "node": {"type": "string", "minLength": 1},
-        "npm": {"type": "string", "minLength": 1}
+        "npm": {"type": "string", "minLength": 1},
+        "glibc": {"type": "string", "pattern": "^glibc [0-9].+$"}
       }
     },
     "artifacts": {
@@ -111,8 +114,9 @@
         "python_requires": {"const": ">=3.10"},
         "python_dependencies": {
           "type": "array",
-          "items": {"type": "string"},
-          "contains": {"const": "websockets==16.1.1"}
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {"const": "websockets==16.1.1"}
         },
         "activation_owner": {"const": "consumer"},
         "rollback_owner": {"const": "consumer"}
