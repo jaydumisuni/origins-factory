@@ -8,6 +8,7 @@ on:
       - "tools/build_phase8_release.py"
       - "tools/prove_phase8_release.py"
       - "python/tests/test_phase8_release.py"
+      - "python/tests/test_phase8_release_schema_contract.py"
       - "rust/**"
       - "python/**"
       - "workspace/**"
@@ -19,6 +20,7 @@ on:
       - "tools/build_phase8_release.py"
       - "tools/prove_phase8_release.py"
       - "python/tests/test_phase8_release.py"
+      - "python/tests/test_phase8_release_schema_contract.py"
       - "rust/**"
       - "python/**"
       - "workspace/**"
@@ -77,10 +79,18 @@ jobs:
           "pip==26.2.1" "setuptools==84.0.0" "pytest==9.1.1"
 
       - name: Compile release tooling and tests
-        run: python -m py_compile tools/build_phase8_release.py tools/prove_phase8_release.py python/tests/test_phase8_release.py
+        run: >-
+          python -m py_compile
+          tools/build_phase8_release.py
+          tools/prove_phase8_release.py
+          python/tests/test_phase8_release.py
+          python/tests/test_phase8_release_schema_contract.py
 
       - name: Run canonical release contract and adversarial tests
-        run: python -m pytest -q python/tests/test_phase8_release.py
+        run: >-
+          python -m pytest -q
+          python/tests/test_phase8_release.py
+          python/tests/test_phase8_release_schema_contract.py
 
       - name: Build exact-head portable candidate twice
         shell: bash

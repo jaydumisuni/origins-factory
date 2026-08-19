@@ -1,6 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://thetechguyds.com/schemas/origins.release.v1.json",
+  "$comment": "Structural validation is necessary but not sufficient: consumers must also enforce the Phase 8A verifier-equivalent cross-field provenance, digest, and runtime proof rules.",
   "title": "Origins Factory portable release manifest v1",
   "type": "object",
   "additionalProperties": false,
@@ -22,8 +23,11 @@
     "schema_version": {"const": "origins.release.v1"},
     "product": {"const": "origins-factory"},
     "product_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-    "release_id": {"type": "string", "minLength": 20},
-    "status": {"enum": ["candidate", "accepted"]},
+    "release_id": {
+      "type": "string",
+      "pattern": "^origins-factory-[0-9]+\\.[0-9]+\\.[0-9]+-linux-x86_64-[0-9a-f]{12}$"
+    },
+    "status": {"const": "candidate"},
     "source": {
       "type": "object",
       "additionalProperties": false,
@@ -62,14 +66,56 @@
     "artifacts": {
       "type": "array",
       "minItems": 3,
+      "maxItems": 3,
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "originsd"},
+              "kind": {"const": "native-binary"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "python-plane"},
+              "kind": {"const": "python-wheel"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "workspace"},
+              "kind": {"const": "static-web-bundle"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ],
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "kind", "path", "sha256", "size_bytes"],
         "properties": {
-          "id": {"type": "string", "minLength": 1},
+          "id": {"enum": ["originsd", "python-plane", "workspace"]},
           "kind": {"enum": ["native-binary", "python-wheel", "static-web-bundle"]},
-          "path": {"type": "string", "pattern": "^[^/].+$"},
+          "path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!\\.?$)(?!\\.\\.(?:/|$))(?!.*?/\\.\\.(?:/|$))(?!.*\\\\).+$"
+          },
           "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "size_bytes": {"type": "integer", "minimum": 1}
         }
