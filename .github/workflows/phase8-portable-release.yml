@@ -146,6 +146,7 @@ jobs:
           git diff --check origin/main...HEAD
 
   # PHASE8_REVIEW_FIX_ONCE_START
+  # bounded trigger: apply reviewed correction through a real push event
   apply-review-fixes-once:
     if: github.event_name == 'push' && github.ref == 'refs/heads/build/phase8-portable-release'
     runs-on: ubuntu-24.04
