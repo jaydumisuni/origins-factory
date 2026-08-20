@@ -269,3 +269,65 @@ def test_tree_digest_changes_on_byte_or_mode_mutation(tmp_path: Path) -> None:
     binary.write_bytes(b"one")
     binary.chmod(0o644)
     assert proof.tree_digest(root) != original
+
+
+def test_host_glibc_provenance_uses_gnu_loader(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(
+        release,
+        "run",
+        lambda args, cwd: "ldd (Ubuntu GLIBC 2.39-0ubuntu8.7) 2.39\nCopyright",
+    )
+    assert release.host_glibc_version(tmp_path) == "2.39"
+
+    monkeypatch.setattr(release, "run", lambda args, cwd: "musl libc (x86_64)\nVersion 1.2.5")
+    with pytest.raises(release.ReleaseError, match="GNU glibc build provenance"):
+        release.host_glibc_version(tmp_path)
+
+
+def test_runtime_smoke_redirects_child_output_to_files(monkeypatch, tmp_path: Path) -> None:
+    release_root = tmp_path / "release"
+    release_root.mkdir()
+    binary = release_root / "originsd"
+    binary.write_bytes(b"candidate")
+    binary.chmod(0o755)
+    consumer_root = tmp_path / "consumer"
+    captured: list[dict[str, object]] = []
+
+    class FakeProcess:
+        def __init__(self) -> None:
+            self.returncode: int | None = None
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self) -> None:
+            self.returncode = 0
+
+        def wait(self, timeout=None):
+            self.returncode = 0
+            return 0
+
+        def kill(self) -> None:
+            self.returncode = -9
+
+    def fake_popen(*args, **kwargs):
+        captured.append(kwargs)
+        return FakeProcess()
+
+    def fake_wait_health(port, process, *, timeout=12.0):
+        data_dir = consumer_root / "data"
+        (data_dir / "origins.sqlite3").write_bytes(b"db")
+        (data_dir / "local-token.txt").write_text("token", encoding="utf-8")
+        return {"journal": {"ok": True}}
+
+    monkeypatch.setattr(proof.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(proof, "wait_health", fake_wait_health)
+
+    result = proof.runtime_smoke(binary, release_root, consumer_root)
+    assert result["restart_health"] is True
+    assert len(captured) == 2
+    for invocation in captured:
+        assert invocation["stdout"] is not proof.subprocess.PIPE
+        assert invocation["stderr"] is not proof.subprocess.PIPE
+        assert hasattr(invocation["stdout"], "write")
+        assert hasattr(invocation["stderr"], "write")

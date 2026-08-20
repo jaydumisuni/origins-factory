@@ -286,11 +286,20 @@ def wait_health(port: int, process: subprocess.Popen[bytes], *, timeout: float =
     raise ProofError(f"released originsd did not become healthy: {last}")
 
 
+def file_tail(path: Path, *, max_bytes: int = 2000) -> str:
+    with path.open("rb") as handle:
+        handle.seek(0, os.SEEK_END)
+        size = handle.tell()
+        handle.seek(max(0, size - max_bytes))
+        return handle.read(max_bytes).decode("utf-8", errors="replace")
+
+
 def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict[str, object]:
     data_dir = consumer_root / "data"
     workspace_root = consumer_root / "workspaces"
     artifact_root = consumer_root / "artifact-inputs"
-    for path in (data_dir, workspace_root, artifact_root):
+    log_root = consumer_root / "runtime-logs"
+    for path in (data_dir, workspace_root, artifact_root, log_root):
         path.mkdir(parents=True, exist_ok=True)
     if data_dir.is_relative_to(release_root):
         raise ProofError("runtime data directory is inside the immutable release root")
@@ -309,27 +318,48 @@ def runtime_smoke(binary: Path, release_root: Path, consumer_root: Path) -> dict
                 "ORIGINS_ARTIFACT_ROOTS": str(artifact_root),
             }
         )
-        process = subprocess.Popen(
-            [str(binary)],
-            cwd=consumer_root,
-            env=env,
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        try:
-            health = wait_health(port, process)
-        finally:
-            if process.poll() is None:
-                process.terminate()
-                try:
-                    process.wait(timeout=8)
-                except subprocess.TimeoutExpired as exc:
-                    process.kill()
-                    process.wait(timeout=5)
-                    raise ProofError("released originsd did not shut down cleanly") from exc
+        stdout_path = log_root / f"originsd-{attempt + 1}.stdout.log"
+        stderr_path = log_root / f"originsd-{attempt + 1}.stderr.log"
+        health: dict[str, object] | None = None
+        health_error: ProofError | None = None
+        shutdown_error: str | None = None
+        with stdout_path.open("wb") as stdout_handle, stderr_path.open("wb") as stderr_handle:
+            process = subprocess.Popen(
+                [str(binary)],
+                cwd=consumer_root,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+            )
+            try:
+                health = wait_health(port, process)
+            except ProofError as exc:
+                health_error = exc
+            finally:
+                if process.poll() is None:
+                    process.terminate()
+                    try:
+                        process.wait(timeout=8)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            shutdown_error = "released originsd did not stop after kill"
+                        else:
+                            shutdown_error = "released originsd did not shut down cleanly"
+        stderr_tail = file_tail(stderr_path)
+        if health_error is not None:
+            raise ProofError(f"{health_error}; stderr_tail={stderr_tail!r}") from health_error
+        if shutdown_error is not None:
+            raise ProofError(f"{shutdown_error}; stderr_tail={stderr_tail!r}")
         if process.returncode != 0:
-            raise ProofError(f"released originsd shutdown returned {process.returncode}")
+            raise ProofError(
+                f"released originsd shutdown returned {process.returncode}; stderr_tail={stderr_tail!r}"
+            )
+        if health is None:
+            raise ProofError("runtime health proof returned no payload")
         if attempt == 0:
             first_health = health
         else:

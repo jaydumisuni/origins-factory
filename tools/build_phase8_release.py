@@ -7,6 +7,7 @@ import hashlib
 import importlib.metadata
 import json
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -101,12 +102,22 @@ def _distribution_version(name: str) -> str:
         raise ReleaseError(f"required Python build distribution is unavailable: {name}") from exc
 
 
-def build_environment(root: Path) -> dict[str, str]:
-    libc_name, libc_version = platform.libc_ver()
-    if libc_name.lower() != "glibc" or not libc_version:
+def host_glibc_version(root: Path) -> str:
+    output = run(["ldd", "--version"], cwd=root)
+    first = output.splitlines()[0].strip() if output else ""
+    lowered = first.casefold()
+    if "glibc" not in lowered and "gnu libc" not in lowered:
         raise ReleaseError(
-            f"Phase 8A GNU release requires observable glibc build provenance, got {libc_name!r} {libc_version!r}"
+            f"Phase 8A GNU release requires observable GNU glibc build provenance, got {first!r}"
         )
+    match = re.search(r"([0-9]+\.[0-9]+(?:\.[0-9]+)*)\s*$", first)
+    if match is None:
+        raise ReleaseError(f"could not parse GNU glibc version from ldd output: {first!r}")
+    return match.group(1)
+
+
+def build_environment(root: Path) -> dict[str, str]:
+    libc_version = host_glibc_version(root)
     return {
         "rustc": run(["rustc", "--version"], cwd=root),
         "cargo": run(["cargo", "--version"], cwd=root),
