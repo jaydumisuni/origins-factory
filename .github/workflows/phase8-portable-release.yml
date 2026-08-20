@@ -170,6 +170,12 @@ jobs:
           python -m pip install --disable-pip-version-check "pytest==9.1.1"
           python -m py_compile tools/build_phase8_release.py tools/prove_phase8_release.py python/tests/test_phase8_release.py
           python -m pytest -q python/tests/test_phase8_release.py python/tests/test_phase8_release_schema_contract.py
+          python - <<'PY'
+          from pathlib import Path
+          for name in (".github/workflows/phase8-portable-release.yml", "python/tests/test_phase8_release.py"):
+              path = Path(name)
+              path.write_text(path.read_text(encoding="utf-8").rstrip() + "\n", encoding="utf-8")
+          PY
           git diff --check
 
       - name: Commit self-cleaned correction
