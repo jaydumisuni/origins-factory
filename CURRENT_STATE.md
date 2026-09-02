@@ -1,18 +1,21 @@
 # Origins Factory — Current State
 
-**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`
-**Merged checkpoint:** Phase 7 / PR #19 / `2f93f79f78502959fd09b50350b878ab659fee84`
-**Active phase:** Phase 8 — Custom OS consumption and later Ptah
-**Implementation status:** Phase 7 shipped and proven; Phase 8 not started
-**Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`
-**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`
-**Phase-7 proof:** `proof/phase7-capability-evolution-freeze.md`
+**Architecture:** `docs/ORIGINS_FACTORY_PRODUCT_PLAN.md`  
+**Merged checkpoint:** Phase 8A / PR #21 / `df0bbcef9da640d93518be87356733851ae8451e`  
+**Frozen/proven product head:** `108c4fef9777bb8c1d25d39f372423ded6159ced`  
+**Active phase:** Phase 8 — Custom OS consumption and later Ptah  
+**Current slice:** Phase 8B — consume the pinned Origins release in the custom OS  
+**Implementation status:** Phase 8A shipped and proven; custom-OS consumption is not yet implemented; Ptah runtime remains unauthorized  
+**Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`  
+**Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`  
+**Phase-7 proof:** `proof/phase7-capability-evolution-freeze.md`  
+**Phase-8A proof:** `proof/phase8a-portable-release-freeze.md`
 
 ## Completed authority — do not rebuild
 
-Origins PRs #11–#19 are merged authority. Phase 7 is now part of `main` and closes the canonical controlled capability-evolution vertical.
+Origins PRs #11–#21 are merged authority. Phase 8A is part of `main` and closes the portable pinned-release contract slice.
 
-Ownership remains separate:
+Origins continues to coordinate existing owners rather than absorb them:
 
 - Hunter/Pete — intelligence and model routing;
 - AgentOps — semantic Operation/approval truth;
@@ -22,153 +25,80 @@ Ownership remains separate:
 - Oracle — browser and reviewed remote workstation transport;
 - Lumi — acquisition/queue/resume truth;
 - TECHGUYTOOL Huawei Gateway — Huawei physical-session/operation/journal truth;
-- TTG Device X-Ray — read-first device evidence/certification truth.
+- TTG Device X-Ray — read-first device evidence/certification truth;
+- THETECHGUY Software Builder — final packaging/signing/release authority;
+- Ptah Space — future mechanical substrate, not currently runtime-authorized.
 
-Origins coordinates and projects these owners. It does not absorb specialist engines.
+## Phase 8A merged authority
 
-## Phase 7 merged authority
-
-PR #19 merged at:
-
-```text
-2f93f79f78502959fd09b50350b878ab659fee84
-```
-
-Frozen exact candidate:
+PR #21 exact product head:
 
 ```text
-2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e
+108c4fef9777bb8c1d25d39f372423ded6159ced
 ```
 
-Construction history is preserved at:
+Merged to `main` at:
 
 ```text
-archive/phase7-capability-evolution-construction
+df0bbcef9da640d93518be87356733851ae8451e
 ```
 
-Owner revisions used by the exact-host proof:
+Frozen product tree:
 
 ```text
-Hunter-AgentOps
-0eeb69027aec9d70303e724129ebf5585f373ca1
-
-hunter-codeops
-348f133cb72ab6d18a7959d4a954158f7b881068
-
-Sergeant
-22879a8c47df379d19fb8537c79b745750df4077
+48a682ea212fcefa4bfff61a9fcafca28577cb3d
 ```
 
-Phase 7 now provides:
+Phase 8A now provides `origins.release.v1`, a bounded Linux x86_64 candidate release contract containing:
 
-- evidence-backed capability-gap confirmation;
-- AgentOps-owned durable capability approval observed over MCP/RPC;
-- AgentOps-owned child capability-upgrade external Operation with no approval-triggered execution dispatch;
-- durable exact engineering-subject binding;
-- isolated/reversible CodeOps candidate construction under `review_required`;
-- independent Sergeant `PASS / NEEDS WORK / BLOCK` verdict binding;
-- canary Generation proof against the original Mission/Attempt;
-- explicit promote/rollback Generation decision;
-- persistent active-generation coordination;
-- exact pre-upgrade Mission resume token/state preservation across originsd restart;
-- loopback Phase-7 API and Workspace EVOLUTION surface that do not accept client-reasserted approval IDs or engineering subjects.
+- native `originsd` artifact;
+- Python integration wheel;
+- Workspace static bundle;
+- exact source and build-environment provenance;
+- SHA-256/size-bound artifact records;
+- deterministic archive/checksum construction;
+- external persistent data-dir requirement;
+- health, restart and persistence proof;
+- independent archive/manifest/artifact/wheel/Workspace/runtime verification;
+- source-derived Python runtime metadata bound from `python/pyproject.toml` into the manifest and checked against wheel METADATA.
 
-Authority remains bounded:
+The release remains candidate-only. Phase 8A does **not** claim Prime/custom-OS installation, final Software Builder release, production acceptance, Ptah Prime-native integration, or runtime authority expansion.
+
+## Phase 8A proof checkpoint
+
+Exact-head workflows on `108c4fef...`:
 
 ```text
-capability gate = owner_approval_required
-engineering gate = review_required
-engineering candidate_only = true
-runtime_authority_expansion = false
-AgentOps transport = mcp/rpc
-AgentOps decision tools exposed by Origins = false
+Origins Daemon Foundation         PASS  run 33625215701
+Origins Contract Spine            PASS  run 33625215702
+Origins Phase 3 Workspace         PASS  run 33625215693
+Stage-2 Authority Containment     PASS  run 33625215669
+Phase 8 Portable Release          PASS  run 33625215653
 ```
 
-The AgentOps MCP credential authenticates the local service caller only. Origins never treats it as owner authorization.
+The Phase 8 lane passed exact-head assertion, canonical/adversarial tests, deterministic double-build, independent unpack/runtime/restart proof, and clean-source verification. Stage-2 containment passed on Ubuntu and Windows.
 
-## Phase 7 proof checkpoint
+Fresh independent CodeRabbit review against exact head `108c4fef...` reported **no blocking issues** and no unresolved inline threads.
 
-All eight existing hosted Origins regression workflows passed against frozen candidate `2a4489e6a64c62a3db42dbbd4aab8fca3ea4560e`, including Phase 7 Capability Evolution and Stage-2 Authority Containment.
-
-A separate adversarial branch differed from the frozen candidate by exactly one tests-only file and passed:
+Tenfold Gen1 disposition:
 
 ```text
-12 passed in 0.10s
+campaign = origins-phase8a-runtime-metadata-integrity-v2
+freeze_binding_sha256 = dce6325c287c14c98bb0ca43cd9f4155b37f10740b07930d240c0738ff200c85
+state = SHIPPED
 ```
 
-The frozen exact-host KRATOS proof returned:
+Full record: `proof/phase8a-portable-release-freeze.md`.
 
-```text
-PHASE7_LIVE_OWNER_MCP_OK
-exitCode = 0
-```
+## Merge-history note
 
-It proved real AgentOps MCP/RPC coordination, pinned CodeOps and Sergeant executable provenance, real CodeOps plan application, Sergeant `PASS` on both promote and rollback campaigns, canary Session recovery across originsd restart, exact Mission resume, no model self-approval, no production credentials and no runtime authority expansion.
+The GitHub provider's ready-for-review GraphQL mutation failed before merge, leaving the PR's historical `draft` flag set. The exact proven tree was merged through an authorised two-parent no-ff merge commit, and GitHub records PR #21 as merged at `df0bbcef...`. The stale draft bit is historical metadata only.
 
-Full record: `proof/phase7-capability-evolution-freeze.md`.
+## Phase 7 authority retained
 
-## Phase 6 merged authority
+Phase 7 remains shipped/proven and owns the canonical controlled capability-evolution vertical. Its exact owner bindings, AgentOps/CodeOps/Sergeant proof, canary Generation, rollback and Mission-resume evidence remain frozen in `proof/phase7-capability-evolution-freeze.md`.
 
-Owner revisions frozen for the Phase-6 campaign:
-
-```text
-TECHGUYTOOL-Huawei
-fd3f7bb1587b65faaa7d37e0057683dcb07975ed
-
-TTG-Device-X-Ray
-34feb55ab937fa865726cbb22c44b09b52084114
-```
-
-Origins mounts only these Huawei Gateway commands:
-
-```text
-health
-doctor
-snapshot
-get_physical_session
-get_operation
-list_events
-verify_journal
-```
-
-Every other Gateway command is refused before network I/O. Projection fails closed unless:
-
-```text
-device_authority = none
-xray_authority = read_only
-journal_valid = true
-```
-
-The merged XRAY surface projects physical Sessions, Gateway Operations/recovery counts, endpoint observations, Device Evidence/Twin, verdicts, leases, Verification Result, Recovery Plan and sealed TTG Device X-Ray evidence. It exposes no device action control.
-
-The Phase-6 HTTP service remains loopback and GET-only for protected device projections. Mutation verbs remain `405 PHASE6_READ_ONLY`.
-
-## Phase 6 proof checkpoint
-
-Final promotion head:
-
-```text
-284b1145fac5e93edd0235c43a6d395db392e78e
-```
-
-Merge checkpoint:
-
-```text
-9a9f05a984b0ba5fd2edd8e8c0b27b5645117697
-```
-
-At the final promotion head:
-
-- all seven hosted regression workflows passed;
-- Oracle/Kratos backend + reconnect suite passed 8/8;
-- reconnect preserved physical Session ID, Gateway Operation ID, request SHA and recovery counters without mutation;
-- exact-head isolated real Chrome returned `PHASE6_WORKSPACE_UI_OK`;
-- XRAY rendered no write controls and no production credentials;
-- `device_authority=none` and `xray_authority=read_only` remained visible truth;
-- X-Ray integrity remained verified;
-- rendered screenshot SHA-256 is `9b5665285ad84d32d229b8dd55fe9bd5c6620b40221b05068e3313acd5bb24af`.
-
-See `proof/phase6-device-readonly-freeze.md`.
+Do not reopen Phase 7 unless new reproducible evidence proves a regression.
 
 ## Preserved truthful nonclaims
 
@@ -179,7 +109,7 @@ available = false
 reason = AGENTOPS_GATEWAY_LINK_CONTRACT_UNAVAILABLE
 ```
 
-Neither owner currently exposes a reversible typed semantic↔mechanical reference. Origins does not create a shadow mapping database or infer IDs from hashes. A future link belongs under owner-approved contract evolution.
+No shadow mapping database or inferred IDs are authorized.
 
 ### Device write execution
 
@@ -188,7 +118,7 @@ available = false
 reason = PHASE6_DEVICE_WRITE_NOT_AUTHORIZED
 ```
 
-Phase 7 does not grant physical-device write authority or activate the dormant Stage-2 runtime merely because capability evolution exists.
+Capability evolution and release packaging do not grant physical-device write authority.
 
 ### Ptah runtime
 
@@ -197,20 +127,17 @@ available = false
 reason = PTAH_RUNTIME_NOT_AUTHORIZED
 ```
 
-Phase 8 may consume accepted Ptah vocabulary and later replace interim Providers only where separately authorised and proven. It must not silently rebuild or activate Ptah runtime.
-
-### Current physical Huawei attachment
-
-Historical VOG/P30 recovery evidence remains lineage and predates sealed-bundle v2. No current attached Huawei target is proven in recovered device/host records, so no current-device certification or write claim is made.
+Phase 8 may consume accepted Ptah vocabulary and later replace interim Providers only where separately authorized and proven. Origins and the custom OS must not silently rebuild Ptah runtime.
 
 ## Exact next action
 
-Recover the **Phase 8 — Custom OS consumption and later Ptah** implementation authority before changing source:
+Continue with **Phase 8B — custom-OS consumption of the pinned Origins release**:
 
-1. identify the canonical custom-OS repository, release/packaging owner and current integration state;
-2. recover any existing Origins packaging/install/launcher contracts and do not duplicate them;
-3. define the smallest pinned-release consumption boundary that installs/launches Origins without copying its source into the OS;
-4. preserve Origins as an independently versioned product with exact release provenance, rollback and health proof;
-5. keep Ptah runtime unavailable until a separate authorised/proven Provider replacement exists.
+1. recover the canonical custom-OS repository, current branch/checkpoint and release/packaging authority;
+2. inspect existing installation, launcher, update, health and rollback contracts before adding anything;
+3. consume the exact pinned Origins release through `origins.release.v1` without copying Origins source into the OS;
+4. preserve exact Origins version/provenance, external persistent data, restart health and rollback;
+5. keep THETECHGUY Software Builder as final packaging/signing/release authority;
+6. keep Ptah runtime unavailable until a separate authorized/proven Provider replacement exists.
 
-Do not reopen Phases 1–7 unless new reproducible evidence proves a regression.
+Do not reopen Phases 1–8A unless new reproducible evidence proves a regression.
