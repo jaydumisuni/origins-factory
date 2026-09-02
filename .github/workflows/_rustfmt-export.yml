@@ -1,0 +1,36 @@
+name: Rustfmt Export
+
+on:
+  push:
+    branches: [tooling/rustfmt-export-02080e0b]
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Set up Rust 1.75 formatter
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install 1.75.0 --profile minimal --component rustfmt
+          rustup override set 1.75.0
+          rustfmt --version
+      - name: Format and export exact files
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path rust/Cargo.toml --all
+          echo '===INSTALLED_RS_B64_BEGIN==='
+          base64 -w0 rust/originsd/src/installed.rs
+          echo
+          echo '===INSTALLED_RS_B64_END==='
+          echo '===MAIN_RS_B64_BEGIN==='
+          base64 -w0 rust/originsd/src/main.rs
+          echo
+          echo '===MAIN_RS_B64_END==='
