@@ -395,10 +395,9 @@ async fn serve_static(State(state): State<LauncherState>, uri: Uri) -> Response 
         Err(message) => return (StatusCode::BAD_REQUEST, message).into_response(),
     };
     let mut candidate = state.workspace_root.join(&relative);
-    if relative.as_os_str().is_empty() || !candidate.is_file() {
-        if candidate.extension().is_none() {
-            candidate = state.workspace_root.join("index.html");
-        }
+    if (relative.as_os_str().is_empty() || !candidate.is_file()) && candidate.extension().is_none()
+    {
+        candidate = state.workspace_root.join("index.html");
     }
     if !candidate.is_file() {
         return StatusCode::NOT_FOUND.into_response();
@@ -555,7 +554,7 @@ fn require_external_data_dir(exe_dir: &Path, data_dir: &Path) -> Result<(), Stri
             .map_err(|error| format!("resolve installed payload directory: {error}"))?;
         let resolved_data = fs::canonicalize(data_dir)
             .map_err(|error| format!("resolve installed data directory: {error}"))?;
-        if resolved_data.starts_with(&resolved_exe) {
+        if resolved_data.starts_with(resolved_exe) {
             return Err(
                 "installed Origins data directory resolves inside the application payload"
                     .to_owned(),
