@@ -1,0 +1,133 @@
+name: Origins v1 Windows Distribution
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - "workspace/**"
+      - "python/**"
+      - "release/origins.windows-payload.schema.json"
+      - "tools/build_windows_payload.py"
+      - "tools/prove_windows_payload.py"
+      - ".github/workflows/windows-v1-distribution.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-candidate-proof:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    env:
+      REVIEWED_SHA: ${{ github.event.pull_request.head.sha }}
+      BUILDER_SHA: 05586d5163dd0f6fdbf25446a216e076945cfff1
+    steps:
+      - name: Check out exact reviewed Origins revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert exact reviewed revision
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:REVIEWED_SHA) { throw "Origins checkout SHA mismatch" }
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12.10"
+
+      - name: Set up Node 24.19.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.19.0"
+
+      - name: Set up Rust 1.75
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          rustup override set 1.75.0
+          rustc --version
+          cargo --version
+
+      - name: Pin Python proof environment
+        shell: pwsh
+        run: python -m pip install --disable-pip-version-check "pip==26.2.1" "setuptools==84.0.0" "pytest==9.1.1" "jsonschema==4.26.0"
+
+      - name: Compile Windows tooling and run payload contract tests
+        shell: pwsh
+        run: |
+          python -m py_compile tools/build_windows_payload.py tools/prove_windows_payload.py python/tests/test_windows_payload.py
+          python -m pytest -q python/tests/test_windows_payload.py
+
+      - name: Compile and test native runtime on Windows
+        shell: pwsh
+        run: |
+          Push-Location rust
+          cargo test --locked -p originsd
+          Pop-Location
+
+      - name: Typecheck Workspace without producing source-tree build output
+        shell: pwsh
+        run: |
+          Push-Location workspace
+          npm ci
+          npm run typecheck
+          Pop-Location
+
+      - name: Build independently installable Windows candidate
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP "origins-windows-project"
+          Remove-Item $project -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $project | Out-Null
+          python tools/build_windows_payload.py --output $project --expected-head $env:REVIEWED_SHA
+          python tools/prove_windows_payload.py --project $project --expected-head $env:REVIEWED_SHA
+          "ORIGINS_WINDOWS_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Prove installed launcher, bootstrap, health and restart persistence
+        shell: pwsh
+        run: |
+          $launcher = Join-Path $env:ORIGINS_WINDOWS_PROJECT "dist\Origins Factory.exe"
+          & $launcher --probe
+          if ($LASTEXITCODE -ne 0) { throw "Installed Origins runtime probe failed: $LASTEXITCODE" }
+
+      - name: Check out exact Software Builder authority
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: jaydumisuni/thetechguy-software-builder
+          ref: ${{ env.BUILDER_SHA }}
+          path: .builder-authority
+          persist-credentials: false
+
+      - name: Assert exact Software Builder revision
+        shell: pwsh
+        run: |
+          Push-Location .builder-authority
+          if ((git rev-parse HEAD).Trim() -ne $env:BUILDER_SHA) { throw "Builder checkout SHA mismatch" }
+          Pop-Location
+
+      - name: Prepare Builder-owned Python environment only
+        shell: pwsh
+        run: .\.builder-authority\scripts\ensure_builder_python_env.ps1 -NoPrompt
+
+      - name: Package exact Origins payload through THETECHGUY Software Builder
+        shell: pwsh
+        run: .\.builder-authority\scripts\create_windows_gui_installer_package.ps1 -ProjectPath $env:ORIGINS_WINDOWS_PROJECT -SkipZip
+
+      - name: Independently prove Builder copied exact candidate bytes
+        shell: pwsh
+        run: |
+          $report = Join-Path $env:ORIGINS_WINDOWS_PROJECT "build_config\thetechguy.windows-dev-installer.json"
+          python tools/prove_windows_payload.py --project $env:ORIGINS_WINDOWS_PROJECT --expected-head $env:REVIEWED_SHA --builder-report $report
+
+      - name: Prove Origins source checkout remained clean
+        shell: pwsh
+        run: |
+          Remove-Item .builder-authority -Recurse -Force -ErrorAction SilentlyContinue
+          if ((git rev-parse HEAD).Trim() -ne $env:REVIEWED_SHA) { throw "Origins HEAD moved" }
+          if (git status --porcelain) { throw "Origins source checkout is dirty after Windows proof" }
+          git diff --check origin/main...HEAD

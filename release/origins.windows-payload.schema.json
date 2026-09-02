@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thetechguyds.com/schemas/origins.windows-payload.v1.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "product", "product_version", "status", "source", "target", "runtime", "builder", "files", "claim_boundary"],
+  "properties": {
+    "schema_version": {"const": "origins.windows-payload.v1"},
+    "product": {"const": "origins-factory"},
+    "product_version": {"type": "string", "minLength": 1},
+    "status": {"const": "candidate"},
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "commit", "clean"],
+      "properties": {
+        "repository": {"const": "jaydumisuni/origins-factory"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "clean": {"const": true}
+      }
+    },
+    "target": {
+      "type": "object", "additionalProperties": false,
+      "required": ["os", "arch"],
+      "properties": {"os": {"const": "windows"}, "arch": {"const": "x86_64"}}
+    },
+    "runtime": {
+      "type": "object", "additionalProperties": false,
+      "required": ["launcher", "daemon", "workspace", "data_root", "loopback_only", "token_exposed_to_browser", "bootstrap", "restart_persistence"],
+      "properties": {
+        "launcher": {"const": "Origins Factory.exe"},
+        "daemon": {"const": "originsd.exe"},
+        "workspace": {"const": "workspace/index.html"},
+        "data_root": {"const": "%LOCALAPPDATA%\\THETECHGUY\\Origins Factory"},
+        "loopback_only": {"const": true},
+        "token_exposed_to_browser": {"const": false},
+        "bootstrap": {"const": "one-time-fragment-nonce+httponly-loopback-session"},
+        "restart_persistence": {"const": true}
+      }
+    },
+    "builder": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "commit", "packaging_owner", "payload_copy_must_match", "signing_owner"],
+      "properties": {
+        "repository": {"const": "jaydumisuni/thetechguy-software-builder"},
+        "commit": {"const": "05586d5163dd0f6fdbf25446a216e076945cfff1"},
+        "packaging_owner": {"const": "THETECHGUY Software Builder"},
+        "payload_copy_must_match": {"const": true},
+        "signing_owner": {"const": "THETECHGUY Software Builder"}
+      }
+    },
+    "files": {
+      "type": "array", "minItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["path", "sha256", "size_bytes"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "claim_boundary": {
+      "type": "object", "additionalProperties": false,
+      "required": ["builder_final_release_proven", "code_signed", "public_distribution_proven", "prime_installed", "ptah_integrated", "runtime_authority_expansion"],
+      "properties": {
+        "builder_final_release_proven": {"const": false},
+        "code_signed": {"const": false},
+        "public_distribution_proven": {"const": false},
+        "prime_installed": {"const": false},
+        "ptah_integrated": {"const": false},
+        "runtime_authority_expansion": {"const": false}
+      }
+    }
+  }
+}
