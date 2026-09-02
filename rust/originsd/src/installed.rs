@@ -8,8 +8,8 @@ use reqwest::{Client, Method, Url};
 use serde::Deserialize;
 use serde_json::json;
 use std::env;
-use std::future::IntoFuture;
 use std::fs;
+use std::future::IntoFuture;
 use std::net::{SocketAddr, TcpListener as StdTcpListener};
 use std::path::{Component, Path, PathBuf};
 use std::process::Stdio;
@@ -51,7 +51,10 @@ pub fn is_launcher_entrypoint() -> bool {
     }
     env::current_exe()
         .ok()
-        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
         .is_some_and(|name| name.eq_ignore_ascii_case(LAUNCHER_EXE))
 }
 
@@ -94,8 +97,8 @@ pub async fn run() -> Result<(), String> {
         local_token: Arc::<str>::from(token),
     };
 
-    let requested_ui = env::var("ORIGINS_INSTALLED_UI_BIND")
-        .unwrap_or_else(|_| DEFAULT_UI_BIND.to_owned());
+    let requested_ui =
+        env::var("ORIGINS_INSTALLED_UI_BIND").unwrap_or_else(|_| DEFAULT_UI_BIND.to_owned());
     let requested_addr: SocketAddr = requested_ui
         .parse()
         .map_err(|error| format!("invalid installed UI bind {requested_ui:?}: {error}"))?;
@@ -105,7 +108,9 @@ pub async fn run() -> Result<(), String> {
     let listener = TcpListener::bind(requested_addr)
         .await
         .map_err(|error| format!("bind installed UI: {error}"))?;
-    let local_addr = listener.local_addr().map_err(|error| format!("UI address: {error}"))?;
+    let local_addr = listener
+        .local_addr()
+        .map_err(|error| format!("UI address: {error}"))?;
     let app = launcher_router(state);
     let url = format!("http://{local_addr}/#bootstrap={nonce}");
     open_browser(&url).await;
@@ -122,7 +127,9 @@ pub async fn run() -> Result<(), String> {
             }
         }
     } else {
-        server.await.map_err(|error| format!("installed UI server: {error}"))?;
+        server
+            .await
+            .map_err(|error| format!("installed UI server: {error}"))?;
     }
     Ok(())
 }
@@ -161,7 +168,8 @@ async fn bootstrap(
         "{SESSION_COOKIE}={}; Path=/; HttpOnly; SameSite=Strict",
         state.session_id
     );
-    let mut response = Json(json!({"ok": true, "installed_proxy": true, "authenticated": true})).into_response();
+    let mut response =
+        Json(json!({"ok": true, "installed_proxy": true, "authenticated": true})).into_response();
     match HeaderValue::from_str(&cookie) {
         Ok(value) => {
             response.headers_mut().insert(header::SET_COOKIE, value);
@@ -173,47 +181,103 @@ async fn bootstrap(
 
 async fn bootstrap_status(State(state): State<LauncherState>, headers: HeaderMap) -> Response {
     let authenticated = session_matches(&headers, state.session_id.as_ref());
-    let status = if authenticated { StatusCode::OK } else { StatusCode::UNAUTHORIZED };
-    (status, Json(json!({"ok": authenticated, "installed_proxy": true, "authenticated": authenticated}))).into_response()
+    let status = if authenticated {
+        StatusCode::OK
+    } else {
+        StatusCode::UNAUTHORIZED
+    };
+    (
+        status,
+        Json(json!({"ok": authenticated, "installed_proxy": true, "authenticated": authenticated})),
+    )
+        .into_response()
 }
 
-async fn proxy_originsd_root(State(state): State<LauncherState>, request: Request<Body>) -> Response {
+async fn proxy_originsd_root(
+    State(state): State<LauncherState>,
+    request: Request<Body>,
+) -> Response {
     let base = state.daemon_base.clone();
     proxy_request(state, request, "originsd", base, "").await
 }
 
 async fn proxy_originsd(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    let path = request.uri().path().strip_prefix("/origins-api").unwrap_or("").to_owned();
+    let path = request
+        .uri()
+        .path()
+        .strip_prefix("/origins-api")
+        .unwrap_or("")
+        .to_owned();
     let base = state.daemon_base.clone();
     proxy_request(state, request, "originsd", base, &path).await
 }
 
-async fn proxy_intelligence_root(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    proxy_optional(state, request, "intelligence", "http://127.0.0.1:48710/", "").await
+async fn proxy_intelligence_root(
+    State(state): State<LauncherState>,
+    request: Request<Body>,
+) -> Response {
+    proxy_optional(
+        state,
+        request,
+        "intelligence",
+        "http://127.0.0.1:48710/",
+        "",
+    )
+    .await
 }
-async fn proxy_intelligence(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    let path = request.uri().path().strip_prefix("/origins-intelligence").unwrap_or("").to_owned();
-    proxy_optional(state, request, "intelligence", "http://127.0.0.1:48710/", &path).await
+async fn proxy_intelligence(
+    State(state): State<LauncherState>,
+    request: Request<Body>,
+) -> Response {
+    let path = request
+        .uri()
+        .path()
+        .strip_prefix("/origins-intelligence")
+        .unwrap_or("")
+        .to_owned();
+    proxy_optional(
+        state,
+        request,
+        "intelligence",
+        "http://127.0.0.1:48710/",
+        &path,
+    )
+    .await
 }
 async fn proxy_phase5_root(State(state): State<LauncherState>, request: Request<Body>) -> Response {
     proxy_optional(state, request, "phase5", "http://127.0.0.1:48720/", "").await
 }
 async fn proxy_phase5(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    let path = request.uri().path().strip_prefix("/origins-phase5").unwrap_or("").to_owned();
+    let path = request
+        .uri()
+        .path()
+        .strip_prefix("/origins-phase5")
+        .unwrap_or("")
+        .to_owned();
     proxy_optional(state, request, "phase5", "http://127.0.0.1:48720/", &path).await
 }
 async fn proxy_phase6_root(State(state): State<LauncherState>, request: Request<Body>) -> Response {
     proxy_optional(state, request, "phase6", "http://127.0.0.1:48730/", "").await
 }
 async fn proxy_phase6(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    let path = request.uri().path().strip_prefix("/origins-phase6").unwrap_or("").to_owned();
+    let path = request
+        .uri()
+        .path()
+        .strip_prefix("/origins-phase6")
+        .unwrap_or("")
+        .to_owned();
     proxy_optional(state, request, "phase6", "http://127.0.0.1:48730/", &path).await
 }
 async fn proxy_phase7_root(State(state): State<LauncherState>, request: Request<Body>) -> Response {
     proxy_optional(state, request, "phase7", "http://127.0.0.1:49327/", "").await
 }
 async fn proxy_phase7(State(state): State<LauncherState>, request: Request<Body>) -> Response {
-    let path = request.uri().path().strip_prefix("/origins-phase7").unwrap_or("").to_owned();
+    let path = request
+        .uri()
+        .path()
+        .strip_prefix("/origins-phase7")
+        .unwrap_or("")
+        .to_owned();
     proxy_optional(state, request, "phase7", "http://127.0.0.1:49327/", &path).await
 }
 
@@ -263,16 +327,25 @@ async fn proxy_request(
         Err(error) => return proxy_failure(service, format!("request body rejected: {error}")),
     };
     let mut outbound = state.client.request(method, target);
-    if let Some(value) = content_type { outbound = outbound.header("content-type", value); }
-    if let Some(value) = accept { outbound = outbound.header("accept", value); }
-    if authenticated { outbound = outbound.bearer_auth(state.local_token.as_ref()); }
-    if !body.is_empty() { outbound = outbound.body(body.to_vec()); }
+    if let Some(value) = content_type {
+        outbound = outbound.header("content-type", value);
+    }
+    if let Some(value) = accept {
+        outbound = outbound.header("accept", value);
+    }
+    if authenticated {
+        outbound = outbound.bearer_auth(state.local_token.as_ref());
+    }
+    if !body.is_empty() {
+        outbound = outbound.body(body.to_vec());
+    }
 
     let upstream = match outbound.send().await {
         Ok(response) => response,
         Err(error) => return proxy_failure(service, error.to_string()),
     };
-    let status = StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
+    let status =
+        StatusCode::from_u16(upstream.status().as_u16()).unwrap_or(StatusCode::BAD_GATEWAY);
     let content_type = upstream
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
@@ -280,8 +353,15 @@ async fn proxy_request(
         .map(str::to_owned);
     let bytes = match upstream.bytes().await {
         Ok(bytes) if bytes.len() <= MAX_PROXY_BODY => bytes,
-        Ok(_) => return proxy_failure(service, "upstream response exceeded installed proxy limit".to_owned()),
-        Err(error) => return proxy_failure(service, format!("upstream response read failed: {error}")),
+        Ok(_) => {
+            return proxy_failure(
+                service,
+                "upstream response exceeded installed proxy limit".to_owned(),
+            )
+        }
+        Err(error) => {
+            return proxy_failure(service, format!("upstream response read failed: {error}"))
+        }
     };
     let mut response = Response::new(Body::from(bytes));
     *response.status_mut() = status;
@@ -341,7 +421,9 @@ fn safe_static_path(raw: &str) -> Result<PathBuf, &'static str> {
         match component {
             Component::Normal(part) => output.push(part),
             Component::CurDir => {}
-            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return Err("invalid static path"),
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+                return Err("invalid static path")
+            }
         }
     }
     Ok(output)
@@ -353,7 +435,9 @@ fn percent_decode_path(raw: &str) -> Result<String, &'static str> {
     let mut index = 0;
     while index < bytes.len() {
         if bytes[index] == b'%' {
-            if index + 2 >= bytes.len() { return Err("invalid percent encoding"); }
+            if index + 2 >= bytes.len() {
+                return Err("invalid percent encoding");
+            }
             let high = hex_value(bytes[index + 1]).ok_or("invalid percent encoding")?;
             let low = hex_value(bytes[index + 2]).ok_or("invalid percent encoding")?;
             output.push((high << 4) | low);
@@ -376,7 +460,13 @@ fn hex_value(value: u8) -> Option<u8> {
 }
 
 fn content_type_for(path: &Path) -> &'static str {
-    match path.extension().and_then(|value| value.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+    match path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase()
+        .as_str()
+    {
         "html" => "text/html; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
@@ -396,7 +486,12 @@ fn proxy_url(mut base: Url, path: &str, query: Option<&str>) -> Result<Url, Stri
     if relative.split('/').any(|part| part == "..") {
         return Err("proxy path traversal refused".to_owned());
     }
-    base.set_path(if relative.is_empty() { "/" } else { &format!("/{relative}") });
+    let target_path = if relative.is_empty() {
+        "/".to_owned()
+    } else {
+        format!("/{relative}")
+    };
+    base.set_path(&target_path);
     base.set_query(query);
     Ok(base)
 }
@@ -415,30 +510,45 @@ fn session_matches(headers: &HeaderMap, expected: &str) -> bool {
 }
 
 fn constant_time_eq(left: &[u8], right: &[u8]) -> bool {
-    if left.len() != right.len() { return false; }
+    if left.len() != right.len() {
+        return false;
+    }
     let mut diff = 0u8;
-    for (a, b) in left.iter().zip(right.iter()) { diff |= a ^ b; }
+    for (a, b) in left.iter().zip(right.iter()) {
+        diff |= a ^ b;
+    }
     diff == 0
 }
 
 fn executable_dir() -> Result<PathBuf, String> {
     let exe = env::current_exe().map_err(|error| format!("current executable: {error}"))?;
-    exe.parent().map(Path::to_path_buf).ok_or_else(|| "installed executable has no parent directory".to_owned())
+    exe.parent()
+        .map(Path::to_path_buf)
+        .ok_or_else(|| "installed executable has no parent directory".to_owned())
 }
 
 fn require_workspace(root: &Path) -> Result<(), String> {
     if root.is_symlink() || !root.join("index.html").is_file() {
-        return Err(format!("installed Workspace missing index.html: {}", root.display()));
+        return Err(format!(
+            "installed Workspace missing index.html: {}",
+            root.display()
+        ));
     }
     Ok(())
 }
 
 fn require_external_data_dir(exe_dir: &Path, data_dir: &Path) -> Result<(), String> {
     if !data_dir.is_absolute() {
-        return Err("installed Origins data directory must be absolute and external to the payload".to_owned());
+        return Err(
+            "installed Origins data directory must be absolute and external to the payload"
+                .to_owned(),
+        );
     }
     if data_dir.starts_with(exe_dir) {
-        return Err("installed Origins data directory must remain external to the application payload".to_owned());
+        return Err(
+            "installed Origins data directory must remain external to the application payload"
+                .to_owned(),
+        );
     }
     if data_dir.exists() {
         let resolved_exe = fs::canonicalize(exe_dir)
@@ -446,7 +556,10 @@ fn require_external_data_dir(exe_dir: &Path, data_dir: &Path) -> Result<(), Stri
         let resolved_data = fs::canonicalize(data_dir)
             .map_err(|error| format!("resolve installed data directory: {error}"))?;
         if resolved_data.starts_with(&resolved_exe) {
-            return Err("installed Origins data directory resolves inside the application payload".to_owned());
+            return Err(
+                "installed Origins data directory resolves inside the application payload"
+                    .to_owned(),
+            );
         }
     }
     Ok(())
@@ -455,13 +568,19 @@ fn require_external_data_dir(exe_dir: &Path, data_dir: &Path) -> Result<(), Stri
 fn installed_data_dir() -> Result<PathBuf, String> {
     if let Some(value) = env::var_os("ORIGINS_DATA_DIR") {
         let path = PathBuf::from(value);
-        if path.as_os_str().is_empty() { return Err("ORIGINS_DATA_DIR is empty".to_owned()); }
+        if path.as_os_str().is_empty() {
+            return Err("ORIGINS_DATA_DIR is empty".to_owned());
+        }
         return Ok(path);
     }
     let base = env::var_os("LOCALAPPDATA")
         .or_else(|| env::var_os("APPDATA"))
-        .ok_or_else(|| "LOCALAPPDATA/APPDATA is unavailable for installed Origins state".to_owned())?;
-    Ok(PathBuf::from(base).join("THETECHGUY").join("Origins Factory"))
+        .ok_or_else(|| {
+            "LOCALAPPDATA/APPDATA is unavailable for installed Origins state".to_owned()
+        })?;
+    Ok(PathBuf::from(base)
+        .join("THETECHGUY")
+        .join("Origins Factory"))
 }
 
 fn local_client() -> Result<Client, String> {
@@ -507,7 +626,9 @@ async fn ensure_daemon(
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    let mut child = command.spawn().map_err(|error| format!("start originsd: {error}"))?;
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("start originsd: {error}"))?;
     if let Err(error) = wait_for_health(client, &health_url).await {
         let _ = child.kill().await;
         let _ = child.wait().await;
@@ -535,8 +656,15 @@ async fn ensure_daemon(
 async fn wait_for_health(client: &Client, url: &str) -> Result<(), String> {
     let deadline = Instant::now() + STARTUP_TIMEOUT;
     loop {
-        if health_ok(client, url).await { return Ok(()); }
-        if Instant::now() >= deadline { return Err(format!("originsd did not become healthy within {:?}", STARTUP_TIMEOUT)); }
+        if health_ok(client, url).await {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(format!(
+                "originsd did not become healthy within {:?}",
+                STARTUP_TIMEOUT
+            ));
+        }
         sleep(Duration::from_millis(150)).await;
     }
 }
@@ -547,7 +675,11 @@ async fn health_ok(client: &Client, url: &str) -> bool {
             .json::<serde_json::Value>()
             .await
             .ok()
-            .is_some_and(|value| value.get("ok") == Some(&serde_json::Value::Bool(true)) && value.get("service") == Some(&serde_json::Value::String("originsd".to_owned()))),
+            .is_some_and(|value| {
+                value.get("ok") == Some(&serde_json::Value::Bool(true))
+                    && value.get("service")
+                        == Some(&serde_json::Value::String("originsd".to_owned()))
+            }),
         _ => false,
     }
 }
@@ -559,16 +691,24 @@ async fn daemon_matches_data_root(client: &Client, daemon_addr: SocketAddr, toke
             .json::<serde_json::Value>()
             .await
             .ok()
-            .and_then(|value| value.get("capabilities").and_then(serde_json::Value::as_array).map(|_| ()))
+            .and_then(|value| {
+                value
+                    .get("capabilities")
+                    .and_then(serde_json::Value::as_array)
+                    .map(|_| ())
+            })
             .is_some(),
         _ => false,
     }
 }
 
 fn read_local_token(data_dir: &Path) -> Result<String, String> {
-    let value = fs::read_to_string(data_dir.join(TOKEN_FILE)).map_err(|error| format!("read installed token: {error}"))?;
+    let value = fs::read_to_string(data_dir.join(TOKEN_FILE))
+        .map_err(|error| format!("read installed token: {error}"))?;
     let token = value.trim().to_owned();
-    if token.is_empty() { return Err("installed token file is empty".to_owned()); }
+    if token.is_empty() {
+        return Err("installed token file is empty".to_owned());
+    }
     Ok(token)
 }
 
@@ -589,29 +729,45 @@ async fn open_browser(url: &str) {
 }
 
 fn reserve_loopback_port() -> Result<u16, String> {
-    let listener = StdTcpListener::bind("127.0.0.1:0").map_err(|error| format!("reserve loopback port: {error}"))?;
-    listener.local_addr().map(|addr| addr.port()).map_err(|error| format!("reserved port address: {error}"))
+    let listener = StdTcpListener::bind("127.0.0.1:0")
+        .map_err(|error| format!("reserve loopback port: {error}"))?;
+    listener
+        .local_addr()
+        .map(|addr| addr.port())
+        .map_err(|error| format!("reserved port address: {error}"))
 }
 
 async fn run_probe() -> Result<(), String> {
     let exe_dir = executable_dir()?;
     let workspace_root = exe_dir.join("workspace");
     require_workspace(&workspace_root)?;
-    let probe_root = env::temp_dir().join(format!("origins-installed-probe-{}", Uuid::new_v4().simple()));
+    let probe_root = env::temp_dir().join(format!(
+        "origins-installed-probe-{}",
+        Uuid::new_v4().simple()
+    ));
     fs::create_dir_all(&probe_root).map_err(|error| format!("create probe root: {error}"))?;
     let client = local_client()?;
 
     let first_port = reserve_loopback_port()?;
-    let first_addr: SocketAddr = format!("127.0.0.1:{first_port}").parse().map_err(|error| format!("probe bind: {error}"))?;
-    let mut first = ensure_daemon(&client, &exe_dir, &probe_root, first_addr).await?
+    let first_addr: SocketAddr = format!("127.0.0.1:{first_port}")
+        .parse()
+        .map_err(|error| format!("probe bind: {error}"))?;
+    let mut first = ensure_daemon(&client, &exe_dir, &probe_root, first_addr)
+        .await?
         .ok_or_else(|| "probe unexpectedly reused an existing daemon".to_owned())?;
     let token_before = read_local_token(&probe_root)?;
     exercise_installed_proxy(&client, &workspace_root, first_addr, token_before.clone()).await?;
 
-    let mismatched_root = env::temp_dir().join(format!("origins-installed-mismatch-{}", Uuid::new_v4().simple()));
-    fs::create_dir_all(&mismatched_root).map_err(|error| format!("create mismatch probe root: {error}"))?;
+    let mismatched_root = env::temp_dir().join(format!(
+        "origins-installed-mismatch-{}",
+        Uuid::new_v4().simple()
+    ));
+    fs::create_dir_all(&mismatched_root)
+        .map_err(|error| format!("create mismatch probe root: {error}"))?;
     match ensure_daemon(&client, &exe_dir, &mismatched_root, first_addr).await {
-        Err(error) if error.contains("cannot be bound to the intended data root") || error.contains("does not belong to the intended data root") => {}
+        Err(error)
+            if error.contains("cannot be bound to the intended data root")
+                || error.contains("does not belong to the intended data root") => {}
         Ok(Some(mut unexpected)) => {
             let _ = unexpected.kill().await;
             let _ = first.kill().await;
@@ -621,7 +777,9 @@ async fn run_probe() -> Result<(), String> {
         Ok(None) => {
             let _ = first.kill().await;
             let _ = fs::remove_dir_all(&mismatched_root);
-            return Err("installed Origins reused an occupied daemon with the wrong data root".to_owned());
+            return Err(
+                "installed Origins reused an occupied daemon with the wrong data root".to_owned(),
+            );
         }
         Err(error) => {
             let _ = first.kill().await;
@@ -631,12 +789,18 @@ async fn run_probe() -> Result<(), String> {
     }
     let _ = fs::remove_dir_all(&mismatched_root);
 
-    first.kill().await.map_err(|error| format!("stop first probe daemon: {error}"))?;
+    first
+        .kill()
+        .await
+        .map_err(|error| format!("stop first probe daemon: {error}"))?;
     let _ = first.wait().await;
 
     let second_port = reserve_loopback_port()?;
-    let second_addr: SocketAddr = format!("127.0.0.1:{second_port}").parse().map_err(|error| format!("probe bind: {error}"))?;
-    let mut second = ensure_daemon(&client, &exe_dir, &probe_root, second_addr).await?
+    let second_addr: SocketAddr = format!("127.0.0.1:{second_port}")
+        .parse()
+        .map_err(|error| format!("probe bind: {error}"))?;
+    let mut second = ensure_daemon(&client, &exe_dir, &probe_root, second_addr)
+        .await?
         .ok_or_else(|| "probe unexpectedly reused an existing daemon on restart".to_owned())?;
     let token_after = read_local_token(&probe_root)?;
     if token_before != token_after {
@@ -648,7 +812,10 @@ async fn run_probe() -> Result<(), String> {
         let _ = second.kill().await;
         return Err("installed Origins restart health proof failed".to_owned());
     }
-    second.kill().await.map_err(|error| format!("stop second probe daemon: {error}"))?;
+    second
+        .kill()
+        .await
+        .map_err(|error| format!("stop second probe daemon: {error}"))?;
     let _ = second.wait().await;
     let _ = fs::remove_dir_all(&probe_root);
     println!("ORIGINS_WINDOWS_INSTALLED_PROBE=PASS");
@@ -661,7 +828,8 @@ async fn exercise_installed_proxy(
     daemon_addr: SocketAddr,
     token: String,
 ) -> Result<(), String> {
-    let daemon_base = Url::parse(&format!("http://{daemon_addr}/")).map_err(|error| format!("probe daemon URL: {error}"))?;
+    let daemon_base = Url::parse(&format!("http://{daemon_addr}/"))
+        .map_err(|error| format!("probe daemon URL: {error}"))?;
     let nonce = Uuid::new_v4().simple().to_string();
     let session_id = Uuid::new_v4().simple().to_string();
     let state = LauncherState {
@@ -672,16 +840,34 @@ async fn exercise_installed_proxy(
         session_id: Arc::<str>::from(session_id.clone()),
         local_token: Arc::<str>::from(token),
     };
-    let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|error| format!("bind probe UI: {error}"))?;
-    let addr = listener.local_addr().map_err(|error| format!("probe UI address: {error}"))?;
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|error| format!("bind probe UI: {error}"))?;
+    let addr = listener
+        .local_addr()
+        .map_err(|error| format!("probe UI address: {error}"))?;
     let server = tokio::spawn(async move { axum::serve(listener, launcher_router(state)).await });
     let base = format!("http://{addr}");
 
-    let index = client.get(format!("{base}/")).send().await.map_err(|error| format!("probe UI index: {error}"))?;
-    if !index.status().is_success() { server.abort(); return Err("installed Workspace index is not servable".to_owned()); }
+    let index = client
+        .get(format!("{base}/"))
+        .send()
+        .await
+        .map_err(|error| format!("probe UI index: {error}"))?;
+    if !index.status().is_success() {
+        server.abort();
+        return Err("installed Workspace index is not servable".to_owned());
+    }
 
-    let unauth = client.get(format!("{base}/origins-bootstrap/status")).send().await.map_err(|error| format!("probe bootstrap status: {error}"))?;
-    if unauth.status() != reqwest::StatusCode::UNAUTHORIZED { server.abort(); return Err("bootstrap status must reject an unauthenticated browser".to_owned()); }
+    let unauth = client
+        .get(format!("{base}/origins-bootstrap/status"))
+        .send()
+        .await
+        .map_err(|error| format!("probe bootstrap status: {error}"))?;
+    if unauth.status() != reqwest::StatusCode::UNAUTHORIZED {
+        server.abort();
+        return Err("bootstrap status must reject an unauthenticated browser".to_owned());
+    }
 
     let bootstrap = client
         .post(format!("{base}/origins-bootstrap"))
@@ -689,7 +875,10 @@ async fn exercise_installed_proxy(
         .send()
         .await
         .map_err(|error| format!("probe bootstrap: {error}"))?;
-    if !bootstrap.status().is_success() { server.abort(); return Err("installed bootstrap exchange failed".to_owned()); }
+    if !bootstrap.status().is_success() {
+        server.abort();
+        return Err("installed bootstrap exchange failed".to_owned());
+    }
     let cookie = bootstrap
         .headers()
         .get(reqwest::header::SET_COOKIE)
@@ -704,7 +893,10 @@ async fn exercise_installed_proxy(
         .send()
         .await
         .map_err(|error| format!("probe bootstrap replay: {error}"))?;
-    if replay.status() != reqwest::StatusCode::UNAUTHORIZED { server.abort(); return Err("bootstrap nonce replay was not refused".to_owned()); }
+    if replay.status() != reqwest::StatusCode::UNAUTHORIZED {
+        server.abort();
+        return Err("bootstrap nonce replay was not refused".to_owned());
+    }
 
     let protected = client
         .get(format!("{base}/origins-api/v1/capabilities"))
@@ -712,7 +904,13 @@ async fn exercise_installed_proxy(
         .send()
         .await
         .map_err(|error| format!("probe authenticated proxy: {error}"))?;
-    if !protected.status().is_success() { server.abort(); return Err(format!("installed authenticated proxy failed: {}", protected.status())); }
+    if !protected.status().is_success() {
+        server.abort();
+        return Err(format!(
+            "installed authenticated proxy failed: {}",
+            protected.status()
+        ));
+    }
 
     server.abort();
     Ok(())
@@ -735,7 +933,10 @@ mod tests {
 
     #[test]
     fn static_path_accepts_assets() {
-        assert_eq!(safe_static_path("/assets/app.js").unwrap(), PathBuf::from("assets").join("app.js"));
+        assert_eq!(
+            safe_static_path("/assets/app.js").unwrap(),
+            PathBuf::from("assets").join("app.js")
+        );
     }
 
     #[test]
