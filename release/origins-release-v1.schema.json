@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://thetechguyds.com/schemas/origins.release.v1.json",
+  "$comment": "Structural validation is necessary but not sufficient: consumers must also enforce the Phase 8A verifier-equivalent cross-field provenance, digest, and runtime proof rules.",
+  "title": "Origins Factory portable release manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "product",
+    "product_version",
+    "release_id",
+    "status",
+    "source",
+    "target",
+    "build_environment",
+    "artifacts",
+    "runtime",
+    "ownership",
+    "claim_boundary"
+  ],
+  "properties": {
+    "schema_version": {"const": "origins.release.v1"},
+    "product": {"const": "origins-factory"},
+    "product_version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "release_id": {
+      "type": "string",
+      "pattern": "^origins-factory-[0-9]+\\.[0-9]+\\.[0-9]+-linux-x86_64-[0-9a-f]{12}$"
+    },
+    "status": {"const": "candidate"},
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repository", "commit", "clean"],
+      "properties": {
+        "repository": {"const": "jaydumisuni/origins-factory"},
+        "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "clean": {"const": true}
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["os", "arch", "libc"],
+      "properties": {
+        "os": {"const": "linux"},
+        "arch": {"const": "x86_64"},
+        "libc": {"const": "gnu"}
+      }
+    },
+    "build_environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rustc", "cargo", "python", "pip", "setuptools", "node", "npm", "glibc"],
+      "properties": {
+        "rustc": {"type": "string", "minLength": 1},
+        "cargo": {"type": "string", "minLength": 1},
+        "python": {"type": "string", "minLength": 1},
+        "pip": {"type": "string", "minLength": 1},
+        "setuptools": {"type": "string", "minLength": 1},
+        "node": {"type": "string", "minLength": 1},
+        "npm": {"type": "string", "minLength": 1},
+        "glibc": {"type": "string", "pattern": "^glibc [0-9].+$"}
+      }
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "allOf": [
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "originsd"},
+              "kind": {"const": "native-binary"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "python-plane"},
+              "kind": {"const": "python-wheel"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        },
+        {
+          "contains": {
+            "type": "object",
+            "required": ["id", "kind"],
+            "properties": {
+              "id": {"const": "workspace"},
+              "kind": {"const": "static-web-bundle"}
+            }
+          },
+          "minContains": 1,
+          "maxContains": 1
+        }
+      ],
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "kind", "path", "sha256", "size_bytes"],
+        "properties": {
+          "id": {"enum": ["originsd", "python-plane", "workspace"]},
+          "kind": {"enum": ["native-binary", "python-wheel", "static-web-bundle"]},
+          "path": {
+            "type": "string",
+            "pattern": "^(?!/)(?!\\.?$)(?!\\.\\.(?:/|$))(?!.*?/\\.\\.(?:/|$))(?!.*\\\\).+$"
+          },
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "default_bind",
+        "loopback_only",
+        "data_dir_external_to_release",
+        "health",
+        "python_requires",
+        "python_dependencies",
+        "activation_owner",
+        "rollback_owner"
+      ],
+      "properties": {
+        "default_bind": {"const": "127.0.0.1:48700"},
+        "loopback_only": {"const": true},
+        "data_dir_external_to_release": {"const": true},
+        "health": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["method", "path", "auth_required", "expected"],
+          "properties": {
+            "method": {"const": "GET"},
+            "path": {"const": "/v1/health"},
+            "auth_required": {"const": false},
+            "expected": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["ok", "service"],
+              "properties": {
+                "ok": {"const": true},
+                "service": {"const": "originsd"}
+              }
+            }
+          }
+        },
+        "python_requires": {"const": ">=3.10"},
+        "python_dependencies": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 1,
+          "items": {"const": "websockets==16.1.1"}
+        },
+        "activation_owner": {"const": "consumer"},
+        "rollback_owner": {"const": "consumer"}
+      }
+    },
+    "ownership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["product", "final_packaging", "machine_consumer", "future_mechanical_substrate"],
+      "properties": {
+        "product": {"const": "Origins Factory"},
+        "final_packaging": {"const": "THETECHGUY Software Builder"},
+        "machine_consumer": {"const": "Prime OS component/package authority"},
+        "future_mechanical_substrate": {"const": "Ptah Space"}
+      }
+    },
+    "claim_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prime_component_format_claimed",
+        "prime_installation_claimed",
+        "builder_final_release_proven",
+        "ptah_prime_native_proven",
+        "production_release_accepted",
+        "runtime_authority_expansion"
+      ],
+      "properties": {
+        "prime_component_format_claimed": {"const": false},
+        "prime_installation_claimed": {"const": false},
+        "builder_final_release_proven": {"const": false},
+        "ptah_prime_native_proven": {"const": false},
+        "production_release_accepted": {"const": false},
+        "runtime_authority_expansion": {"const": false}
+      }
+    }
+  }
+}
