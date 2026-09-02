@@ -7,7 +7,7 @@ on:
       - ".github/workflows/_rustfmt-export.yml"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   export:
@@ -15,10 +15,61 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          persist-credentials: false
-      - name: Hash proven Rust files
+          persist-credentials: true
+      - name: Set up exact Rust 1.75 proof toolchain
         shell: bash
         run: |
           set -euo pipefail
+          rustup toolchain install 1.75.0 --profile minimal --component rustfmt --component clippy
+          rustup override set 1.75.0
+          rustc --version
+          cargo --version
+          rustfmt --version
+          cargo clippy --version
+      - name: Apply exact Clippy corrections
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("rust/originsd/src/installed.rs")
+          text = path.read_text(encoding="utf-8")
+          old_static = '''    if relative.as_os_str().is_empty() || !candidate.is_file() {
+              if candidate.extension().is_none() {
+                  candidate = state.workspace_root.join("index.html");
+              }
+          }
+          '''
+          new_static = '''    if (relative.as_os_str().is_empty() || !candidate.is_file())
+              && candidate.extension().is_none()
+          {
+              candidate = state.workspace_root.join("index.html");
+          }
+          '''
+          old_borrow = '        if resolved_data.starts_with(&resolved_exe) {\n'
+          new_borrow = '        if resolved_data.starts_with(resolved_exe) {\n'
+          if text.count(old_static) != 1:
+              raise SystemExit("expected serve_static Clippy expression not found exactly once")
+          if text.count(old_borrow) != 1:
+              raise SystemExit("expected starts_with borrow not found exactly once")
+          text = text.replace(old_static, new_static).replace(old_borrow, new_borrow)
+          path.write_text(text, encoding="utf-8")
+      - name: Format lint test and hash exact correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo fmt --manifest-path rust/Cargo.toml --all
+          cargo fmt --manifest-path rust/Cargo.toml --all -- --check
+          cargo clippy --locked --manifest-path rust/Cargo.toml --all-targets -- -D warnings
+          cargo test --locked -p originsd --manifest-path rust/Cargo.toml
+          git diff --check
           sha256sum rust/originsd/src/installed.rs rust/originsd/src/main.rs
           wc -c rust/originsd/src/installed.rs rust/originsd/src/main.rs
+      - name: Commit exact proven source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "THE TECH GUY"
+          git config user.email "65334711+jaydumisuni@users.noreply.github.com"
+          git add rust/originsd/src/installed.rs rust/originsd/src/main.rs
+          git diff --cached --check
+          git commit -m "fix(windows): satisfy Rust 1.75 warning gate [skip ci]"
+          git push origin HEAD:tooling/rustfmt-export-02080e0b
