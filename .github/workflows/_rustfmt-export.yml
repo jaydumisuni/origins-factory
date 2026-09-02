@@ -31,27 +31,34 @@ jobs:
         run: |
           from pathlib import Path
           path = Path("rust/originsd/src/installed.rs")
-          text = path.read_text(encoding="utf-8")
-          old_static = '''    if relative.as_os_str().is_empty() || !candidate.is_file() {
-              if candidate.extension().is_none() {
-                  candidate = state.workspace_root.join("index.html");
-              }
-          }
-          '''
-          new_static = '''    if (relative.as_os_str().is_empty() || !candidate.is_file())
-              && candidate.extension().is_none()
-          {
-              candidate = state.workspace_root.join("index.html");
-          }
-          '''
-          old_borrow = '        if resolved_data.starts_with(&resolved_exe) {\n'
-          new_borrow = '        if resolved_data.starts_with(resolved_exe) {\n'
-          if text.count(old_static) != 1:
-              raise SystemExit("expected serve_static Clippy expression not found exactly once")
-          if text.count(old_borrow) != 1:
-              raise SystemExit("expected starts_with borrow not found exactly once")
-          text = text.replace(old_static, new_static).replace(old_borrow, new_borrow)
-          path.write_text(text, encoding="utf-8")
+          lines = path.read_text(encoding="utf-8").splitlines()
+          first = "if relative.as_os_str().is_empty() || !candidate.is_file() {"
+          matches = [i for i, line in enumerate(lines) if line.strip() == first]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one serve_static Clippy expression, got {len(matches)}")
+          i = matches[0]
+          expected = [
+              first,
+              "if candidate.extension().is_none() {",
+              'candidate = state.workspace_root.join("index.html");',
+              "}",
+              "}",
+          ]
+          if [line.strip() for line in lines[i:i+5]] != expected:
+              raise SystemExit("serve_static block shape changed")
+          lines[i:i+5] = [
+              "    if (relative.as_os_str().is_empty() || !candidate.is_file())",
+              "        && candidate.extension().is_none()",
+              "    {",
+              '        candidate = state.workspace_root.join("index.html");',
+              "    }",
+          ]
+          second = "if resolved_data.starts_with(&resolved_exe) {"
+          matches = [j for j, line in enumerate(lines) if line.strip() == second]
+          if len(matches) != 1:
+              raise SystemExit(f"expected one starts_with borrow, got {len(matches)}")
+          lines[matches[0]] = "        if resolved_data.starts_with(resolved_exe) {"
+          path.write_text("\n".join(lines) + "\n", encoding="utf-8")
       - name: Format lint test and hash exact correction
         shell: bash
         run: |
