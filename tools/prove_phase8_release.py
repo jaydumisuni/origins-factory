@@ -15,6 +15,7 @@ import tempfile
 import time
 import urllib.request
 import zipfile
+from email.parser import Parser
 from pathlib import Path, PurePosixPath
 from typing import Iterable
 
@@ -224,7 +225,13 @@ def verify_artifacts(release_root: Path, manifest: dict[str, object]) -> dict[st
     return artifacts
 
 
-def verify_python_wheel(wheel: Path, *, version: str) -> None:
+def verify_python_wheel(
+    wheel: Path,
+    *,
+    version: str,
+    python_requires: str,
+    python_dependencies: list[str],
+) -> None:
     try:
         with zipfile.ZipFile(wheel) as package:
             infos = package.infolist()
@@ -244,8 +251,14 @@ def verify_python_wheel(wheel: Path, *, version: str) -> None:
             metadata = package.read(metadata_names[0]).decode("utf-8", errors="replace")
     except zipfile.BadZipFile as exc:
         raise ProofError("Python artifact is not a valid wheel") from exc
-    if "Name: origins-contracts\n" not in metadata or f"Version: {version}\n" not in metadata:
+
+    parsed = Parser().parsestr(metadata)
+    if parsed.get("Name") != "origins-contracts" or parsed.get("Version") != version:
         raise ProofError("Python wheel name/version does not match release manifest")
+    requires_python = parsed.get("Requires-Python")
+    dependencies = parsed.get_all("Requires-Dist", [])
+    if requires_python != python_requires or dependencies != python_dependencies:
+        raise ProofError("Python wheel runtime metadata does not match release manifest")
 
 
 def verify_workspace_bundle(bundle: Path, destination: Path) -> None:
@@ -409,7 +422,21 @@ def main(argv: Iterable[str] | None = None) -> int:
         manifest = verify_manifest(release_root, expected_head=args.expected_head)
         artifacts = verify_artifacts(release_root, manifest)
         version = str(manifest["product_version"])
-        verify_python_wheel(artifacts["python-plane"], version=version)
+        runtime_contract = manifest["runtime"]
+        if not isinstance(runtime_contract, dict):
+            raise ProofError("release runtime contract is unavailable")
+        python_requires = runtime_contract.get("python_requires")
+        python_dependencies = runtime_contract.get("python_dependencies")
+        if not isinstance(python_requires, str) or not isinstance(python_dependencies, list) or not all(
+            isinstance(item, str) for item in python_dependencies
+        ):
+            raise ProofError("release Python runtime contract is malformed")
+        verify_python_wheel(
+            artifacts["python-plane"],
+            version=version,
+            python_requires=python_requires,
+            python_dependencies=python_dependencies,
+        )
         verify_workspace_bundle(artifacts["workspace"], temp / "workspace-unpacked")
         runtime = runtime_smoke(artifacts["originsd"], release_root, temp / "consumer-state")
 

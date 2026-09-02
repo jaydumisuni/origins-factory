@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import tarfile
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -33,6 +34,13 @@ def _build_tools() -> dict[str, str]:
         "node": "v24.0.0",
         "npm": "11.0.0",
         "glibc": "glibc 2.39",
+    }
+
+
+def _python_runtime() -> dict[str, object]:
+    return {
+        "python_requires": ">=3.10",
+        "python_dependencies": ["websockets==16.1.1"],
     }
 
 
@@ -113,6 +121,7 @@ def test_manifest_keeps_prime_builder_ptah_nonclaims() -> None:
         source_commit="a" * 40,
         release_id="origins-factory-0.1.0-linux-x86_64-aaaaaaaaaaaa",
         build_tools=_build_tools(),
+        python_runtime=_python_runtime(),
         artifacts=[
             {
                 "id": "originsd",
@@ -172,6 +181,7 @@ def test_assembled_release_is_digest_bound_and_deterministic(tmp_path: Path) -> 
         "source_commit": "b" * 40,
         "version": "0.1.0",
         "build_tools": _build_tools(),
+        "python_runtime": _python_runtime(),
         "originsd": originsd,
         "wheel": wheel,
         "workspace_dist": workspace,
@@ -208,6 +218,7 @@ def test_assemble_refuses_existing_release_identity(tmp_path: Path) -> None:
         "source_commit": "c" * 40,
         "version": "0.1.0",
         "build_tools": _build_tools(),
+        "python_runtime": _python_runtime(),
         "originsd": originsd,
         "wheel": wheel,
         "workspace_dist": workspace,
@@ -331,3 +342,105 @@ def test_runtime_smoke_redirects_child_output_to_files(monkeypatch, tmp_path: Pa
         assert invocation["stderr"] is not proof.subprocess.PIPE
         assert hasattr(invocation["stdout"], "write")
         assert hasattr(invocation["stderr"], "write")
+
+
+def test_python_runtime_contract_is_derived_from_pyproject_and_fails_on_drift(tmp_path: Path) -> None:
+    python_root = tmp_path / "python"
+    python_root.mkdir()
+    pyproject = python_root / "pyproject.toml"
+    pyproject.write_text(
+        "[project]\n"
+        "name='origins-contracts'\n"
+        "version='0.1.0'\n"
+        "requires-python='>=3.10'\n"
+        "dependencies=['websockets==16.1.1']\n",
+        encoding="utf-8",
+    )
+    runtime = release.python_runtime_contract(tmp_path)
+    assert runtime == {
+        "python_requires": ">=3.10",
+        "python_dependencies": ["websockets==16.1.1"],
+    }
+    manifest = release.create_manifest(
+        version="0.1.0",
+        source_commit="d" * 40,
+        release_id="origins-factory-0.1.0-linux-x86_64-dddddddddddd",
+        build_tools=_build_tools(),
+        artifacts=[],
+        python_runtime=runtime,
+    )
+    assert manifest["runtime"]["python_requires"] == runtime["python_requires"]
+    assert manifest["runtime"]["python_dependencies"] == runtime["python_dependencies"]
+
+    pyproject.write_text(
+        "[project]\n"
+        "name='origins-contracts'\n"
+        "version='0.1.0'\n"
+        "requires-python='>=3.10'\n"
+        "dependencies=['websockets==16.1.2']\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(release.ReleaseError, match="Python runtime metadata drift"):
+        release.python_runtime_contract(tmp_path)
+
+
+def test_manifest_rejects_malformed_python_runtime_contract() -> None:
+    with pytest.raises(release.ReleaseError, match="Python runtime contract is malformed"):
+        release.create_manifest(
+            version="0.1.0",
+            source_commit="e" * 40,
+            release_id="origins-factory-0.1.0-linux-x86_64-eeeeeeeeeeee",
+            build_tools=_build_tools(),
+            artifacts=[],
+            python_runtime={
+                "python_requires": ">=3.10",
+                "python_dependencies": "websockets==16.1.1",
+            },
+        )
+    with pytest.raises(release.ReleaseError, match="Python runtime contract is malformed"):
+        release.create_manifest(
+            version="0.1.0",
+            source_commit="f" * 40,
+            release_id="origins-factory-0.1.0-linux-x86_64-ffffffffffff",
+            build_tools=_build_tools(),
+            artifacts=[],
+            python_runtime=None,  # type: ignore[arg-type]
+        )
+
+
+def test_python_wheel_runtime_metadata_must_match_release_manifest(tmp_path: Path) -> None:
+    wheel = tmp_path / "origins_contracts-0.1.0-py3-none-any.whl"
+    metadata_name = "origins_contracts-0.1.0.dist-info/METADATA"
+
+    with zipfile.ZipFile(wheel, "w") as package:
+        package.writestr(
+            metadata_name,
+            "Metadata-Version: 2.1\n"
+            "Name: origins-contracts\n"
+            "Version: 0.1.0\n"
+            "Requires-Python: >=3.10\n"
+            "Requires-Dist: websockets==16.1.1\n",
+        )
+    proof.verify_python_wheel(
+        wheel,
+        version="0.1.0",
+        python_requires=">=3.10",
+        python_dependencies=["websockets==16.1.1"],
+    )
+
+    with zipfile.ZipFile(wheel, "w") as package:
+        package.writestr(
+            metadata_name,
+            "Metadata-Version: 2.1\n"
+            "Name: origins-contracts\n"
+            "Version: 0.1.0\n"
+            "Requires-Python: >=3.10\n"
+            "Requires-Dist: websockets==16.1.2\n",
+        )
+    with pytest.raises(proof.ProofError, match="runtime metadata does not match release manifest"):
+        proof.verify_python_wheel(
+            wheel,
+            version="0.1.0",
+            python_requires=">=3.10",
+            python_dependencies=["websockets==16.1.1"],
+        )

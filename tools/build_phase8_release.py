@@ -24,6 +24,8 @@ TARGET_OS = "linux"
 TARGET_ARCH = "x86_64"
 TARGET_LIBC = "gnu"
 DEFAULT_BIND = "127.0.0.1:48700"
+PYTHON_REQUIRES = ">=3.10"
+PYTHON_DEPENDENCIES = ("websockets==16.1.1",)
 
 
 class ReleaseError(RuntimeError):
@@ -93,6 +95,33 @@ def component_versions(root: Path) -> dict[str, str]:
     if len(set(versions.values())) != 1:
         raise ReleaseError(f"component version drift: {versions!r}")
     return versions
+
+
+def python_runtime_contract(root: Path) -> dict[str, object]:
+    with (root / "python" / "pyproject.toml").open("rb") as handle:
+        python = tomllib.load(handle)
+    project = python.get("project")
+    if not isinstance(project, dict):
+        raise ReleaseError("Python runtime metadata drift: project metadata is unavailable")
+    requires_python = project.get("requires-python")
+    dependencies = project.get("dependencies")
+    if (
+        not isinstance(requires_python, str)
+        or not isinstance(dependencies, list)
+        or not all(isinstance(item, str) for item in dependencies)
+    ):
+        raise ReleaseError("Python runtime metadata drift: requires-python/dependencies are malformed")
+    actual = {
+        "python_requires": requires_python,
+        "python_dependencies": list(dependencies),
+    }
+    expected = {
+        "python_requires": PYTHON_REQUIRES,
+        "python_dependencies": list(PYTHON_DEPENDENCIES),
+    }
+    if actual != expected:
+        raise ReleaseError(f"Python runtime metadata drift: expected {expected!r}, got {actual!r}")
+    return actual
 
 
 def _distribution_version(name: str) -> str:
@@ -275,7 +304,19 @@ def create_manifest(
     release_id: str,
     build_tools: dict[str, str],
     artifacts: list[dict[str, object]],
+    python_runtime: dict[str, object],
 ) -> dict[str, object]:
+    if not isinstance(python_runtime, dict):
+        raise ReleaseError("Python runtime contract is malformed")
+    python_requires = python_runtime.get("python_requires")
+    python_dependencies = python_runtime.get("python_dependencies")
+    if (
+        set(python_runtime) != {"python_requires", "python_dependencies"}
+        or not isinstance(python_requires, str)
+        or not isinstance(python_dependencies, list)
+        or not all(isinstance(item, str) for item in python_dependencies)
+    ):
+        raise ReleaseError("Python runtime contract is malformed")
     return {
         "schema_version": SCHEMA_VERSION,
         "product": "origins-factory",
@@ -296,8 +337,8 @@ def create_manifest(
                 "auth_required": False,
                 "expected": {"ok": True, "service": "originsd"},
             },
-            "python_requires": ">=3.10",
-            "python_dependencies": ["websockets==16.1.1"],
+            "python_requires": python_requires,
+            "python_dependencies": list(python_dependencies),
             "activation_owner": "consumer",
             "rollback_owner": "consumer",
         },
@@ -328,6 +369,7 @@ def assemble_release(
     source_commit: str,
     version: str,
     build_tools: dict[str, str],
+    python_runtime: dict[str, object],
     originsd: Path,
     wheel: Path,
     workspace_dist: Path,
@@ -356,6 +398,7 @@ def assemble_release(
         release_id=release_id,
         build_tools=build_tools,
         artifacts=artifacts,
+        python_runtime=python_runtime,
     )
     manifest_path = package_root / "RELEASE_MANIFEST.json"
     write_json(manifest_path, manifest)
@@ -386,6 +429,7 @@ def main(argv: Iterable[str] | None = None) -> int:
     if args.expected_head and source_commit != args.expected_head:
         raise ReleaseError(f"source head mismatch: expected {args.expected_head}, got {source_commit}")
     versions = component_versions(root)
+    python_runtime = python_runtime_contract(root)
     version = versions["originsd"]
     build_tools = build_environment(root)
     output.mkdir(parents=True, exist_ok=True)
@@ -398,6 +442,7 @@ def main(argv: Iterable[str] | None = None) -> int:
             source_commit=source_commit,
             version=version,
             build_tools=build_tools,
+            python_runtime=python_runtime,
             originsd=originsd,
             wheel=wheel,
             workspace_dist=workspace_dist,
