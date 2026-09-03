@@ -1,0 +1,127 @@
+name: Origins v1 Windows Distribution
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - "workspace/**"
+      - "python/**"
+      - "release/origins.windows-payload.schema.json"
+      - "release/tests/**"
+      - "tools/build_windows_payload.py"
+      - "tools/prove_windows_payload.py"
+      - ".github/workflows/windows-v1-distribution.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-candidate-proof:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    env:
+      REVIEWED_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      - name: Check out exact reviewed Origins revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert exact reviewed revision
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:REVIEWED_SHA) { throw "Origins checkout SHA mismatch" }
+
+      - name: Set up Python 3.12.10
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12.10"
+
+      - name: Set up Node 24.19.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24.19.0"
+
+      - name: Set up Rust 1.75
+        shell: pwsh
+        run: |
+          rustup toolchain install 1.75.0 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw "Rust 1.75 install failed with exit code $LASTEXITCODE" }
+          rustup override set 1.75.0
+          if ($LASTEXITCODE -ne 0) { throw "Rust 1.75 override failed with exit code $LASTEXITCODE" }
+          rustc --version
+          if ($LASTEXITCODE -ne 0) { throw "rustc version probe failed with exit code $LASTEXITCODE" }
+          cargo --version
+          if ($LASTEXITCODE -ne 0) { throw "cargo version probe failed with exit code $LASTEXITCODE" }
+
+      - name: Pin Python proof environment
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "pip==26.2.1" "setuptools==84.0.0" "pytest==9.1.1" "jsonschema==4.26.0"
+          if ($LASTEXITCODE -ne 0) { throw "Python proof environment setup failed with exit code $LASTEXITCODE" }
+
+      - name: Compile Windows tooling and run payload contract tests
+        shell: pwsh
+        run: |
+          python -m py_compile tools/build_windows_payload.py tools/prove_windows_payload.py release/tests/test_windows_payload.py
+          if ($LASTEXITCODE -ne 0) { throw "Windows tooling syntax validation failed with exit code $LASTEXITCODE" }
+          python -m pytest -q release/tests/test_windows_payload.py
+          if ($LASTEXITCODE -ne 0) { throw "Windows payload contract tests failed with exit code $LASTEXITCODE" }
+
+      - name: Compile and test native runtime on Windows
+        shell: pwsh
+        run: |
+          Push-Location rust
+          cargo test --locked -p originsd
+          $cargoExit = $LASTEXITCODE
+          Pop-Location
+          if ($cargoExit -ne 0) { throw "Native Windows originsd tests failed with exit code $cargoExit" }
+
+      - name: Typecheck Workspace without producing source-tree build output
+        shell: pwsh
+        run: |
+          Push-Location workspace
+          npm ci
+          $npmCiExit = $LASTEXITCODE
+          if ($npmCiExit -ne 0) { Pop-Location; throw "Workspace npm ci failed with exit code $npmCiExit" }
+          npm run typecheck
+          $typecheckExit = $LASTEXITCODE
+          Remove-Item tsconfig.tsbuildinfo -Force -ErrorAction SilentlyContinue
+          Pop-Location
+          if ($typecheckExit -ne 0) { throw "Workspace typecheck failed with exit code $typecheckExit" }
+          if (git status --porcelain) { throw "Workspace typecheck dirtied the reviewed source checkout" }
+
+      - name: Build independently installable Windows candidate
+        shell: pwsh
+        run: |
+          $project = Join-Path $env:RUNNER_TEMP "origins-windows-project"
+          Remove-Item $project -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $project | Out-Null
+          python tools/build_windows_payload.py --output $project --expected-head $env:REVIEWED_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Windows candidate construction failed with exit code $LASTEXITCODE" }
+          python tools/prove_windows_payload.py --project $project --expected-head $env:REVIEWED_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Windows candidate proof failed with exit code $LASTEXITCODE" }
+          "ORIGINS_WINDOWS_PROJECT=$project" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Prove installed launcher, bootstrap, health and restart persistence
+        shell: pwsh
+        run: |
+          $launcher = Join-Path $env:ORIGINS_WINDOWS_PROJECT "dist\Origins Factory.exe"
+          $stdout = Join-Path $env:RUNNER_TEMP "origins-installed-probe.stdout.log"
+          $stderr = Join-Path $env:RUNNER_TEMP "origins-installed-probe.stderr.log"
+          $probe = Start-Process -FilePath $launcher -ArgumentList "--probe" -Wait -PassThru -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+          if (Test-Path $stdout) { Get-Content $stdout }
+          if (Test-Path $stderr) { Get-Content $stderr }
+          if ($probe.ExitCode -ne 0) { throw "Installed Origins runtime probe failed: $($probe.ExitCode)" }
+          if (-not (Select-String -LiteralPath $stdout -Pattern '^ORIGINS_WINDOWS_INSTALLED_PROBE=PASS$' -Quiet)) { throw "Installed Origins runtime probe did not emit PASS marker" }
+
+      - name: Prove Origins source checkout remained clean
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne $env:REVIEWED_SHA) { throw "Origins HEAD moved" }
+          if (git status --porcelain) { throw "Origins source checkout is dirty after Windows proof" }
+          git diff --check origin/main...HEAD
+          if ($LASTEXITCODE -ne 0) { throw "Final diff hygiene check failed with exit code $LASTEXITCODE" }
