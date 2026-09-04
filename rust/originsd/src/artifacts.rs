@@ -1078,9 +1078,10 @@ fn normalize_uuid(value: &str, field: &str) -> Result<String, StoreError> {
 
 fn normalize_owner(value: &str) -> Result<String, StoreError> {
     let owner = value.trim().to_ascii_lowercase();
-    if owner != "lumi" {
+    if !matches!(owner.as_str(), "lumi" | "origins") {
         return Err(StoreError::InvalidInput(
-            "Phase 5 Artifact registration currently accepts Lumi owner handoffs only".to_owned(),
+            "Artifact registration accepts only canonical Lumi handoffs or Origins-owned artifacts"
+                .to_owned(),
         ));
     }
     Ok(owner)
@@ -1235,9 +1236,11 @@ mod tests {
     }
 
     #[test]
-    fn owner_contract_is_lumi_only() {
+    fn owner_contract_accepts_lumi_and_origins_only() {
         assert_eq!(normalize_owner("LUMI").unwrap(), "lumi");
+        assert_eq!(normalize_owner("ORIGINS").unwrap(), "origins");
         assert!(normalize_owner("oracle").is_err());
+        assert!(normalize_owner("origins-v1-proof").is_err());
     }
 
     #[test]
