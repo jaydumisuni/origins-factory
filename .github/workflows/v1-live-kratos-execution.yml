@@ -1,0 +1,248 @@
+name: Origins v1 Live KRATOS Mission
+
+on:
+  push:
+    branches: [proof/v1-live-kratos-execution]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: origins-v1-live-kratos
+  cancel-in-progress: false
+
+env:
+  ORIGINS_HEAD: 9d4a44bcf6910b61199ec60c8c636275705d0685
+  AGENTOPS_HEAD: 0eeb69027aec9d70303e724129ebf5585f373ca1
+  CODEOPS_HEAD: 348f133cb72ab6d18a7959d4a954158f7b881068
+  SERGEANT_HEAD: 22879a8c47df379d19fb8537c79b745750df4077
+
+jobs:
+  live-mission:
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 45
+    steps:
+      - name: Fail closed unless this runner is KRATOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(hostname)"
+          expected="kratos-HP-290-G4-Microtower-PC"
+          if [[ "$actual" != "$expected" ]]; then
+            echo "Refusing exact-host proof on unexpected runner: $actual" >&2
+            exit 70
+          fi
+          test -d /home/kratos
+          echo "KRATOS_HOST_PROVEN=$actual"
+
+      - name: Check out exact merged Origins authority
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: 9d4a44bcf6910b61199ec60c8c636275705d0685
+          path: origins-authority
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert exact Origins source and discover local owner repositories
+        id: owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          origins="$GITHUB_WORKSPACE/origins-authority"
+          [[ "$(git -C "$origins" rev-parse HEAD)" == "$ORIGINS_HEAD" ]]
+          [[ -z "$(git -C "$origins" status --porcelain --untracked-files=all)" ]]
+
+          python3 - <<'PY'
+          from __future__ import annotations
+          import os
+          import subprocess
+          from pathlib import Path
+
+          home = Path('/home/kratos')
+          expected = {
+              'AGENTOPS_SOURCE': ('hunter-agentops', os.environ['AGENTOPS_HEAD']),
+              'CODEOPS_SOURCE': ('hunter-codeops', os.environ['CODEOPS_HEAD']),
+              'SERGEANT_SOURCE': ('sergeant', os.environ['SERGEANT_HEAD']),
+          }
+          skip = {'.cache', 'node_modules', 'target', '.venv', 'env', '__pycache__', '.npm', '.cargo', '.rustup'}
+
+          def run(root: Path, *args: str) -> str:
+              p = subprocess.run(['git', '-C', str(root), *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+              return p.stdout.strip() if p.returncode == 0 else ''
+
+          roots: list[Path] = []
+          for dirpath, dirnames, filenames in os.walk(home):
+              dirnames[:] = [name for name in dirnames if name not in skip]
+              if '.git' in dirnames or '.git' in filenames:
+                  root = Path(dirpath)
+                  roots.append(root)
+                  if '.git' in dirnames:
+                      dirnames.remove('.git')
+
+          out: list[str] = []
+          for env_name, (needle, commit) in expected.items():
+              matches: list[Path] = []
+              for root in roots:
+                  remote = run(root, 'config', '--get', 'remote.origin.url').lower()
+                  if needle not in remote:
+                      continue
+                  if not run(root, 'cat-file', '-e', f'{commit}^{{commit}}') and run(root, 'rev-parse', commit) != commit:
+                      continue
+                  matches.append(root)
+              if not matches:
+                  raise SystemExit(f'No local repository containing pinned {needle} commit {commit}')
+              chosen = sorted(matches, key=lambda p: (len(p.parts), str(p)))[0]
+              out.append(f'{env_name}={chosen}')
+              print(f'{env_name}_DISCOVERED={chosen}')
+
+          github_env = Path(os.environ['GITHUB_ENV'])
+          with github_env.open('a', encoding='utf-8') as handle:
+              for line in out:
+                  handle.write(line + '\n')
+          PY
+
+      - name: Materialize exact clean owner worktrees from local private authority
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/origins-v1-owner-authority"
+          rm -rf "$root"
+          mkdir -p "$root"
+
+          materialize() {
+            local source="$1" commit="$2" target="$3" env_name="$4"
+            git -C "$source" worktree prune
+            git -C "$source" worktree add --detach "$target" "$commit"
+            [[ "$(git -C "$target" rev-parse HEAD)" == "$commit" ]]
+            [[ -z "$(git -C "$target" status --porcelain --untracked-files=all)" ]]
+            printf '%s=%s\n' "$env_name" "$target" >> "$GITHUB_ENV"
+          }
+
+          materialize "$AGENTOPS_SOURCE" "$AGENTOPS_HEAD" "$root/agentops" AGENTOPS_ROOT
+          materialize "$CODEOPS_SOURCE" "$CODEOPS_HEAD" "$root/codeops" CODEOPS_ROOT
+          materialize "$SERGEANT_SOURCE" "$SERGEANT_HEAD" "$root/sergeant" SERGEANT_ROOT
+
+      - name: Require live production Hunter owner credential without exposing it
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ORIGINS_HUNTER_URL="${ORIGINS_HUNTER_URL:-https://hunter.thetechguyds.com}"
+          if [[ ! "$ORIGINS_HUNTER_URL" =~ ^https:// ]]; then
+            echo "ORIGINS_HUNTER_URL is not an HTTPS production origin" >&2
+            exit 71
+          fi
+          if [[ -z "${ORIGINS_HUNTER_TOKEN:-}" ]]; then
+            echo "ORIGINS_HUNTER_TOKEN is not present in the KRATOS runner environment" >&2
+            exit 72
+          fi
+          echo "::add-mask::$ORIGINS_HUNTER_TOKEN"
+          printf 'ORIGINS_HUNTER_URL=%s\n' "$ORIGINS_HUNTER_URL" >> "$GITHUB_ENV"
+          printf 'HUNTER_CREDENTIAL_PRESENT=true\n' >> "$GITHUB_ENV"
+
+      - name: Build exact Origins daemon with pinned Rust 1.75
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! rustup toolchain list | grep -q '^1\.75\.0'; then
+            rustup toolchain install 1.75.0 --profile minimal
+          fi
+          cargo +1.75.0 build \
+            --manifest-path "$GITHUB_WORKSPACE/origins-authority/rust/Cargo.toml" \
+            --locked --release -p originsd
+          binary="$GITHUB_WORKSPACE/origins-authority/rust/target/release/originsd"
+          test -x "$binary"
+          printf 'ORIGINS_V1_BINARY=%s\n' "$binary" >> "$GITHUB_ENV"
+          sha256sum "$binary"
+
+      - name: Execute real 16-step standalone Origins v1 Mission
+        id: mission
+        shell: bash
+        run: |
+          set -euo pipefail
+          export ORIGINS_V1_EXPECTED_HEAD="$ORIGINS_HEAD"
+          log="$RUNNER_TEMP/origins-v1-live-mission.log"
+          python3 "$GITHUB_WORKSPACE/origins-authority/tools/prove_v1_repository_mission.py" \
+            --binary "$ORIGINS_V1_BINARY" \
+            --agentops-root "$AGENTOPS_ROOT" \
+            --codeops-root "$CODEOPS_ROOT" \
+            --sergeant-root "$SERGEANT_ROOT" \
+            --evidence-root /home/kratos/origins-v1-evidence \
+            | tee "$log"
+
+          python3 - "$log" <<'PY'
+          from __future__ import annotations
+          import json
+          import os
+          import sys
+          from pathlib import Path
+
+          lines = Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
+          result = None
+          for line in reversed(lines):
+              line = line.strip()
+              if not line.startswith('{'):
+                  continue
+              try:
+                  value = json.loads(line)
+              except json.JSONDecodeError:
+                  continue
+              if value.get('proof') == 'ORIGINS_V1_REPOSITORY_MISSION_OK':
+                  result = value
+                  break
+          if result is None:
+              raise SystemExit('live Mission did not emit ORIGINS_V1_REPOSITORY_MISSION_OK')
+          if result.get('source_head') != os.environ['ORIGINS_HEAD']:
+              raise SystemExit('live Mission source_head drift')
+          if result.get('standalone_after_hunter_disconnect') is not True:
+              raise SystemExit('Hunter-free standalone restart was not proven')
+          if result.get('runtime_authority_expansion') is not False:
+              raise SystemExit('live Mission expanded runtime authority')
+          refs = result.get('artifact_refs')
+          if not isinstance(refs, list) or len(refs) != 3:
+              raise SystemExit('live Mission did not promote candidate/sanitation/handover Artifacts')
+          summary = {
+              'proof': result['proof'],
+              'run_id': result['run_id'],
+              'source_head': result['source_head'],
+              'proof_sha256': result['proof_sha256'],
+              'artifact_refs': refs,
+              'standalone_after_hunter_disconnect': True,
+              'runtime_authority_expansion': False,
+          }
+          print('LIVE_MISSION_SUMMARY=' + json.dumps(summary, sort_keys=True, separators=(',', ':')))
+          with Path(os.environ['GITHUB_OUTPUT']).open('a', encoding='utf-8') as handle:
+              handle.write(f"run_id={result['run_id']}\n")
+              handle.write(f"proof_sha256={result['proof_sha256']}\n")
+          PY
+
+      - name: Prove durable promoted evidence exists on KRATOS
+        shell: bash
+        run: |
+          set -euo pipefail
+          promoted="/home/kratos/origins-v1-evidence/${{ steps.mission.outputs.run_id }}/promoted"
+          test -s "$promoted/v1-mission-proof.json"
+          test -s "$promoted/mission-handover.json"
+          test -s "$promoted/sanitation-receipt.json"
+          python3 - "$promoted/v1-mission-proof.json" <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          value = json.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))
+          assert value['proof'] == 'ORIGINS_V1_REPOSITORY_MISSION_OK'
+          assert value['source_head'] == os.environ['ORIGINS_HEAD']
+          assert value['standalone_after_hunter_disconnect'] is True
+          assert value['runtime_authority_expansion'] is False
+          print('DURABLE_LIVE_PROOF_SHA256=' + value['proof_sha256'])
+          PY
+
+      - name: Remove temporary owner worktrees
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          root="$RUNNER_TEMP/origins-v1-owner-authority"
+          [[ -n "${AGENTOPS_SOURCE:-}" ]] && git -C "$AGENTOPS_SOURCE" worktree remove --force "$root/agentops" 2>/dev/null
+          [[ -n "${CODEOPS_SOURCE:-}" ]] && git -C "$CODEOPS_SOURCE" worktree remove --force "$root/codeops" 2>/dev/null
+          [[ -n "${SERGEANT_SOURCE:-}" ]] && git -C "$SERGEANT_SOURCE" worktree remove --force "$root/sergeant" 2>/dev/null
+          rm -rf "$root"
+          exit 0
