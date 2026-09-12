@@ -5,7 +5,7 @@
 **Frozen/proven product head:** `108c4fef9777bb8c1d25d39f372423ded6159ced`  
 **Active phase:** Phase 8 — Custom OS consumption and later Ptah  
 **Current slice:** Phase 8B — consume the pinned Origins release in the custom OS  
-**Implementation status:** Phase 8A shipped and proven; custom-OS consumption is not yet implemented; Ptah runtime remains unauthorized  
+**Implementation status:** Phase 8A shipped and proven; Phase 8B is `WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY`; Ptah runtime remains unauthorized\
 **Phase-5 proof:** `proof/phase5-workspace-ui-freeze.md`  
 **Phase-6 proof:** `proof/phase6-device-readonly-freeze.md`  
 **Phase-7 proof:** `proof/phase7-capability-evolution-freeze.md`  
@@ -90,6 +90,37 @@ state = SHIPPED
 
 Full record: `proof/phase8a-portable-release-freeze.md`.
 
+## Phase 8B current gate — Prime component/package authority
+
+Fresh authority recovery on 2026-09-12 established:
+
+```text
+Prime repository = jaydumisuni/Prime-OS
+Prime main       = fb310623e27b16bae0ce308c8c8c23e6cc3f6fe0
+Origins main     = 9d4a44bcf6910b61199ec60c8c636275705d0685
+pinned release   = 108c4fef9777bb8c1d25d39f372423ded6159ced
+Phase 8B state   = WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY
+```
+
+The Prime roadmap assigns optional-component installation/update/remove/rollback to its P2 component/package mechanism and places Origins integration in P3. The recovered Prime Git/PR surface still has active P1 proof work and no accepted P1.5/P2 component/package implementation authority. Origins therefore cannot truthfully claim Prime installation or implement a substitute installer.
+
+This preserves the existing Phase 8A manifest contract:
+
+```text
+prime_component_format_claimed = false
+prime_installation_claimed = false
+builder_final_release_proven = false
+ptah_prime_native_proven = false
+production_release_accepted = false
+runtime_authority_expansion = false
+```
+
+### Phase 8B resume condition
+
+Resume implementation only after Prime separately accepts/proves a component/package authority capable of consuming the candidate while preserving exact Origins provenance and digests, immutable release bytes, external persistent data, loopback-only `originsd` activation and `/v1/health` restart proof, consumer-owned activation/rollback, retained state across component lifecycle changes, Builder final-packaging authority and the current Ptah/runtime nonclaims.
+
+Do **not** widen Phase 8A, mutate Prime's image-owned base directly, or create an Origins-owned package/rollback mechanism to bypass this prerequisite.
+
 ## Merge-history note
 
 The GitHub provider's ready-for-review GraphQL mutation failed before merge, leaving the PR's historical `draft` flag set. The exact proven tree was merged through an authorised two-parent no-ff merge commit, and GitHub records PR #21 as merged at `df0bbcef...`. The stale draft bit is historical metadata only.
@@ -131,12 +162,12 @@ Phase 8 may consume accepted Ptah vocabulary and later replace interim Providers
 
 ## Exact next action
 
-Continue with **Phase 8B — custom-OS consumption of the pinned Origins release**:
+Phase 8B is **WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY**:
 
-1. recover the canonical custom-OS repository, current branch/checkpoint and release/packaging authority;
-2. inspect existing installation, launcher, update, health and rollback contracts before adding anything;
-3. consume the exact pinned Origins release through `origins.release.v1` without copying Origins source into the OS;
-4. preserve exact Origins version/provenance, external persistent data, restart health and rollback;
+1. recover current Prime `main` and its P1/P1.5/P2 lifecycle authority on every continuation;
+2. while P2 component/package authority is absent, keep Phase 8B fail-closed and do not add a shadow installer;
+3. when that authority is accepted/proven, implement the Prime-side consumer of the exact pinned `origins.release.v1` release without source duplication;
+4. preserve exact provenance/digests, external persistent data, loopback-only `originsd` activation and `/v1/health` restart proof, consumer-owned rollback;
 5. keep THETECHGUY Software Builder as final packaging/signing/release authority;
 6. keep Ptah runtime unavailable until a separate authorized/proven Provider replacement exists.
 

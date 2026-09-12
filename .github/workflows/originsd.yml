@@ -47,9 +47,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Generate exact dependency lock
-        run: cargo generate-lockfile --manifest-path rust/Cargo.toml
-
       - name: Compile hosted proofs
         run: >-
           python -m compileall -q
