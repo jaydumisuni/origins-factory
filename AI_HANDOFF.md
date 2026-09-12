@@ -112,15 +112,22 @@ The Python runtime contract is source-derived from `python/pyproject.toml`, chec
 
 ## Phase 8B recovered Prime boundary — 2026-09-12
 
-The canonical custom OS is **Prime OS**. Fresh recovery established:
+The canonical custom OS is **Prime OS**. Recovery snapshot from the Phase 8B gate investigation on 2026-09-12 (historical evidence, not a substitute for a fresh remote fetch):
 
 ```text
-Prime repository = jaydumisuni/Prime-OS
-Prime main       = fb310623e27b16bae0ce308c8c8c23e6cc3f6fe0
-Origins main     = 9d4a44bcf6910b61199ec60c8c636275705d0685
-Origins release  = 108c4fef9777bb8c1d25d39f372423ded6159ced
-release schema   = origins.release.v1
-Phase 8B state   = WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY
+Prime repository               = jaydumisuni/Prime-OS
+Prime main at recovery         = fb310623e27b16bae0ce308c8c8c23e6cc3f6fe0
+Origins gate-recovery base     = 9d4a44bcf6910b61199ec60c8c636275705d0685
+Origins PR #27 merge authority = 24037077362927ea99fa0a68db20ad781cbafecf
+Origins release                = 108c4fef9777bb8c1d25d39f372423ded6159ced
+release schema                 = origins.release.v1
+Phase 8B state                 = WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY
+```
+
+Before consuming any cached `origin/main` value, refresh the exact remote main ref explicitly because recovery checkouts may intentionally use narrowed fetch refspecs:
+
+```text
+git fetch origin refs/heads/main:refs/remotes/origin/main
 ```
 
 Prime's accepted roadmap keeps system generations separate from optional-component delivery. It assigns the versioned component manifest plus local/offline install, update, remove, rollback, dependency/compatibility checks, persistent-data ownership, service/profile registration and lifecycle evidence to **P2 — Development Body**. Origins integration is **P3** and consumes that authority; it does not define a second installer.
@@ -183,7 +190,7 @@ Do not implement a hidden Ptah clone inside Origins or the custom OS.
 
 Phase 8B is currently **WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY**. On each continuation:
 
-1. recover Prime OS `main`, current P1/P1.5/P2 lifecycle state and accepted component/package authority;
+1. explicitly refresh the exact remote main ref (`git fetch origin refs/heads/main:refs/remotes/origin/main`) before trusting cached `origin/main`, then recover Prime OS `main`, current P1/P1.5/P2 lifecycle state and accepted component/package authority;
 2. if P2 authority is still unavailable, preserve this fail-closed state and do not create a shadow installer;
 3. once the Prime component/package authority is separately accepted/proven, implement the smallest Prime consumer adapter for the exact `origins.release.v1` candidate without copying Origins source;
 4. require exact provenance/digests, external persistent data, loopback health/restart and consumer-owned rollback;

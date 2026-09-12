@@ -92,14 +92,21 @@ Full record: `proof/phase8a-portable-release-freeze.md`.
 
 ## Phase 8B current gate — Prime component/package authority
 
-Fresh authority recovery on 2026-09-12 established:
+Recovery snapshot from the Phase 8B gate investigation on 2026-09-12 (historical evidence, not a substitute for a fresh remote fetch):
 
 ```text
-Prime repository = jaydumisuni/Prime-OS
-Prime main       = fb310623e27b16bae0ce308c8c8c23e6cc3f6fe0
-Origins main     = 9d4a44bcf6910b61199ec60c8c636275705d0685
-pinned release   = 108c4fef9777bb8c1d25d39f372423ded6159ced
-Phase 8B state   = WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY
+Prime repository              = jaydumisuni/Prime-OS
+Prime main at recovery        = fb310623e27b16bae0ce308c8c8c23e6cc3f6fe0
+Origins gate-recovery base    = 9d4a44bcf6910b61199ec60c8c636275705d0685
+Origins PR #27 merge authority = 24037077362927ea99fa0a68db20ad781cbafecf
+pinned release                = 108c4fef9777bb8c1d25d39f372423ded6159ced
+Phase 8B state                = WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY
+```
+
+Before consuming any cached `origin/main` value, refresh the exact remote main ref explicitly because recovery checkouts may intentionally use narrowed fetch refspecs:
+
+```text
+git fetch origin refs/heads/main:refs/remotes/origin/main
 ```
 
 The Prime roadmap assigns optional-component installation/update/remove/rollback to its P2 component/package mechanism and places Origins integration in P3. The recovered Prime Git/PR surface still has active P1 proof work and no accepted P1.5/P2 component/package implementation authority. Origins therefore cannot truthfully claim Prime installation or implement a substitute installer.
@@ -164,7 +171,7 @@ Phase 8 may consume accepted Ptah vocabulary and later replace interim Providers
 
 Phase 8B is **WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY**:
 
-1. recover current Prime `main` and its P1/P1.5/P2 lifecycle authority on every continuation;
+1. explicitly refresh the exact remote main ref (`git fetch origin refs/heads/main:refs/remotes/origin/main`) before trusting cached `origin/main`, then recover current Prime `main` and its P1/P1.5/P2 lifecycle authority on every continuation;
 2. while P2 component/package authority is absent, keep Phase 8B fail-closed and do not add a shadow installer;
 3. when that authority is accepted/proven, implement the Prime-side consumer of the exact pinned `origins.release.v1` release without source duplication;
 4. preserve exact provenance/digests, external persistent data, loopback-only `originsd` activation and `/v1/health` restart proof, consumer-owned rollback;
