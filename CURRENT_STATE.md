@@ -117,7 +117,7 @@ runtime_authority_expansion = false
 
 ### Phase 8B resume condition
 
-Resume implementation only after Prime separately accepts/proves a component/package authority capable of consuming the candidate while preserving exact Origins provenance and digests, immutable release bytes, external persistent data, loopback health/restart, consumer-owned activation/rollback, retained state across component lifecycle changes, Builder final-packaging authority and the current Ptah/runtime nonclaims.
+Resume implementation only after Prime separately accepts/proves a component/package authority capable of consuming the candidate while preserving exact Origins provenance and digests, immutable release bytes, external persistent data, loopback-only `originsd` activation and `/v1/health` restart proof, consumer-owned activation/rollback, retained state across component lifecycle changes, Builder final-packaging authority and the current Ptah/runtime nonclaims.
 
 Do **not** widen Phase 8A, mutate Prime's image-owned base directly, or create an Origins-owned package/rollback mechanism to bypass this prerequisite.
 
@@ -167,7 +167,7 @@ Phase 8B is **WAITING_UPSTREAM_PRIME_COMPONENT_AUTHORITY**:
 1. recover current Prime `main` and its P1/P1.5/P2 lifecycle authority on every continuation;
 2. while P2 component/package authority is absent, keep Phase 8B fail-closed and do not add a shadow installer;
 3. when that authority is accepted/proven, implement the Prime-side consumer of the exact pinned `origins.release.v1` release without source duplication;
-4. preserve exact provenance/digests, external persistent data, restart health and consumer-owned rollback;
+4. preserve exact provenance/digests, external persistent data, loopback-only `originsd` activation and `/v1/health` restart proof, consumer-owned rollback;
 5. keep THETECHGUY Software Builder as final packaging/signing/release authority;
 6. keep Ptah runtime unavailable until a separate authorized/proven Provider replacement exists.
 
