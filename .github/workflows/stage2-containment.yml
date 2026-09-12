@@ -42,9 +42,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Generate exact dependency lock
-        run: cargo generate-lockfile --manifest-path rust/Cargo.toml
-
       - name: Reject Stage-2 warnings across host workspace
         run: cargo clippy --locked --manifest-path rust/Cargo.toml --workspace --all-targets -- -D warnings
 

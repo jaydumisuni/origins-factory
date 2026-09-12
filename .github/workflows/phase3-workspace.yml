@@ -63,9 +63,6 @@ jobs:
           rustc --version
           cargo --version
 
-      - name: Generate exact Rust dependency lock
-        run: cargo generate-lockfile --manifest-path rust/Cargo.toml
-
       - name: Normalize reviewed Rust sources
         run: cargo fmt --manifest-path rust/Cargo.toml --all
 
